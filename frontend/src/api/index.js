@@ -1,18 +1,16 @@
 import axios from 'axios'
 
 // 根据当前环境自动选择 API 地址
-// 开发环境：使用 localhost
-// 生产环境：使用当前域名（同源）或指定地址
 const getBaseURL = () => {
     // 如果有环境变量则使用
     if (import.meta.env.VITE_API_URL) {
         return import.meta.env.VITE_API_URL
     }
-    // 生产环境：使用同源地址
-    if (import.meta.env.PROD) {
+    // 如果访问的不是 localhost，说明是远程访问，使用当前域名
+    if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
         return `${window.location.protocol}//${window.location.hostname}:8000/api`
     }
-    // 开发环境：localhost
+    // 本地开发：localhost
     return 'http://localhost:8000/api'
 }
 
