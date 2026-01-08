@@ -491,3 +491,66 @@ def get_fail_stats(admin=Depends(get_admin_user), session: Session = Depends(get
     
     return {"fail_stats": stats}
 
+
+# ============ 系统配置管理 ============
+from backend.models import SystemConfig
+import json
+
+# 默认配置定义
+DEFAULT_CONFIG = {
+    "video_price": {"value": 0.99, "description": "单个视频生成价格（元）"},
+    "bonus_rate": {"value": 0.2, "description": "充值赠送比例（满10元生效）"},
+    "bonus_min_amount": {"value": 10, "description": "享受赠送的最低充值金额（元）"},
+    "min_recharge": {"value": 0.01, "description": "最低充值金额（元）"},
+    "max_recharge": {"value": 10000, "description": "最高充值金额（元）"},
+}
+
+
+class ConfigUpdate(BaseModel):
+    key: str
+    value: float
+
+
+@router.get("/config")
+def get_all_config(admin=Depends(get_admin_user), session: Session = Depends(get_session)):
+    """获取所有配置"""
+    configs = session.exec(sql_select(SystemConfig)).all()
+    config_dict = {c.key: {"value": json.loads(c.value), "description": c.description} for c in configs}
+    
+    # 合并默认配置
+    result = {}
+    for key, default in DEFAULT_CONFIG.items():
+        if key in config_dict:
+            result[key] = config_dict[key]
+        else:
+            result[key] = default
+    
+    return {"configs": result}
+
+
+@router.patch("/config")
+def update_config(
+    data: ConfigUpdate,
+    admin=Depends(get_admin_user),
+    session: Session = Depends(get_session)
+):
+    """更新单个配置"""
+    if data.key not in DEFAULT_CONFIG:
+        raise HTTPException(status_code=400, detail=f"不支持的配置项: {data.key}")
+    
+    config = session.exec(sql_select(SystemConfig).where(SystemConfig.key == data.key)).first()
+    
+    if config:
+        config.value = json.dumps(data.value)
+        config.updated_at = datetime.utcnow()
+    else:
+        config = SystemConfig(
+            key=data.key,
+            value=json.dumps(data.value),
+            description=DEFAULT_CONFIG[data.key]["description"]
+        )
+    
+    session.add(config)
+    session.commit()
+    
+    return {"message": "配置更新成功", "key": data.key, "value": data.value}

@@ -70,6 +70,15 @@ class PaymentOrder(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow)
     paid_at: Optional[datetime] = None
 
+
+class SystemConfig(SQLModel, table=True):
+    """系统配置表"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    key: str = Field(index=True, unique=True)  # 配置键
+    value: str  # 配置值（JSON 格式）
+    description: Optional[str] = None  # 配置描述
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
 # 数据库连接（使用相对路径，支持跨环境部署）
 import os
 _current_dir = os.path.dirname(os.path.abspath(__file__))

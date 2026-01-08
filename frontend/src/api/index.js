@@ -70,6 +70,13 @@ api.interceptors.response.use(
     }
 )
 
+// ============ Config API ============
+
+export const getPublicConfig = async () => {
+    const response = await api.get('/config')
+    return response.data
+}
+
 // ============ Security API ============
 
 export const getCaptcha = async () => {

@@ -156,6 +156,62 @@ class VerificationCodeRequest(BaseModel):
     text: str
 
 
+# ============ 系统配置 API ============
+from backend.models import SystemConfig
+import json
+
+# 默认配置
+DEFAULT_CONFIG = {
+    "video_price": {"value": 0.99, "description": "单个视频生成价格（元）"},
+    "bonus_rate": {"value": 0.2, "description": "充值赠送比例（满10元生效）"},
+    "bonus_min_amount": {"value": 10, "description": "享受赠送的最低充值金额（元）"},
+    "min_recharge": {"value": 0.01, "description": "最低充值金额（元）"},
+    "max_recharge": {"value": 10000, "description": "最高充值金额（元）"},
+}
+
+
+def get_config_value(session: Session, key: str, default=None):
+    """获取配置值"""
+    config = session.exec(select(SystemConfig).where(SystemConfig.key == key)).first()
+    if config:
+        try:
+            return json.loads(config.value)
+        except:
+            return config.value
+    return default if default is not None else DEFAULT_CONFIG.get(key, {}).get("value")
+
+
+def set_config_value(session: Session, key: str, value, description: str = None):
+    """设置配置值"""
+    config = session.exec(select(SystemConfig).where(SystemConfig.key == key)).first()
+    if config:
+        config.value = json.dumps(value)
+        if description:
+            config.description = description
+        config.updated_at = datetime.utcnow()
+    else:
+        config = SystemConfig(
+            key=key,
+            value=json.dumps(value),
+            description=description or DEFAULT_CONFIG.get(key, {}).get("description", "")
+        )
+    session.add(config)
+    session.commit()
+    return config
+
+
+@app.get("/api/config")
+def get_public_config(session: Session = Depends(get_session)):
+    """获取公共配置（前端使用）"""
+    return {
+        "video_price": get_config_value(session, "video_price", 0.99),
+        "bonus_rate": get_config_value(session, "bonus_rate", 0.2),
+        "bonus_min_amount": get_config_value(session, "bonus_min_amount", 10),
+        "min_recharge": get_config_value(session, "min_recharge", 0.01),
+        "max_recharge": get_config_value(session, "max_recharge", 10000),
+    }
+
+
 # --- 安全相关 API ---
 
 @app.get("/api/captcha")

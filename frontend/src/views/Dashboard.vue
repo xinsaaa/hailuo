@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { getCurrentUser, createOrder, getOrders, createPayment } from '../api'
+import { getCurrentUser, createOrder, getOrders, createPayment, getPublicConfig } from '../api'
 
 const route = useRoute()
 const router = useRouter()
@@ -11,6 +11,15 @@ const user = ref(null)
 const orders = ref([])
 const prompt = ref(route.query.prompt || '')
 const loading = ref(false)
+
+// 系统配置（从 API 加载）
+const config = ref({
+  video_price: 0.99,
+  bonus_rate: 0.2,
+  bonus_min_amount: 10,
+  min_recharge: 0.01,
+  max_recharge: 10000
+})
 
 // 鼠标跟随效果
 const mouseX = ref(0)
@@ -57,13 +66,6 @@ const showToast = ref(false)
 const toastMessage = ref('')
 const toastType = ref('info')
 
-// 充值选项（满10元送20%）
-const rechargeOptions = [
-  { amount: 10, bonus: 2, gradient: 'from-orange-500 to-red-500' },
-  { amount: 50, bonus: 10, gradient: 'from-yellow-500 to-orange-500' },
-  { amount: 100, bonus: 20, gradient: 'from-green-500 to-emerald-500' },
-]
-
 // 自定义充值金额
 const customAmount = ref(null)
 
@@ -79,6 +81,17 @@ const formattedBalance = computed(() => {
   return user.value ? user.value.balance.toFixed(2) : '0.00'
 })
 
+// 动态计算充值选项
+const rechargeOptions = computed(() => {
+  const rate = config.value.bonus_rate
+  const minAmount = config.value.bonus_min_amount
+  return [
+    { amount: 10, bonus: 10 >= minAmount ? (10 * rate).toFixed(2) : 0, gradient: 'from-orange-500 to-red-500' },
+    { amount: 50, bonus: 50 >= minAmount ? (50 * rate).toFixed(2) : 0, gradient: 'from-yellow-500 to-orange-500' },
+    { amount: 100, bonus: 100 >= minAmount ? (100 * rate).toFixed(2) : 0, gradient: 'from-green-500 to-emerald-500' },
+  ]
+})
+
 const showNotification = (message, type = 'info') => {
   toastMessage.value = message
   toastType.value = type
@@ -88,8 +101,17 @@ const showNotification = (message, type = 'info') => {
 
 const loadData = async () => {
   try {
-    user.value = await getCurrentUser()
-    orders.value = await getOrders()
+    // 并行加载用户、订单和配置
+    const [userData, ordersData, configData] = await Promise.all([
+      getCurrentUser(),
+      getOrders(),
+      getPublicConfig().catch(() => null)
+    ])
+    user.value = userData
+    orders.value = ordersData
+    if (configData) {
+      config.value = configData
+    }
   } catch (err) {
     if (err.response?.status === 401) {
       router.push('/login')
@@ -207,7 +229,7 @@ const handleLogout = () => {
           <div class="relative">
             <div class="absolute -inset-0.5 bg-gradient-to-r from-cyan-500/30 to-purple-500/30 rounded-2xl blur opacity-50"></div>
             <div class="relative bg-[#12121a] border border-white/10 rounded-2xl p-6">
-              <h2 class="text-gray-400 text-xs uppercase tracking-wider font-bold mb-4">快速充值 <span class="text-cyan-400">满10元送20%</span></h2>
+              <h2 class="text-gray-400 text-xs uppercase tracking-wider font-bold mb-4">快速充值 <span class="text-cyan-400">满{{ config.bonus_min_amount }}元送{{ config.bonus_rate * 100 }}%</span></h2>
               <div class="space-y-3">
                 <button 
                   v-for="opt in rechargeOptions" 
@@ -255,8 +277,8 @@ const handleLogout = () => {
                     充值
                   </button>
                 </div>
-                <p v-if="customAmount >= 10" class="text-xs text-cyan-400 mt-2">
-                  将获得 ¥{{ (customAmount * 0.2).toFixed(2) }} 赠送
+                <p v-if="customAmount >= config.bonus_min_amount" class="text-xs text-cyan-400 mt-2">
+                  将获得 ¥{{ (customAmount * config.bonus_rate).toFixed(2) }} 赠送
                 </p>
               </div>
               
@@ -300,7 +322,7 @@ const handleLogout = () => {
                 </div>
                 
                 <div class="flex items-center gap-4">
-                  <span class="text-sm font-medium text-gray-400">消耗: <span class="text-white">¥0.99</span></span>
+                  <span class="text-sm font-medium text-gray-400">消耗: <span class="text-white">¥{{ config.video_price }}</span></span>
                   <button 
                     @click="handleCreateOrder"
                     :disabled="loading"
