@@ -21,13 +21,35 @@ const handleMouseMove = (e) => {
   mouseY.value = e.clientY
 }
 
+// 订单自动刷新
+let ordersInterval = null
+
+const startOrdersPolling = () => {
+  if (ordersInterval) return
+  ordersInterval = setInterval(async () => {
+    // 检查是否有处理中的订单
+    const hasProcessing = orders.value.some(o => 
+      o.status === 'pending' || o.status === 'processing' || o.status === 'generating'
+    )
+    if (hasProcessing) {
+      try {
+        orders.value = await getOrders()
+      } catch (err) {
+        console.error('刷新订单失败', err)
+      }
+    }
+  }, 5000)
+}
+
 onMounted(() => {
   window.addEventListener('mousemove', handleMouseMove)
   loadData()
+  startOrdersPolling()
 })
 
 onUnmounted(() => {
   window.removeEventListener('mousemove', handleMouseMove)
+  if (ordersInterval) clearInterval(ordersInterval)
 })
 
 // Toast 状态
@@ -266,28 +288,43 @@ const handleLogout = () => {
               <div 
                 v-for="order in orders" 
                 :key="order.id"
-                class="group bg-white/5 hover:bg-white/10 border border-white/10 p-5 rounded-xl transition-all flex justify-between items-start"
+                class="group bg-white/5 hover:bg-white/10 border border-white/10 p-5 rounded-xl transition-all"
               >
-                <div class="flex-1 mr-4">
-                  <p class="text-white font-medium line-clamp-2 leading-relaxed">{{ order.prompt }}</p>
-                  <div class="flex items-center gap-3 mt-2">
-                    <p class="text-xs text-gray-500">{{ new Date(order.created_at).toLocaleString() }}</p>
-                    <a v-if="order.status === 'completed' && order.video_url" 
-                       :href="order.video_url" 
-                       target="_blank"
-                       class="text-xs text-cyan-400 hover:text-cyan-300 font-medium flex items-center gap-1 transition-colors">
-                       <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
-                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                       </svg>
-                       查看视频
-                    </a>
+                <div class="flex justify-between items-start">
+                  <div class="flex-1 mr-4">
+                    <p class="text-white font-medium line-clamp-2 leading-relaxed">{{ order.prompt }}</p>
+                    <div class="flex items-center gap-3 mt-2">
+                      <p class="text-xs text-gray-500">{{ new Date(order.created_at).toLocaleString() }}</p>
+                      <a v-if="order.status === 'completed' && order.video_url" 
+                         :href="order.video_url" 
+                         target="_blank"
+                         class="text-xs text-cyan-400 hover:text-cyan-300 font-medium flex items-center gap-1 transition-colors">
+                         <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
+                           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                         </svg>
+                         查看视频
+                      </a>
+                    </div>
+                  </div>
+                  <div>
+                    <span :class="`px-3 py-1 rounded-lg text-xs font-bold border ${statusMap[order.status]?.class || 'bg-gray-500/20 text-gray-400 border-gray-500/30'}`">
+                      {{ statusMap[order.status]?.text || order.status }}
+                    </span>
                   </div>
                 </div>
-                <div>
-                  <span :class="`px-3 py-1 rounded-lg text-xs font-bold border ${statusMap[order.status]?.class || 'bg-gray-500/20 text-gray-400 border-gray-500/30'}`">
-                    {{ statusMap[order.status]?.text || order.status }}
-                  </span>
+                <!-- 进度条：仅在 processing 或 generating 状态显示 -->
+                <div v-if="order.status === 'processing' || order.status === 'generating'" class="mt-4">
+                  <div class="flex items-center justify-between mb-1.5">
+                    <span class="text-xs text-gray-400">生成进度</span>
+                    <span class="text-xs font-mono text-cyan-400">{{ order.progress || 0 }}%</span>
+                  </div>
+                  <div class="h-2 bg-gray-700 rounded-full overflow-hidden">
+                    <div 
+                      class="h-full bg-gradient-to-r from-cyan-500 to-purple-500 rounded-full transition-all duration-500"
+                      :style="{ width: (order.progress || 0) + '%' }"
+                    ></div>
+                  </div>
                 </div>
               </div>
             </div>

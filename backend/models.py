@@ -15,7 +15,8 @@ class VideoOrder(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     user_id: int = Field(foreign_key="user.id")
     prompt: str
-    status: str = Field(default="pending") # pending, processing, completed, failed
+    status: str = Field(default="pending") # pending, processing, generating, completed, failed
+    progress: int = Field(default=0) # 0-100 进度百分比
     video_url: Optional[str] = None
     cost: float = Field(default=0.99)
     created_at: datetime = Field(default_factory=datetime.utcnow)
