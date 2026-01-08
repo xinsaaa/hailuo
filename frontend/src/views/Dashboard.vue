@@ -38,7 +38,7 @@ const startOrdersPolling = () => {
         console.error('刷新订单失败', err)
       }
     }
-  }, 5000)
+  }, 1500) // 1.5秒刷新一次
 }
 
 onMounted(() => {
