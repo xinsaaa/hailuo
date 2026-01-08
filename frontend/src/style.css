@@ -1,0 +1,22 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+    @apply bg-google-gray text-gray-800 antialiased font-sans;
+}
+
+/* Custom "Glass" or Tech utilities */
+.glass-panel {
+    @apply bg-white bg-opacity-70 backdrop-blur-lg border border-white/20 shadow-card;
+}
+
+.btn-primary {
+    @apply bg-google-blue text-white px-6 py-2 rounded-full font-medium hover:shadow-lg transition-all duration-300 hover:scale-105 active:scale-95;
+}
+
+.input-tech {
+    @apply w-full px-4 py-3 rounded-lg bg-white border border-gray-200 focus:border-google-blue focus:ring-2 focus:ring-google-blue/20 outline-none transition-all;
+}

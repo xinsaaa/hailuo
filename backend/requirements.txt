@@ -1,0 +1,13 @@
+fastapi
+uvicorn[standard]
+sqlalchemy
+sqlmodel
+pydantic
+python-multipart
+playwright
+python-dotenv
+aiofiles
+python-jose[cryptography]
+bcrypt
+requests
+starlette
