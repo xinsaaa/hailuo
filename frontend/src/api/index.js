@@ -145,6 +145,11 @@ export const getPaymentStatus = async (outTradeNo) => {
     return response.data
 }
 
+export const confirmPayment = async (params) => {
+    const response = await api.get('/pay/confirm', { params })
+    return response.data
+}
+
 export const createOrder = async (prompt) => {
     const response = await api.post('/orders/create', { prompt })
     return response.data
