@@ -24,6 +24,54 @@ PHONE_NUMBER = "15781806380"
 MAX_CONCURRENT_TASKS = 2  # 海螺 AI 允许的最大并发任务数
 POLL_INTERVAL = 5  # 轮询间隔（秒）
 
+# ============ 日志收集系统 ============
+from collections import deque
+from datetime import datetime
+
+class AutomationLogger:
+    """自动化服务日志收集器"""
+    def __init__(self, max_logs: int = 100):
+        self._logs = deque(maxlen=max_logs)
+        self._lock = threading.Lock()
+    
+    def log(self, level: str, message: str):
+        """记录日志"""
+        with self._lock:
+            entry = {
+                "time": datetime.now().strftime("%H:%M:%S"),
+                "level": level,
+                "message": message
+            }
+            self._logs.append(entry)
+            # 同时打印到控制台
+            print(f"[AUTOMATION][{level}] {message}")
+    
+    def info(self, message: str):
+        self.log("INFO", message)
+    
+    def warn(self, message: str):
+        self.log("WARN", message)
+    
+    def error(self, message: str):
+        self.log("ERROR", message)
+    
+    def success(self, message: str):
+        self.log("SUCCESS", message)
+    
+    def get_logs(self, limit: int = 50) -> list:
+        """获取最近的日志"""
+        with self._lock:
+            logs = list(self._logs)
+            return logs[-limit:] if len(logs) > limit else logs
+    
+    def clear(self):
+        """清空日志"""
+        with self._lock:
+            self._logs.clear()
+
+# 全局日志实例
+automation_logger = AutomationLogger()
+
 # ============ 全局状态 ============
 _browser: Optional[Browser] = None
 _page: Optional[Page] = None

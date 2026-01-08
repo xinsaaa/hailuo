@@ -1,10 +1,13 @@
 <script setup>
-import { ref, onMounted } from 'vue'
-import { getAdminStats, getAutomationStatus, startAutomation } from '../../api'
+import { ref, onMounted, onUnmounted } from 'vue'
+import { getAdminStats, getAutomationStatus, startAutomation, getAutomationLogs } from '../../api'
 
 const stats = ref(null)
 const automation = ref(null)
+const logs = ref([])
 const loading = ref(true)
+const logsLoading = ref(false)
+let logsInterval = null
 
 const loadData = async () => {
     loading.value = true
@@ -22,16 +25,56 @@ const loadData = async () => {
     }
 }
 
+const loadLogs = async () => {
+    logsLoading.value = true
+    try {
+        const data = await getAutomationLogs(50)
+        logs.value = data.logs || []
+    } catch (err) {
+        console.error('加载日志失败', err)
+    } finally {
+        logsLoading.value = false
+    }
+}
+
 const handleStartAutomation = async () => {
     try {
         await startAutomation()
         await loadData()
+        await loadLogs()
     } catch (err) {
         alert('启动失败: ' + (err.response?.data?.detail || err.message))
     }
 }
 
-onMounted(loadData)
+const getLogColor = (level) => {
+    switch (level) {
+        case 'SUCCESS': return 'text-green-400'
+        case 'ERROR': return 'text-red-400'
+        case 'WARN': return 'text-yellow-400'
+        default: return 'text-gray-300'
+    }
+}
+
+const getLogBadgeColor = (level) => {
+    switch (level) {
+        case 'SUCCESS': return 'bg-green-500/20 text-green-400'
+        case 'ERROR': return 'bg-red-500/20 text-red-400'
+        case 'WARN': return 'bg-yellow-500/20 text-yellow-400'
+        default: return 'bg-gray-500/20 text-gray-400'
+    }
+}
+
+onMounted(() => {
+    loadData()
+    loadLogs()
+    // 每5秒刷新日志
+    logsInterval = setInterval(loadLogs, 5000)
+})
+
+onUnmounted(() => {
+    if (logsInterval) clearInterval(logsInterval)
+})
 </script>
 
 <template>
@@ -62,6 +105,37 @@ onMounted(loadData)
             >
                 启动服务
             </button>
+        </div>
+    </div>
+
+    <!-- Logs Panel -->
+    <div class="bg-gray-800 rounded-2xl border border-gray-700/50 shadow-xl overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-700/50 bg-gray-900/50 flex items-center justify-between">
+            <h3 class="text-lg font-bold text-white flex items-center gap-2">
+                <svg class="w-5 h-5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                运行日志
+            </h3>
+            <div class="flex items-center gap-3">
+                <span v-if="logsLoading" class="text-xs text-gray-500">刷新中...</span>
+                <button @click="loadLogs" class="text-xs text-blue-400 hover:text-blue-300 transition-colors">手动刷新</button>
+            </div>
+        </div>
+        <div class="h-64 overflow-y-auto p-4 font-mono text-sm bg-gray-900/30 space-y-1">
+            <div v-if="logs.length === 0" class="text-center text-gray-500 py-8">
+                暂无日志，启动服务后将显示运行日志
+            </div>
+            <div 
+                v-for="(log, index) in logs" 
+                :key="index"
+                class="flex items-start gap-3 py-1.5 px-2 hover:bg-gray-800/50 rounded"
+            >
+                <span class="text-gray-600 text-xs tabular-nums shrink-0">{{ log.time }}</span>
+                <span 
+                    class="text-xs px-1.5 py-0.5 rounded font-medium shrink-0"
+                    :class="getLogBadgeColor(log.level)"
+                >{{ log.level }}</span>
+                <span :class="getLogColor(log.level)">{{ log.message }}</span>
+            </div>
         </div>
     </div>
 
@@ -126,3 +200,4 @@ onMounted(loadData)
     </div>
   </div>
 </template>
+

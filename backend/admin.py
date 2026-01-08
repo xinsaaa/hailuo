@@ -382,6 +382,7 @@ def update_order(
 
 
 # ============ 自动化控制 ============
+from backend.automation import automation_logger
 
 @router.get("/automation/status")
 def get_automation_status(admin=Depends(get_admin_user)):
@@ -396,6 +397,16 @@ def get_automation_status(admin=Depends(get_admin_user)):
     }
 
 
+@router.get("/automation/logs")
+def get_automation_logs(limit: int = 50, admin=Depends(get_admin_user)):
+    """获取自动化运行日志"""
+    logs = automation_logger.get_logs(limit)
+    return {
+        "logs": logs,
+        "total": len(logs)
+    }
+
+
 @router.post("/automation/start")
 def start_automation(admin=Depends(get_admin_user)):
     """启动自动化"""
@@ -403,9 +414,11 @@ def start_automation(admin=Depends(get_admin_user)):
         return {"message": "自动化已在运行中"}
     
     try:
+        automation_logger.info("收到启动请求，正在初始化...")
         start_automation_worker()
         return {"message": "自动化启动成功"}
     except Exception as e:
+        automation_logger.error(f"启动失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"启动失败: {str(e)}")
 
 

@@ -185,6 +185,11 @@ export const stopAutomation = async () => {
     return response.data
 }
 
+export const getAutomationLogs = async (limit = 50) => {
+    const response = await api.get('/admin/automation/logs', { params: { limit } })
+    return response.data
+}
+
 export const getBannedIps = async () => {
     const response = await api.get('/admin/security/banned-ips')
     return response.data
