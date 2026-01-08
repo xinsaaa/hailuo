@@ -77,9 +77,27 @@ const checkSecurityStatus = async () => {
   }
 }
 
-onMounted(() => {
+// 首次加载时的初始化
+const initRetryCount = ref(0)
+const maxInitRetries = 2
+
+onMounted(async () => {
   window.addEventListener('mousemove', handleMouseMove)
-  checkSecurityStatus()
+  
+  // 首次加载等待后端服务就绪
+  await new Promise(resolve => setTimeout(resolve, 1500))
+  
+  try {
+    await checkSecurityStatus()
+  } catch (err) {
+    console.log('[Login] 首次加载失败，尝试重试...')
+    // 如果首次加载失败，等待2秒后刷新重试
+    if (initRetryCount.value < maxInitRetries) {
+      initRetryCount.value++
+      await new Promise(resolve => setTimeout(resolve, 2000))
+      window.location.reload()
+    }
+  }
 })
 
 onUnmounted(() => {
