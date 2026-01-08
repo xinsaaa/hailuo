@@ -312,8 +312,8 @@ def create_payment(
     amount = request.amount
     
     # 校验金额
-    if amount < 1:
-        raise HTTPException(status_code=400, detail="最低充值金额为 1 元")
+    if amount < 0.01:
+        raise HTTPException(status_code=400, detail="最低充值金额为 0.01 元")
     if amount > 10000:
         raise HTTPException(status_code=400, detail="单笔最高充值 10000 元")
     

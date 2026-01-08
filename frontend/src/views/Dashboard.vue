@@ -68,8 +68,8 @@ const rechargeOptions = [
 const customAmount = ref(null)
 
 const handleCustomRecharge = async () => {
-  if (!customAmount.value || customAmount.value < 10) {
-    showNotification('最低充值金额为 10 元', 'error')
+  if (!customAmount.value || customAmount.value < 0.01) {
+    showNotification('最低充值金额为 0.01 元', 'error')
     return
   }
   handleRecharge(customAmount.value)
@@ -241,14 +241,15 @@ const handleLogout = () => {
                     <input 
                       v-model.number="customAmount" 
                       type="number"
-                      min="10"
-                      placeholder="10"
+                      min="0.01"
+                      step="0.01"
+                      placeholder="0.01"
                       class="w-full bg-white/5 border border-white/10 rounded-xl py-3 pl-8 pr-4 text-white placeholder-gray-500 focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/30"
                     />
                   </div>
                   <button 
                     @click="handleCustomRecharge"
-                    :disabled="loading || !customAmount || customAmount < 10"
+                    :disabled="loading || !customAmount || customAmount < 0.01"
                     class="px-6 bg-gradient-to-r from-cyan-500 to-purple-500 text-white rounded-xl font-medium hover:opacity-90 disabled:opacity-40 transition-all"
                   >
                     充值
