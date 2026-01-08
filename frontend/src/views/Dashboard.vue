@@ -57,12 +57,23 @@ const showToast = ref(false)
 const toastMessage = ref('')
 const toastType = ref('info')
 
-// 充值选项
+// 充值选项（满10元送20%）
 const rechargeOptions = [
-  { amount: 10, bonus: 1, gradient: 'from-orange-500 to-red-500' },
-  { amount: 50, bonus: 5, gradient: 'from-yellow-500 to-orange-500' },
+  { amount: 10, bonus: 2, gradient: 'from-orange-500 to-red-500' },
+  { amount: 50, bonus: 10, gradient: 'from-yellow-500 to-orange-500' },
   { amount: 100, bonus: 20, gradient: 'from-green-500 to-emerald-500' },
 ]
+
+// 自定义充值金额
+const customAmount = ref(null)
+
+const handleCustomRecharge = async () => {
+  if (!customAmount.value || customAmount.value < 10) {
+    showNotification('最低充值金额为 10 元', 'error')
+    return
+  }
+  handleRecharge(customAmount.value)
+}
 
 const formattedBalance = computed(() => {
   return user.value ? user.value.balance.toFixed(2) : '0.00'
@@ -196,7 +207,7 @@ const handleLogout = () => {
           <div class="relative">
             <div class="absolute -inset-0.5 bg-gradient-to-r from-cyan-500/30 to-purple-500/30 rounded-2xl blur opacity-50"></div>
             <div class="relative bg-[#12121a] border border-white/10 rounded-2xl p-6">
-              <h2 class="text-gray-400 text-xs uppercase tracking-wider font-bold mb-4">快速充值</h2>
+              <h2 class="text-gray-400 text-xs uppercase tracking-wider font-bold mb-4">快速充值 <span class="text-cyan-400">满10元送20%</span></h2>
               <div class="space-y-3">
                 <button 
                   v-for="opt in rechargeOptions" 
@@ -220,7 +231,35 @@ const handleLogout = () => {
                   </div>
                 </button>
               </div>
-              <div class="mt-6 pt-4 border-t border-white/5">
+              
+              <!-- 自定义金额 -->
+              <div class="mt-4 pt-4 border-t border-white/5">
+                <label class="text-gray-400 text-xs uppercase tracking-wider font-bold mb-2 block">自定义金额</label>
+                <div class="flex gap-2">
+                  <div class="flex-1 relative">
+                    <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">¥</span>
+                    <input 
+                      v-model.number="customAmount" 
+                      type="number"
+                      min="10"
+                      placeholder="10"
+                      class="w-full bg-white/5 border border-white/10 rounded-xl py-3 pl-8 pr-4 text-white placeholder-gray-500 focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/30"
+                    />
+                  </div>
+                  <button 
+                    @click="handleCustomRecharge"
+                    :disabled="loading || !customAmount || customAmount < 10"
+                    class="px-6 bg-gradient-to-r from-cyan-500 to-purple-500 text-white rounded-xl font-medium hover:opacity-90 disabled:opacity-40 transition-all"
+                  >
+                    充值
+                  </button>
+                </div>
+                <p v-if="customAmount >= 10" class="text-xs text-cyan-400 mt-2">
+                  将获得 ¥{{ (customAmount * 0.2).toFixed(2) }} 赠送
+                </p>
+              </div>
+              
+              <div class="mt-4 pt-4 border-t border-white/5">
                 <p class="text-xs text-center text-gray-600">支付系统安全加密</p>
               </div>
             </div>

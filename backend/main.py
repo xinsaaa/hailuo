@@ -317,14 +317,10 @@ def create_payment(
     if amount > 10000:
         raise HTTPException(status_code=400, detail="单笔最高充值 10000 元")
     
-    # 计算赠送金额
+    # 计算赠送金额：大于10元送20%
     bonus = 0.0
-    if amount >= 100:
-        bonus = 20
-    elif amount >= 50:
-        bonus = 5
-    elif amount >= 10:
-        bonus = 1
+    if amount >= 10:
+        bonus = round(amount * 0.2, 2)  # 20%
     
     # 生成订单号
     out_trade_no = generate_order_no()
