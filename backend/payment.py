@@ -14,7 +14,7 @@ ZPAY_KEY = "lUpCQ3QrCmcAW8SNLCkXcHiILCybND5V"
 
 # 回调地址（需替换为实际服务器地址）
 ZPAY_NOTIFY_URL = "http://152.32.213.113:8000/api/pay/notify"
-ZPAY_RETURN_URL = "http://152.32.213.113:5173/dashboard"
+ZPAY_RETURN_URL = "http://152.32.213.113:5173/recharge"
 
 
 def generate_sign(params: dict, key: str) -> str:

@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { getCurrentUser, createOrder, getOrders, createPayment, getPublicConfig } from '../api'
+import { getCurrentUser, createOrder, getOrders, createPayment, getPublicConfig, confirmPayment } from '../api'
 
 const route = useRoute()
 const router = useRouter()
@@ -66,30 +66,8 @@ const showToast = ref(false)
 const toastMessage = ref('')
 const toastType = ref('info')
 
-// 自定义充值金额
-const customAmount = ref(null)
-
-const handleCustomRecharge = async () => {
-  if (!customAmount.value || customAmount.value < 0.01) {
-    showNotification('最低充值金额为 0.01 元', 'error')
-    return
-  }
-  handleRecharge(customAmount.value)
-}
-
 const formattedBalance = computed(() => {
   return user.value ? user.value.balance.toFixed(2) : '0.00'
-})
-
-// 动态计算充值选项
-const rechargeOptions = computed(() => {
-  const rate = config.value.bonus_rate
-  const minAmount = config.value.bonus_min_amount
-  return [
-    { amount: 10, bonus: 10 >= minAmount ? (10 * rate).toFixed(2) : 0, gradient: 'from-orange-500 to-red-500' },
-    { amount: 50, bonus: 50 >= minAmount ? (50 * rate).toFixed(2) : 0, gradient: 'from-yellow-500 to-orange-500' },
-    { amount: 100, bonus: 100 >= minAmount ? (100 * rate).toFixed(2) : 0, gradient: 'from-green-500 to-emerald-500' },
-  ]
 })
 
 const showNotification = (message, type = 'info') => {
@@ -125,8 +103,8 @@ const handleCreateOrder = async () => {
     return
   }
   
-  if (!user.value || user.value.balance < 0.99) {
-    showNotification('余额不足，请先充值', 'error')
+  if (!user.value || user.value.balance < config.value.video_price) {
+    showNotification(`余额不足，需 ${config.value.video_price} 元`, 'error')
     return
   }
   
@@ -140,19 +118,6 @@ const handleCreateOrder = async () => {
   } catch (err) {
     showNotification(err.response?.data?.detail || '创建订单失败', 'error')
   } finally {
-    loading.value = false
-  }
-}
-
-const handleRecharge = async (amount) => {
-  loading.value = true
-  try {
-    // 调用支付接口获取支付 URL
-    const result = await createPayment(amount)
-    // 跳转到支付页面
-    window.location.href = result.pay_url
-  } catch (err) {
-    showNotification(err.response?.data?.detail || '创建支付订单失败', 'error')
     loading.value = false
   }
 }
@@ -212,8 +177,14 @@ const handleLogout = () => {
           <span class="text-white">大帝</span><span class="text-cyan-400">AI</span>
         </div>
         <div class="flex items-center gap-6">
-          <div class="text-sm text-gray-400 bg-white/5 px-4 py-2 rounded-xl border border-white/10">
-            余额: <span class="font-bold text-white">¥{{ formattedBalance }}</span>
+          <div class="flex items-center gap-3 bg-white/5 p-1 pr-4 rounded-xl border border-white/10">
+             <button 
+               @click="router.push('/recharge')"
+               class="px-4 py-1.5 bg-gradient-to-r from-cyan-500 to-blue-500 text-white text-xs font-bold rounded-lg hover:opacity-90 transition-opacity shadow-lg shadow-cyan-500/20"
+             >
+               充值
+             </button>
+             <span class="text-sm text-gray-400">余额: <span class="font-bold text-white">¥{{ formattedBalance }}</span></span>
           </div>
           <button @click="handleLogout" class="text-sm text-gray-500 hover:text-white transition-colors">退出</button>
         </div>
@@ -221,78 +192,10 @@ const handleLogout = () => {
     </nav>
     
     <!-- Main Content -->
-    <div class="flex-grow max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-10 relative z-10">
-      <div class="grid grid-cols-1 md:grid-cols-12 gap-8">
+    <div class="flex-grow max-w-5xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-10 relative z-10">
+      <div class="space-y-8">
         
-        <!-- Left: Recharge -->
-        <div class="md:col-span-4 space-y-6">
-          <div class="relative">
-            <div class="absolute -inset-0.5 bg-gradient-to-r from-cyan-500/30 to-purple-500/30 rounded-2xl blur opacity-50"></div>
-            <div class="relative bg-[#12121a] border border-white/10 rounded-2xl p-6">
-              <h2 class="text-gray-400 text-xs uppercase tracking-wider font-bold mb-4">快速充值 <span class="text-cyan-400">满{{ config.bonus_min_amount }}元送{{ config.bonus_rate * 100 }}%</span></h2>
-              <div class="space-y-3">
-                <button 
-                  v-for="opt in rechargeOptions" 
-                  :key="opt.amount"
-                  @click="handleRecharge(opt.amount)"
-                  :disabled="loading"
-                  class="w-full group bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 rounded-xl p-4 transition-all text-left"
-                >
-                  <div class="flex justify-between items-center">
-                    <div>
-                      <div class="font-bold text-white text-lg">¥ {{ opt.amount }}</div>
-                      <div :class="`text-xs font-semibold bg-gradient-to-r ${opt.gradient} bg-clip-text text-transparent`">
-                        赠送 ¥{{ opt.bonus }}
-                      </div>
-                    </div>
-                    <div class="h-8 w-8 rounded-full bg-white/5 flex items-center justify-center group-hover:bg-cyan-500/20 transition-colors">
-                      <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-400 group-hover:text-cyan-400" viewBox="0 0 20 20" fill="currentColor">
-                        <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-11a1 1 0 10-2 0v2H7a1 1 0 100 2h2v2a1 1 0 102 0v-2h2a1 1 0 100-2h-2V7z" clip-rule="evenodd" />
-                      </svg>
-                    </div>
-                  </div>
-                </button>
-              </div>
-              
-              <!-- 自定义金额 -->
-              <div class="mt-4 pt-4 border-t border-white/5">
-                <label class="text-gray-400 text-xs uppercase tracking-wider font-bold mb-2 block">自定义金额</label>
-                <div class="flex gap-2">
-                  <div class="flex-1 relative">
-                    <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">¥</span>
-                    <input 
-                      v-model.number="customAmount" 
-                      type="number"
-                      min="0.01"
-                      step="0.01"
-                      placeholder="0.01"
-                      class="w-full bg-white/5 border border-white/10 rounded-xl py-3 pl-8 pr-4 text-white placeholder-gray-500 focus:outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/30"
-                    />
-                  </div>
-                  <button 
-                    @click="handleCustomRecharge"
-                    :disabled="loading || !customAmount || customAmount < 0.01"
-                    class="px-6 bg-gradient-to-r from-cyan-500 to-purple-500 text-white rounded-xl font-medium hover:opacity-90 disabled:opacity-40 transition-all"
-                  >
-                    充值
-                  </button>
-                </div>
-                <p v-if="customAmount >= config.bonus_min_amount" class="text-xs text-cyan-400 mt-2">
-                  将获得 ¥{{ (customAmount * config.bonus_rate).toFixed(2) }} 赠送
-                </p>
-              </div>
-              
-              <div class="mt-4 pt-4 border-t border-white/5">
-                <p class="text-xs text-center text-gray-600">支付系统安全加密</p>
-              </div>
-            </div>
-          </div>
-        </div>
-        
-        <!-- Right: Generator + History -->
-        <div class="md:col-span-8 space-y-8">
-          
-          <!-- Generator -->
+        <!-- Generator -->
           <div class="relative">
             <div class="absolute -inset-0.5 bg-gradient-to-r from-cyan-500 via-purple-500 to-pink-500 rounded-2xl opacity-20 blur"></div>
             <div class="relative bg-[#12121a] border border-white/10 rounded-2xl p-8">
@@ -392,7 +295,7 @@ const handleLogout = () => {
             </div>
           </div>
           
-        </div>
+
       </div>
     </div>
   </div>

@@ -26,6 +26,13 @@ const routes = [
         component: () => import('../views/Dashboard.vue'),
         meta: { requiresAuth: true }
     },
+    {
+        path: '/recharge',
+        name: 'Recharge',
+        component: () => import('../views/Recharge.vue'),
+        meta: { requiresAuth: true }
+    },
+
     // Admin Routes
     {
         path: '/admin/login',
