@@ -66,11 +66,14 @@ app.add_middleware(
 app.add_middleware(RateLimitMiddleware)
 
 
-# 后端启动时自动启动浏览器自动化（暂时禁用，管理员端再启用）
+# 后端启动时自动初始化数据库和启动自动化
 @app.on_event("startup")
 def startup_event():
+    # 确保数据库表存在
+    from backend.models import create_db_and_tables
+    create_db_and_tables()
+    print("[MAIN] Database tables initialized.")
     print("[MAIN] Backend started. Automation worker disabled.")
-    # start_automation_worker()  # 暂时禁用
 
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
