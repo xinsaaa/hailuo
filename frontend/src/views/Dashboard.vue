@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { getCurrentUser, createOrder, getOrders, recharge } from '../api'
+import { getCurrentUser, createOrder, getOrders, createPayment } from '../api'
 
 const route = useRoute()
 const router = useRouter()
@@ -114,12 +114,12 @@ const handleCreateOrder = async () => {
 const handleRecharge = async (amount) => {
   loading.value = true
   try {
-    const result = await recharge(amount)
-    showNotification(`充值成功！当前余额 ¥${result.new_balance}`, 'success')
-    await loadData()
+    // 调用支付接口获取支付 URL
+    const result = await createPayment(amount)
+    // 跳转到支付页面
+    window.location.href = result.pay_url
   } catch (err) {
-    showNotification(err.response?.data?.detail || '充值失败', 'error')
-  } finally {
+    showNotification(err.response?.data?.detail || '创建支付订单失败', 'error')
     loading.value = false
   }
 }

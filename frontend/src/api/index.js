@@ -126,6 +126,18 @@ export const recharge = async (amount) => {
     return response.data
 }
 
+// ============ Payment API ============
+
+export const createPayment = async (amount) => {
+    const response = await api.post('/pay/create', { amount })
+    return response.data
+}
+
+export const getPaymentStatus = async (outTradeNo) => {
+    const response = await api.get(`/pay/status/${outTradeNo}`)
+    return response.data
+}
+
 export const createOrder = async (prompt) => {
     const response = await api.post('/orders/create', { prompt })
     return response.data

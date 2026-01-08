@@ -57,6 +57,19 @@ class LoginFailure(SQLModel, table=True):
     last_fail_at: Optional[datetime] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
+
+class PaymentOrder(SQLModel, table=True):
+    """支付订单记录"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="user.id")
+    out_trade_no: str = Field(index=True, unique=True)  # 商户订单号
+    amount: float  # 支付金额
+    bonus: float = Field(default=0.0)  # 赠送金额
+    status: str = Field(default="pending")  # pending, paid, failed
+    trade_no: Optional[str] = None  # 平台交易号
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    paid_at: Optional[datetime] = None
+
 # 数据库连接（使用相对路径，支持跨环境部署）
 import os
 _current_dir = os.path.dirname(os.path.abspath(__file__))

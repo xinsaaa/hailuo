@@ -291,6 +291,155 @@ def recharge(request: RechargeRequest, current_user: User = Depends(get_current_
     return {"message": "Recharge successful", "new_balance": current_user.balance, "bonus_added": bonus}
 
 
+# ============ Z-Pay 支付接口 ============
+from backend.payment import create_payment_url, generate_order_no, verify_sign, ZPAY_KEY
+from backend.models import PaymentOrder
+from starlette.responses import PlainTextResponse
+from datetime import datetime
+
+
+class CreatePaymentRequest(BaseModel):
+    amount: float  # 充值金额
+
+
+@app.post("/api/pay/create")
+def create_payment(
+    request: CreatePaymentRequest,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session)
+):
+    """创建支付订单，返回支付跳转 URL"""
+    amount = request.amount
+    
+    # 校验金额
+    if amount < 1:
+        raise HTTPException(status_code=400, detail="最低充值金额为 1 元")
+    if amount > 10000:
+        raise HTTPException(status_code=400, detail="单笔最高充值 10000 元")
+    
+    # 计算赠送金额
+    bonus = 0.0
+    if amount >= 100:
+        bonus = 20
+    elif amount >= 50:
+        bonus = 5
+    elif amount >= 10:
+        bonus = 1
+    
+    # 生成订单号
+    out_trade_no = generate_order_no()
+    
+    # 创建支付订单记录
+    payment_order = PaymentOrder(
+        user_id=current_user.id,
+        out_trade_no=out_trade_no,
+        amount=amount,
+        bonus=bonus,
+        status="pending"
+    )
+    session.add(payment_order)
+    session.commit()
+    
+    # 生成支付 URL
+    pay_url = create_payment_url(
+        out_trade_no=out_trade_no,
+        money=amount,
+        name=f"余额充值 ¥{amount}"
+    )
+    
+    return {
+        "pay_url": pay_url,
+        "out_trade_no": out_trade_no,
+        "amount": amount,
+        "bonus": bonus
+    }
+
+
+@app.post("/api/pay/notify")
+async def payment_notify(request: Request, session: Session = Depends(get_session)):
+    """Z-Pay 支付回调通知"""
+    # 获取回调参数
+    form_data = await request.form()
+    params = dict(form_data)
+    
+    # 验证签名
+    sign = params.get("sign", "")
+    if not verify_sign(params, ZPAY_KEY, sign):
+        return PlainTextResponse("fail")
+    
+    # 获取订单信息
+    out_trade_no = params.get("out_trade_no")
+    trade_no = params.get("trade_no")
+    trade_status = params.get("trade_status")
+    
+    # 查询支付订单
+    payment_order = session.exec(
+        select(PaymentOrder).where(PaymentOrder.out_trade_no == out_trade_no)
+    ).first()
+    
+    if not payment_order:
+        return PlainTextResponse("fail")
+    
+    # 已处理过的订单直接返回成功
+    if payment_order.status == "paid":
+        return PlainTextResponse("success")
+    
+    # 支付成功
+    if trade_status == "TRADE_SUCCESS":
+        payment_order.status = "paid"
+        payment_order.trade_no = trade_no
+        payment_order.paid_at = datetime.utcnow()
+        session.add(payment_order)
+        
+        # 给用户加余额
+        user = session.get(User, payment_order.user_id)
+        if user:
+            total_add = payment_order.amount + payment_order.bonus
+            user.balance += total_add
+            session.add(user)
+            
+            # 记录交易
+            transaction = Transaction(
+                user_id=user.id,
+                amount=payment_order.amount,
+                bonus=payment_order.bonus,
+                type="recharge"
+            )
+            session.add(transaction)
+        
+        session.commit()
+        return PlainTextResponse("success")
+    
+    return PlainTextResponse("fail")
+
+
+@app.get("/api/pay/status/{out_trade_no}")
+def get_payment_status(
+    out_trade_no: str,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session)
+):
+    """查询支付订单状态"""
+    payment_order = session.exec(
+        select(PaymentOrder).where(
+            PaymentOrder.out_trade_no == out_trade_no,
+            PaymentOrder.user_id == current_user.id
+        )
+    ).first()
+    
+    if not payment_order:
+        raise HTTPException(status_code=404, detail="订单不存在")
+    
+    return {
+        "out_trade_no": payment_order.out_trade_no,
+        "amount": payment_order.amount,
+        "bonus": payment_order.bonus,
+        "status": payment_order.status,
+        "created_at": payment_order.created_at,
+        "paid_at": payment_order.paid_at
+    }
+
+
 @app.post("/api/orders/create")
 async def create_order(request: OrderRequest, background_tasks: BackgroundTasks, current_user: User = Depends(get_current_user), session: Session = Depends(get_session)):
     cost = 0.99
