@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { getCurrentUser, createOrder, getOrders, createPayment, getPublicConfig, confirmPayment } from '../api'
+import { getCurrentUser, createOrder, getOrders, getPublicConfig } from '../api'
 
 const route = useRoute()
 const router = useRouter()
