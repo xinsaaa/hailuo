@@ -465,6 +465,82 @@ async def payment_notify(request: Request, session: Session = Depends(get_sessio
     return PlainTextResponse("fail")
 
 
+@app.get("/api/pay/confirm")
+def confirm_payment_by_return(
+    out_trade_no: str,
+    trade_no: str,
+    trade_status: str,
+    sign: str,
+    pid: Optional[str] = None,
+    type: Optional[str] = None,
+    name: Optional[str] = None,
+    money: Optional[str] = None,
+    sign_type: Optional[str] = None,
+    session: Session = Depends(get_session)
+):
+    """通过 return_url 参数确认支付（GET 方式）"""
+    # 构建参数用于验签
+    params = {
+        "out_trade_no": out_trade_no,
+        "trade_no": trade_no,
+        "trade_status": trade_status,
+    }
+    if pid:
+        params["pid"] = pid
+    if type:
+        params["type"] = type
+    if name:
+        params["name"] = name
+    if money:
+        params["money"] = money
+    if sign_type:
+        params["sign_type"] = sign_type
+    
+    # 验证签名
+    if not verify_sign(params, ZPAY_KEY, sign):
+        raise HTTPException(status_code=400, detail="签名验证失败")
+    
+    # 查询支付订单
+    payment_order = session.exec(
+        select(PaymentOrder).where(PaymentOrder.out_trade_no == out_trade_no)
+    ).first()
+    
+    if not payment_order:
+        raise HTTPException(status_code=404, detail="订单不存在")
+    
+    # 已处理过的订单直接返回成功
+    if payment_order.status == "paid":
+        return {"status": "already_paid", "message": "订单已处理"}
+    
+    # 支付成功
+    if trade_status == "TRADE_SUCCESS":
+        payment_order.status = "paid"
+        payment_order.trade_no = trade_no
+        payment_order.paid_at = datetime.utcnow()
+        session.add(payment_order)
+        
+        # 给用户加余额
+        user = session.get(User, payment_order.user_id)
+        if user:
+            total_add = payment_order.amount + payment_order.bonus
+            user.balance += total_add
+            session.add(user)
+            
+            # 记录交易
+            transaction = Transaction(
+                user_id=user.id,
+                amount=payment_order.amount,
+                bonus=payment_order.bonus,
+                type="recharge"
+            )
+            session.add(transaction)
+        
+        session.commit()
+        return {"status": "success", "message": "支付确认成功", "amount": payment_order.amount, "bonus": payment_order.bonus}
+    
+    raise HTTPException(status_code=400, detail="支付未成功")
+
+
 @app.get("/api/pay/status/{out_trade_no}")
 def get_payment_status(
     out_trade_no: str,
