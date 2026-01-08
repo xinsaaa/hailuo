@@ -1,8 +1,24 @@
 import axios from 'axios'
 
+// 根据当前环境自动选择 API 地址
+// 开发环境：使用 localhost
+// 生产环境：使用当前域名（同源）或指定地址
+const getBaseURL = () => {
+    // 如果有环境变量则使用
+    if (import.meta.env.VITE_API_URL) {
+        return import.meta.env.VITE_API_URL
+    }
+    // 生产环境：使用同源地址
+    if (import.meta.env.PROD) {
+        return `${window.location.protocol}//${window.location.hostname}:8000/api`
+    }
+    // 开发环境：localhost
+    return 'http://localhost:8000/api'
+}
+
 // Create axios instance
 const api = axios.create({
-    baseURL: 'http://localhost:8000/api',
+    baseURL: getBaseURL(),
     timeout: 10000,
     headers: {
         'Content-Type': 'application/json',
