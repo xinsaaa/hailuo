@@ -164,60 +164,85 @@ def get_latest_verification_code_sync() -> Optional[str]:
 
 def login_to_hailuo(page: Page) -> bool:
     """执行登录流程"""
-    print("[AUTOMATION] 检查登录状态...")
-    login_btn = page.locator("div.border-hl_line_00:has-text('登录')").first
-    
-    if not login_btn.is_visible():
-        print("[AUTOMATION] 已登录")
-        return True
-    
-    print("[AUTOMATION] 开始登录流程...")
-    login_btn.click()
-    page.wait_for_timeout(1000)
-    
-    # 切换到手机登录
-    phone_login_tab = page.locator("#rc-tabs-0-tab-phone")
-    if phone_login_tab.is_visible():
-        phone_login_tab.click()
-        page.wait_for_timeout(500)
-        print("[AUTOMATION] 已切换到手机登录")
-    
-    # 填写手机号
-    phone_input = page.locator("input#phone")
-    phone_input.fill(PHONE_NUMBER)
-    
-    # 点击获取验证码
-    get_code_btn = page.locator("button:has-text('获取验证码')").first
-    get_code_btn.click()
-    print("[AUTOMATION] 等待短信验证码...")
-    
-    # 获取验证码
-    code = get_latest_verification_code_sync()
-    if not code:
-        print("[AUTOMATION] 验证码获取超时")
-        return False
-    print(f"[AUTOMATION] 收到验证码: {code}")
-    
-    # 填写验证码
-    page.locator("input#code").fill(code)
-    
-    # 勾选协议
-    page.locator("button.rounded-full:has(svg)").first.click()
-    
-    # 登录
-    page.locator("button.login-btn").click()
-    print("[AUTOMATION] 登录中...")
-    page.wait_for_timeout(5000)
-    
-    # 验证登录
     try:
-        page.locator("#video-create-input [contenteditable='true']").wait_for(
-            state="visible", timeout=30000
-        )
-        print("[AUTOMATION] 登录成功！")
-        return True
-    except:
-        print("[AUTOMATION] 登录失败")
+        print("[AUTOMATION] 检查登录状态...")
+        # 等待页面稳定
+        page.wait_for_timeout(2000)
+        
+        # 检查登录按钮
+        login_btn = page.locator("div.border-hl_line_00:has-text('登录')").first
+        
+        # 增加等待时间确保元素加载
+        try:
+            login_btn.wait_for(state="visible", timeout=10000)
+            is_login_btn_visible = login_btn.is_visible()
+        except:
+            # 如果找不到登录按钮，可能已经登录
+            is_login_btn_visible = False
+        
+        if not is_login_btn_visible:
+            print("[AUTOMATION] 已登录或页面异常")
+            # 检查是否真的已登录（通过检查其他元素）
+            try:
+                create_btn = page.locator("#video-create-input").first
+                create_btn.wait_for(state="visible", timeout=5000)
+                print("[AUTOMATION] 确认已登录")
+                return True
+            except:
+                print("[AUTOMATION] 页面状态未知，假设需要登录")
+                pass
+        
+        print("[AUTOMATION] 开始登录流程...")
+        login_btn.click()
+        page.wait_for_timeout(1000)
+        
+        # 切换到手机登录
+        phone_login_tab = page.locator("#rc-tabs-0-tab-phone")
+        if phone_login_tab.is_visible():
+            phone_login_tab.click()
+            page.wait_for_timeout(500)
+            print("[AUTOMATION] 已切换到手机登录")
+        
+        # 填写手机号
+        phone_input = page.locator("input#phone")
+        phone_input.fill(PHONE_NUMBER)
+        
+        # 点击获取验证码
+        get_code_btn = page.locator("button:has-text('获取验证码')").first
+        get_code_btn.click()
+        print("[AUTOMATION] 等待短信验证码...")
+        
+        # 获取验证码
+        code = get_latest_verification_code_sync()
+        if not code:
+            print("[AUTOMATION] 验证码获取超时")
+            return False
+        print(f"[AUTOMATION] 收到验证码: {code}")
+        
+        # 填写验证码
+        page.locator("input#code").fill(code)
+        
+        # 勾选协议
+        page.locator("button.rounded-full:has(svg)").first.click()
+        
+        # 登录
+        page.locator("button.login-btn").click()
+        print("[AUTOMATION] 登录中...")
+        page.wait_for_timeout(5000)
+        
+        # 验证登录
+        try:
+            page.locator("#video-create-input [contenteditable='true']").wait_for(
+                state="visible", timeout=30000
+            )
+            print("[AUTOMATION] 登录成功！")
+            return True
+        except:
+            print("[AUTOMATION] 登录失败")
+            return False
+            
+    except Exception as e:
+        print(f"[AUTOMATION] 登录流程异常: {e}")
         return False
 
 
@@ -365,14 +390,28 @@ def automation_worker():
         is_linux_server = sys.platform.startswith("linux") and not os.getenv("DISPLAY")
         use_headless = force_headless or is_linux_server
         
-        browser_args = ["--no-sandbox", "--disable-dev-shm-usage"]
+        # 浏览器稳定性优化参数
+        browser_args = [
+            "--no-sandbox",
+            "--disable-dev-shm-usage",
+            "--disable-gpu",
+            "--disable-extensions",
+            "--disable-background-timer-throttling",
+            "--disable-renderer-backgrounding", 
+            "--disable-backgrounding-occluded-windows",
+            "--disable-features=TranslateUI,VizDisplayCompositor",
+            "--disable-ipc-flooding-protection",
+            "--disable-default-apps",
+            "--disable-sync",
+            "--disable-component-extensions-with-background-pages",
+            "--disable-background-networking",
+            "--memory-pressure-off",
+            "--max_old_space_size=4096"
+        ]
+        
         if use_headless:
             browser_args.extend([
-                "--disable-gpu",
-                "--disable-extensions",
-                "--disable-background-timer-throttling",
-                "--disable-renderer-backgrounding",
-                "--disable-backgrounding-occluded-windows"
+                "--virtual-time-budget=5000"
             ])
         
         try:
@@ -404,10 +443,39 @@ def automation_worker():
         _page = _context.new_page()
         
         try:
-            # 打开海螺 AI
-            print("[AUTOMATION] 正在打开海螺 AI...")
-            _page.goto(HAILUO_URL, timeout=60000, wait_until="domcontentloaded")
-            _page.wait_for_timeout(3000)
+            # 打开海螺 AI (带重试机制)
+            max_retries = 3
+            for attempt in range(max_retries):
+                try:
+                    print(f"[AUTOMATION] 正在打开海螺 AI... (尝试 {attempt + 1}/{max_retries})")
+                    _page.goto(HAILUO_URL, timeout=30000, wait_until="domcontentloaded")
+                    _page.wait_for_timeout(5000)
+                    
+                    # 检查页面是否正常加载
+                    page_title = _page.title()
+                    if page_title and "海螺" in page_title:
+                        print("[AUTOMATION] 页面加载成功")
+                        break
+                    else:
+                        print(f"[AUTOMATION] 页面标题异常: {page_title}")
+                        if attempt < max_retries - 1:
+                            print("[AUTOMATION] 正在重新加载页面...")
+                            continue
+                        
+                except Exception as e:
+                    print(f"[AUTOMATION] 页面加载失败 (尝试 {attempt + 1}): {e}")
+                    if attempt < max_retries - 1:
+                        print("[AUTOMATION] 等待后重试...")
+                        _page.wait_for_timeout(3000)
+                        # 尝试刷新页面
+                        try:
+                            _page.reload(timeout=20000)
+                            _page.wait_for_timeout(3000)
+                        except:
+                            pass
+                        continue
+                    else:
+                        raise Exception(f"页面加载失败，已重试 {max_retries} 次")
             
             # 登录
             _is_logged_in = login_to_hailuo(_page)
@@ -418,33 +486,73 @@ def automation_worker():
             print("[AUTOMATION] 开始处理订单...")
             
             # 主循环
+            consecutive_errors = 0
+            max_consecutive_errors = 3
+            
             while True:
-                print(f"[DEBUG] 循环开始，队列大小: {_order_queue.qsize()}, 生成中: {len(_generating_orders)}")
-                
-                # 1. 扫描已完成的视频
-                print("[DEBUG] 开始扫描视频...")
-                scan_for_completed_videos(_page)
-                print("[DEBUG] 扫描完成")
-                
-                # 2. 提交新订单（如果并发数未满）
-                while len(_generating_orders) < MAX_CONCURRENT_TASKS:
+                try:
+                    print(f"[DEBUG] 循环开始，队列大小: {_order_queue.qsize()}, 生成中: {len(_generating_orders)}")
+                    
+                    # 检查页面是否还活着
                     try:
-                        order_id = _order_queue.get_nowait()
-                        print(f"[DEBUG] 取出订单: {order_id}")
-                        
-                        # 获取订单信息
-                        with Session(engine) as session:
-                            order = session.get(VideoOrder, order_id)
-                            if order:
-                                submit_video_task(_page, order_id, order.prompt)
-                        
-                        _order_queue.task_done()
-                    except queue.Empty:
+                        _page.title()  # 简单的页面检查
+                    except Exception as e:
+                        print(f"[AUTOMATION] 页面异常，尝试重新加载: {e}")
+                        try:
+                            _page.reload(timeout=20000)
+                            _page.wait_for_timeout(3000)
+                            print("[AUTOMATION] 页面重新加载成功")
+                        except Exception as reload_e:
+                            print(f"[AUTOMATION] 页面重新加载失败: {reload_e}")
+                            raise Exception("页面无法恢复")
+                    
+                    # 1. 扫描已完成的视频
+                    try:
+                        print("[DEBUG] 开始扫描视频...")
+                        scan_for_completed_videos(_page)
+                        print("[DEBUG] 扫描完成")
+                    except Exception as e:
+                        print(f"[AUTOMATION] 扫描视频失败: {e}")
+                        consecutive_errors += 1
+                        if consecutive_errors >= max_consecutive_errors:
+                            raise Exception(f"连续失败 {consecutive_errors} 次，停止工作")
+                        continue
+                    
+                    # 2. 提交新订单（如果并发数未满）
+                    while len(_generating_orders) < MAX_CONCURRENT_TASKS:
+                        try:
+                            order_id = _order_queue.get_nowait()
+                            print(f"[DEBUG] 取出订单: {order_id}")
+                            
+                            # 获取订单信息
+                            with Session(engine) as session:
+                                order = session.get(VideoOrder, order_id)
+                                if order:
+                                    submit_video_task(_page, order_id, order.prompt)
+                            
+                            _order_queue.task_done()
+                        except queue.Empty:
+                            break
+                        except Exception as e:
+                            print(f"[AUTOMATION] 提交订单失败: {e}")
+                            consecutive_errors += 1
+                            break
+                    
+                    # 如果到这里没有异常，重置错误计数
+                    consecutive_errors = 0
+                    
+                    # 3. 等待下一轮轮询
+                    print(f"[DEBUG] 等待 {POLL_INTERVAL} 秒...")
+                    time.sleep(POLL_INTERVAL)
+                    
+                except Exception as loop_e:
+                    print(f"[AUTOMATION] 主循环异常: {loop_e}")
+                    consecutive_errors += 1
+                    if consecutive_errors >= max_consecutive_errors:
+                        print(f"[AUTOMATION] 连续失败 {consecutive_errors} 次，停止工作")
                         break
-                
-                # 3. 等待下一轮轮询
-                print(f"[DEBUG] 等待 {POLL_INTERVAL} 秒...")
-                time.sleep(POLL_INTERVAL)
+                    print(f"[AUTOMATION] 等待 {POLL_INTERVAL * 2} 秒后重试...")
+                    time.sleep(POLL_INTERVAL * 2)
                 
         except Exception as e:
             print(f"[AUTOMATION] 工作线程异常: {e}")
