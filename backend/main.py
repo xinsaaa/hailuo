@@ -649,7 +649,7 @@ def get_recent_codes(session: Session = Depends(get_session)):
         "id": code.id,
         "code": code.code,
         "source": code.source,
-        "used": code.used,
+        "used": code.is_used,  # 修正字段名
         "created_at": code.created_at.strftime("%H:%M:%S")
     } for code in codes]
 
@@ -659,7 +659,7 @@ def get_latest_code(session: Session = Depends(get_session)):
     """开发模式：获取最新验证码"""
     code = session.exec(
         select(VerificationCode)
-        .where(VerificationCode.used == False)
+        .where(VerificationCode.is_used == False)  # 修正字段名
         .order_by(VerificationCode.created_at.desc())
     ).first()
     
