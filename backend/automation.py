@@ -19,8 +19,9 @@ from sqlmodel import Session, select
 from backend.models import VerificationCode, VideoOrder, engine
 
 # ============ 常量配置 ============
+import os
 HAILUO_URL = "https://hailuoai.com/create/text-to-video"
-PHONE_NUMBER = "15781806380"
+PHONE_NUMBER = os.getenv("HAILUO_PHONE", "17366935232")
 MAX_CONCURRENT_TASKS = 2  # 海螺 AI 允许的最大并发任务数
 POLL_INTERVAL = 5  # 轮询间隔（秒）
 
@@ -101,7 +102,24 @@ def extract_order_id_from_text(text: str) -> Optional[int]:
 
 def get_clipboard_content(page: Page) -> str:
     """获取剪贴板内容"""
-    return page.evaluate("navigator.clipboard.readText()")
+    try:
+        return page.evaluate("navigator.clipboard.readText()")
+    except Exception as e:
+        print(f"[AUTOMATION] 剪贴板读取失败 (可能是headless模式): {e}")
+        # 在headless模式下，尝试其他方法获取分享链接
+        try:
+            # 尝试获取页面上最后一个分享链接
+            return page.evaluate("""
+                () => {
+                    const shareButtons = document.querySelectorAll('[data-share-url]');
+                    if (shareButtons.length > 0) {
+                        return shareButtons[shareButtons.length - 1].getAttribute('data-share-url');
+                    }
+                    return null;
+                }
+            """)
+        except:
+            return ""
 
 
 def fetch_video_metadata(share_link: str) -> Optional[str]:
@@ -330,14 +348,51 @@ def automation_worker():
     
     print("[AUTOMATION] 启动自动化工作线程...")
     
+    # Windows 兼容性修复
+    import asyncio
+    import sys
+    if sys.platform == "win32":
+        asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+    
     with sync_playwright() as p:
         # 启动浏览器
+        # 检测是否为无界面环境
+        import os
+        import sys
+        
+        # 环境变量控制或系统检测
+        force_headless = os.getenv("AUTOMATION_HEADLESS", "").lower() in ["true", "1", "yes"]
+        is_linux_server = sys.platform.startswith("linux") and not os.getenv("DISPLAY")
+        use_headless = force_headless or is_linux_server
+        
+        browser_args = ["--no-sandbox", "--disable-dev-shm-usage"]
+        if use_headless:
+            browser_args.extend([
+                "--disable-gpu",
+                "--disable-extensions",
+                "--disable-background-timer-throttling",
+                "--disable-renderer-backgrounding",
+                "--disable-backgrounding-occluded-windows"
+            ])
+        
         try:
-            _browser = p.chromium.launch(headless=False, channel="chrome")
-            print("[AUTOMATION] Chrome 启动成功")
+            _browser = p.chromium.launch(
+                headless=use_headless,
+                channel="chrome" if not use_headless else None,
+                args=browser_args
+            )
+            print(f"[AUTOMATION] 浏览器启动成功 ({'无界面' if use_headless else '有界面'}模式)")
         except Exception as e:
             print(f"[AUTOMATION] Chrome 未找到，使用 Chromium: {e}")
-            _browser = p.chromium.launch(headless=False)
+            try:
+                _browser = p.chromium.launch(
+                    headless=use_headless,
+                    args=browser_args
+                )
+                print(f"[AUTOMATION] Chromium 启动成功 ({'无界面' if use_headless else '有界面'}模式)")
+            except Exception as e2:
+                print(f"[AUTOMATION] 浏览器启动失败: {e2}")
+                return
         
         _context = _browser.new_context(
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
