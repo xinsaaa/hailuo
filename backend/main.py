@@ -59,13 +59,12 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
+        "http://152.32.213.113:5173",  # 正确的前端地址
         "http://localhost:5173",
-        "http://127.0.0.1:5173", 
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
+        "http://127.0.0.1:5173",
         "*"
     ],
-    allow_credentials=True,
+    allow_credentials=False,  # 设为False避免credentials问题
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD", "PATCH"],
     allow_headers=["*"],
     expose_headers=["*"]

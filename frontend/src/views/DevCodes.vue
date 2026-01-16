@@ -116,8 +116,8 @@ const codes = ref([])
 const autoRefresh = ref(false)
 let refreshInterval = null
 
-// API 基础URL
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000'
+// API 基础URL - 正确的服务器地址
+const API_BASE = 'http://152.32.213.113:8000'
 
 // 获取最新验证码
 const refreshLatest = async () => {
