@@ -165,84 +165,104 @@ def get_latest_verification_code_sync() -> Optional[str]:
 def login_to_hailuo(page: Page) -> bool:
     """执行登录流程"""
     try:
-        print("[AUTOMATION] 检查登录状态...")
+        automation_logger.info("🔍 检查当前登录状态...")
         # 等待页面稳定
+        automation_logger.info("⏳ 等待页面稳定 (2秒)...")
         page.wait_for_timeout(2000)
         
         # 检查登录按钮
+        automation_logger.info("🔍 查找登录按钮...")
         login_btn = page.locator("div.border-hl_line_00:has-text('登录')").first
         
         # 增加等待时间确保元素加载
         try:
+            automation_logger.info("⏳ 等待登录按钮元素加载...")
             login_btn.wait_for(state="visible", timeout=10000)
             is_login_btn_visible = login_btn.is_visible()
+            automation_logger.info("✅ 登录按钮检测完成")
         except:
-            # 如果找不到登录按钮，可能已经登录
+            automation_logger.info("ℹ️  未找到登录按钮，可能已登录")
             is_login_btn_visible = False
         
         if not is_login_btn_visible:
-            print("[AUTOMATION] 已登录或页面异常")
+            automation_logger.info("🔍 验证登录状态...")
             # 检查是否真的已登录（通过检查其他元素）
             try:
+                automation_logger.info("🎬 查找视频创建入口...")
                 create_btn = page.locator("#video-create-input").first
                 create_btn.wait_for(state="visible", timeout=5000)
-                print("[AUTOMATION] 确认已登录")
+                automation_logger.success("✅ 确认已登录状态")
                 return True
             except:
-                print("[AUTOMATION] 页面状态未知，假设需要登录")
+                automation_logger.warn("⚠️  页面状态未知，继续登录流程")
                 pass
         
-        print("[AUTOMATION] 开始登录流程...")
+        automation_logger.info("🔐 开始执行登录流程...")
+        automation_logger.info("👆 点击登录按钮...")
         login_btn.click()
         page.wait_for_timeout(1000)
         
         # 切换到手机登录
+        automation_logger.info("📱 查找手机登录选项...")
         phone_login_tab = page.locator("#rc-tabs-0-tab-phone")
         if phone_login_tab.is_visible():
+            automation_logger.info("👆 切换到手机号登录...")
             phone_login_tab.click()
             page.wait_for_timeout(500)
-            print("[AUTOMATION] 已切换到手机登录")
+            automation_logger.success("✅ 已切换到手机登录模式")
+        else:
+            automation_logger.info("ℹ️  默认为手机登录模式")
         
         # 填写手机号
+        automation_logger.info(f"📝 填写手机号: {PHONE_NUMBER}")
         phone_input = page.locator("input#phone")
         phone_input.fill(PHONE_NUMBER)
+        automation_logger.success("✅ 手机号填写完成")
         
         # 点击获取验证码
+        automation_logger.info("📨 请求短信验证码...")
         get_code_btn = page.locator("button:has-text('获取验证码')").first
         get_code_btn.click()
-        print("[AUTOMATION] 等待短信验证码...")
+        automation_logger.info("⏳ 验证码已发送，等待接收...")
         
         # 获取验证码
+        automation_logger.info("🔍 从数据库查找验证码...")
         code = get_latest_verification_code_sync()
         if not code:
-            print("[AUTOMATION] 验证码获取超时")
+            automation_logger.error("❌ 验证码获取超时，请确保短信正常接收")
             return False
-        print(f"[AUTOMATION] 收到验证码: {code}")
+        automation_logger.success(f"✅ 验证码获取成功: {code}")
         
         # 填写验证码
+        automation_logger.info("📝 填写验证码...")
         page.locator("input#code").fill(code)
+        automation_logger.success("✅ 验证码填写完成")
         
         # 勾选协议
+        automation_logger.info("☑️  勾选用户协议...")
         page.locator("button.rounded-full:has(svg)").first.click()
+        automation_logger.success("✅ 用户协议已勾选")
         
         # 登录
+        automation_logger.info("🚀 提交登录请求...")
         page.locator("button.login-btn").click()
-        print("[AUTOMATION] 登录中...")
+        automation_logger.info("⏳ 等待登录验证...")
         page.wait_for_timeout(5000)
         
         # 验证登录
+        automation_logger.info("🔍 验证登录结果...")
         try:
             page.locator("#video-create-input [contenteditable='true']").wait_for(
                 state="visible", timeout=30000
             )
-            print("[AUTOMATION] 登录成功！")
+            automation_logger.success("🎉 登录验证成功！")
             return True
         except:
-            print("[AUTOMATION] 登录失败")
+            automation_logger.error("❌ 登录验证失败")
             return False
             
     except Exception as e:
-        print(f"[AUTOMATION] 登录流程异常: {e}")
+        automation_logger.error(f"💥 登录流程异常: {str(e)[:200]}")
         return False
 
 
@@ -251,58 +271,98 @@ def login_to_hailuo(page: Page) -> bool:
 def submit_video_task(page: Page, order_id: int, prompt: str) -> bool:
     """提交视频生成任务"""
     try:
+        automation_logger.info(f"🎬 开始提交视频任务 (订单#{order_id})")
+        
         # 添加追踪 ID
+        automation_logger.info("🏷️  添加订单追踪标识...")
         prompt_with_id = add_tracking_id(prompt, order_id)
+        automation_logger.info(f"📝 最终提示词: {prompt_with_id[:100]}...")
         
         # 填写提示词
+        automation_logger.info("🎯 定位输入框...")
         input_area = page.locator("#video-create-input [contenteditable='true']")
+        automation_logger.info("👆 点击输入框...")
         input_area.click()
+        automation_logger.info("📝 填写提示词...")
         input_area.fill(prompt_with_id)
+        automation_logger.info("⏳ 等待输入完成...")
         page.wait_for_timeout(500)
+        automation_logger.success("✅ 提示词填写完成")
         
         # 点击生成按钮
+        automation_logger.info("🔍 查找生成按钮...")
         generate_btn = page.locator("button.new-color-btn-bg").first
         if generate_btn.is_visible():
+            automation_logger.info("🚀 点击生成按钮...")
             generate_btn.click()
-            print(f"[AUTOMATION] 订单 {order_id} 已提交生成")
+            automation_logger.success(f"✅ 订单#{order_id}已成功提交生成")
+            
+            automation_logger.info("📊 更新内存状态...")
             _generating_orders.add(order_id)
             
             # 更新订单状态
+            automation_logger.info("💾 更新数据库状态...")
             with Session(engine) as session:
                 order = session.get(VideoOrder, order_id)
                 if order:
                     order.status = "generating"
                     session.commit()
+                    automation_logger.success("✅ 订单状态已更新为'generating'")
+                else:
+                    automation_logger.warn(f"⚠️  订单#{order_id}在数据库中不存在")
             
+            automation_logger.success(f"🎉 任务提交完成! 当前生成中: {len(_generating_orders)}个")
             return True
+        else:
+            automation_logger.error("❌ 未找到生成按钮")
+            return False
     except Exception as e:
-        print(f"[AUTOMATION] 提交订单 {order_id} 失败: {e}")
-    return False
+        automation_logger.error(f"💥 提交订单#{order_id}失败: {str(e)[:200]}")
+        return False
 
 
 def scan_for_completed_videos(page: Page):
     """扫描页面上已完成的视频，提取分享链接"""
     try:
-        # 获取所有包含提示词的视频卡片
-        prompt_spans = page.locator("span.prompt-plain-span").all()
+        automation_logger.info("🔍 开始扫描已完成的视频...")
         
-        for span in prompt_spans:
+        # 获取所有包含提示词的视频卡片
+        automation_logger.info("📋 查找所有视频卡片...")
+        prompt_spans = page.locator("span.prompt-plain-span").all()
+        automation_logger.info(f"📊 找到{len(prompt_spans)}个视频卡片")
+        
+        completed_count = 0
+        processing_count = 0
+        
+        for i, span in enumerate(prompt_spans):
             try:
+                automation_logger.info(f"🔍 检查第{i+1}个视频卡片...")
+                
                 # 从提示词中提取订单 ID
                 prompt_text = span.text_content()
                 if not prompt_text:
+                    automation_logger.info("⭐ 跳过：无提示词内容")
                     continue
-                    
+                
+                automation_logger.info(f"📝 提示词内容: {prompt_text[:50]}...")
                 order_id = extract_order_id_from_text(prompt_text)
                 if not order_id:
-                    # 不是我们的订单（没有追踪 ID）
+                    automation_logger.info("⭐ 跳过：非平台订单（无追踪ID）")
                     continue
+                
+                automation_logger.info(f"🎯 发现平台订单#{order_id}")
                 
                 # 检查订单是否已处理
                 with Session(engine) as session:
                     order = session.get(VideoOrder, order_id)
-                    if not order or order.status == "completed":
+                    if not order:
+                        automation_logger.warn(f"⚠️  订单#{order_id}在数据库中不存在")
                         continue
+                    if order.status == "completed":
+                        automation_logger.info(f"✅ 订单#{order_id}已完成，跳过")
+                        continue
+                
+                automation_logger.info(f"📹 检查订单#{order_id}生成状态...")
                 
                 # 找到父级视频卡片
                 parent = span.locator("xpath=ancestor::div[contains(@class, 'group/video-card')]").first
@@ -310,43 +370,75 @@ def scan_for_completed_videos(page: Page):
                 # 检查是否有进度条（有进度条说明还在生成中）
                 progress = parent.locator(".ant-progress-text")
                 if progress.is_visible():
+                    progress_text = progress.text_content() or "0%"
+                    automation_logger.info(f"⏳ 订单#{order_id}仍在生成中 (进度: {progress_text})")
+                    processing_count += 1
                     continue
                 
+                automation_logger.success(f"✅ 订单#{order_id}生成完成，准备提取分享链接")
+                
                 # 找到分享按钮并点击
+                automation_logger.info("🔍 查找分享按钮...")
                 share_btn = parent.locator("div.text-hl_text_00_legacy:has(svg path[d*='M7.84176'])").first
                 if not share_btn.is_visible():
+                    automation_logger.warn("⚠️  未找到分享按钮")
                     continue
-                    
+                
+                automation_logger.info("👆 点击分享按钮...")
                 share_btn.click()
+                automation_logger.info("⏳ 等待分享菜单...")
                 page.wait_for_timeout(500)
                 
                 # 获取剪贴板中的分享链接
+                automation_logger.info("📋 获取剪贴板内容...")
                 share_link = get_clipboard_content(page)
                 
                 if not share_link or not share_link.startswith("http"):
+                    automation_logger.warn("⚠️  获取分享链接失败或格式异常")
                     continue
+                
+                automation_logger.info(f"🔗 获取到分享链接: {share_link[:50]}...")
                 
                 # 去重检查
+                automation_logger.info("🔍 检查链接唯一性...")
                 if not is_new_share_link(share_link):
+                    automation_logger.warn("⚠️  链接已存在，跳过重复处理")
                     continue
                 
-                print(f"[AUTOMATION] 订单 {order_id} 已完成！链接: {share_link}")
+                automation_logger.success(f"🎉 订单#{order_id}处理完成！")
+                automation_logger.info(f"🔗 分享链接: {share_link}")
                 
                 # 更新订单
+                automation_logger.info("💾 更新数据库订单状态...")
                 with Session(engine) as session:
                     order = session.get(VideoOrder, order_id)
                     if order and order.status != "completed":
                         order.video_url = share_link
                         order.status = "completed"
                         session.commit()
+                        automation_logger.success("✅ 数据库状态已更新为'completed'")
+                        
+                        automation_logger.info("📊 更新内存状态...")
                         _generating_orders.discard(order_id)
+                        automation_logger.success(f"✅ 订单#{order_id}从生成列表中移除")
+                        
+                        completed_count += 1
+                    else:
+                        automation_logger.warn(f"⚠️  订单#{order_id}状态异常")
                     
             except Exception as e:
-                print(f"[AUTOMATION] 处理视频卡片出错: {e}")
+                automation_logger.error(f"💥 处理视频卡片出错: {str(e)[:150]}")
                 continue
+        
+        if completed_count > 0:
+            automation_logger.success(f"🎉 本次扫描完成 {completed_count} 个视频")
+        if processing_count > 0:
+            automation_logger.info(f"⏳ 仍有 {processing_count} 个视频在生成中")
+        if completed_count == 0 and processing_count == 0:
+            automation_logger.info("📭 暂无需要处理的视频")
                 
     except Exception as e:
-        print(f"[AUTOMATION] 扫描视频出错: {e}")
+        automation_logger.error(f"💥 扫描视频失败: {str(e)[:200]}")
 
 
 def check_progress(page: Page) -> Dict[int, int]:
@@ -371,14 +463,17 @@ def automation_worker():
     """主工作线程"""
     global _browser, _page, _context, _is_logged_in
     
-    print("[AUTOMATION] 启动自动化工作线程...")
+    automation_logger.info("🚀 启动自动化工作线程...")
+    automation_logger.info("📋 初始化系统环境...")
     
     # Windows 兼容性修复
     import asyncio
     import sys
     if sys.platform == "win32":
         asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+        automation_logger.info("⚙️  Windows异步策略已设置")
     
+    automation_logger.info("🎭 正在初始化Playwright...")
     with sync_playwright() as p:
         # 启动浏览器
         # 检测是否为无界面环境
@@ -386,10 +481,19 @@ def automation_worker():
         import sys
         
         # 环境变量控制或系统检测
+        automation_logger.info("🔍 检测运行环境...")
         force_headless = os.getenv("AUTOMATION_HEADLESS", "").lower() in ["true", "1", "yes"]
         is_linux_server = sys.platform.startswith("linux") and not os.getenv("DISPLAY")
         use_headless = force_headless or is_linux_server
         
+        if force_headless:
+            automation_logger.info("🎛️  环境变量强制启用无界面模式")
+        elif is_linux_server:
+            automation_logger.info("🐧 检测到Linux无界面环境，自动启用headless模式")
+        else:
+            automation_logger.info("🖥️  有界面环境，启用可视化模式")
+        
+        automation_logger.info("⚙️  配置浏览器优化参数...")
         # 浏览器稳定性优化参数
         browser_args = [
             "--no-sandbox",
@@ -413,26 +517,31 @@ def automation_worker():
             browser_args.extend([
                 "--virtual-time-budget=5000"
             ])
+            automation_logger.info("🔧 添加无界面模式专用参数")
         
+        automation_logger.info(f"📝 浏览器参数配置完成，共{len(browser_args)}个优化参数")
+        
+        automation_logger.info("🚀 正在启动浏览器...")
         try:
             _browser = p.chromium.launch(
                 headless=use_headless,
                 channel="chrome" if not use_headless else None,
                 args=browser_args
             )
-            print(f"[AUTOMATION] 浏览器启动成功 ({'无界面' if use_headless else '有界面'}模式)")
+            automation_logger.success(f"✅ 浏览器启动成功 ({'无界面' if use_headless else '有界面'}模式)")
         except Exception as e:
-            print(f"[AUTOMATION] Chrome 未找到，使用 Chromium: {e}")
+            automation_logger.warn(f"⚠️  Chrome未找到，尝试使用Chromium: {str(e)[:100]}")
             try:
                 _browser = p.chromium.launch(
                     headless=use_headless,
                     args=browser_args
                 )
-                print(f"[AUTOMATION] Chromium 启动成功 ({'无界面' if use_headless else '有界面'}模式)")
+                automation_logger.success(f"✅ Chromium启动成功 ({'无界面' if use_headless else '有界面'}模式)")
             except Exception as e2:
-                print(f"[AUTOMATION] 浏览器启动失败: {e2}")
+                automation_logger.error(f"❌ 浏览器启动失败: {e2}")
                 return
         
+        automation_logger.info("🌐 创建浏览器上下文...")
         _context = _browser.new_context(
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
             viewport={"width": 1280, "height": 720},
@@ -440,140 +549,199 @@ def automation_worker():
             # 预先授予权限，避免弹窗阻塞
             permissions=["clipboard-read", "clipboard-write"]
         )
+        automation_logger.success("✅ 浏览器上下文创建成功")
+        
+        automation_logger.info("📄 创建新页面...")
         _page = _context.new_page()
+        automation_logger.success("✅ 页面创建成功")
         
         try:
             # 打开海螺 AI (带重试机制)
+            automation_logger.info("🌍 开始访问海螺AI网站...")
             max_retries = 3
             for attempt in range(max_retries):
                 try:
-                    print(f"[AUTOMATION] 正在打开海螺 AI... (尝试 {attempt + 1}/{max_retries})")
+                    automation_logger.info(f"🔄 正在打开海螺 AI... (尝试 {attempt + 1}/{max_retries})")
+                    automation_logger.info(f"🔗 目标URL: {HAILUO_URL}")
+                    
                     _page.goto(HAILUO_URL, timeout=30000, wait_until="domcontentloaded")
+                    automation_logger.info("⏳ 等待页面DOM加载完成...")
                     _page.wait_for_timeout(5000)
                     
+                    automation_logger.info("🔍 验证页面加载状态...")
                     # 检查页面是否正常加载
                     page_title = _page.title()
+                    automation_logger.info(f"📋 页面标题: {page_title}")
+                    
                     if page_title and "海螺" in page_title:
-                        print("[AUTOMATION] 页面加载成功")
+                        automation_logger.success("✅ 页面加载成功！")
                         break
                     else:
-                        print(f"[AUTOMATION] 页面标题异常: {page_title}")
+                        automation_logger.warn(f"⚠️  页面标题异常，可能加载不完整")
                         if attempt < max_retries - 1:
-                            print("[AUTOMATION] 正在重新加载页面...")
+                            automation_logger.info("🔄 准备重新加载页面...")
                             continue
                         
                 except Exception as e:
-                    print(f"[AUTOMATION] 页面加载失败 (尝试 {attempt + 1}): {e}")
+                    automation_logger.error(f"❌ 页面加载失败 (尝试 {attempt + 1}): {str(e)[:150]}")
                     if attempt < max_retries - 1:
-                        print("[AUTOMATION] 等待后重试...")
+                        automation_logger.info("⏰ 等待3秒后重试...")
                         _page.wait_for_timeout(3000)
                         # 尝试刷新页面
                         try:
+                            automation_logger.info("🔄 尝试刷新页面...")
                             _page.reload(timeout=20000)
+                            automation_logger.info("⏳ 等待刷新完成...")
                             _page.wait_for_timeout(3000)
-                        except:
-                            pass
+                        except Exception as reload_e:
+                            automation_logger.warn(f"⚠️  页面刷新失败: {str(reload_e)[:100]}")
                         continue
                     else:
+                        automation_logger.error(f"💥 页面加载最终失败，已重试 {max_retries} 次")
                         raise Exception(f"页面加载失败，已重试 {max_retries} 次")
             
             # 登录
+            automation_logger.info("🔐 开始登录流程...")
             _is_logged_in = login_to_hailuo(_page)
             if not _is_logged_in:
-                print("[AUTOMATION] 登录失败，停止工作")
+                automation_logger.error("❌ 登录失败，自动化服务停止")
                 return
             
-            print("[AUTOMATION] 开始处理订单...")
+            automation_logger.success("🎉 登录成功！自动化服务就绪")
+            automation_logger.info("📦 初始化订单处理系统...")
+            automation_logger.info(f"⚡ 最大并发任务数: {MAX_CONCURRENT_TASKS}")
+            automation_logger.info(f"⏱️  轮询间隔: {POLL_INTERVAL}秒")
+            automation_logger.info(f"📱 使用手机号: {PHONE_NUMBER}")
+            automation_logger.success("✅ 订单处理系统初始化完成")
             
             # 主循环
+            automation_logger.info("🔄 启动主处理循环...")
             consecutive_errors = 0
             max_consecutive_errors = 3
+            loop_count = 0
             
             while True:
                 try:
-                    print(f"[DEBUG] 循环开始，队列大小: {_order_queue.qsize()}, 生成中: {len(_generating_orders)}")
+                    loop_count += 1
+                    automation_logger.info(f"🔁 第{loop_count}次循环 | 队列: {_order_queue.qsize()}个订单 | 处理中: {len(_generating_orders)}个任务")
                     
                     # 检查页面是否还活着
+                    automation_logger.info("🔍 检查页面存活状态...")
                     try:
-                        _page.title()  # 简单的页面检查
+                        page_title = _page.title()  # 简单的页面检查
+                        automation_logger.info(f"✅ 页面正常 (标题: {page_title[:30]}...)")
                     except Exception as e:
-                        print(f"[AUTOMATION] 页面异常，尝试重新加载: {e}")
+                        automation_logger.warn(f"⚠️  页面异常，尝试重新加载: {str(e)[:100]}")
                         try:
+                            automation_logger.info("🔄 正在重新加载页面...")
                             _page.reload(timeout=20000)
                             _page.wait_for_timeout(3000)
-                            print("[AUTOMATION] 页面重新加载成功")
+                            automation_logger.success("✅ 页面重新加载成功")
                         except Exception as reload_e:
-                            print(f"[AUTOMATION] 页面重新加载失败: {reload_e}")
+                            automation_logger.error(f"❌ 页面重新加载失败: {str(reload_e)[:100]}")
                             raise Exception("页面无法恢复")
                     
                     # 1. 扫描已完成的视频
+                    automation_logger.info("📹 开始扫描已完成的视频...")
                     try:
-                        print("[DEBUG] 开始扫描视频...")
-                        scan_for_completed_videos(_page)
-                        print("[DEBUG] 扫描完成")
+                        scan_result = scan_for_completed_videos(_page)
+                        automation_logger.success("✅ 视频扫描完成")
                     except Exception as e:
-                        print(f"[AUTOMATION] 扫描视频失败: {e}")
+                        automation_logger.error(f"❌ 扫描视频失败: {str(e)[:150]}")
                         consecutive_errors += 1
                         if consecutive_errors >= max_consecutive_errors:
+                            automation_logger.error(f"💥 连续失败 {consecutive_errors} 次，停止工作")
                             raise Exception(f"连续失败 {consecutive_errors} 次，停止工作")
+                        automation_logger.warn(f"⚠️  跳过此次扫描，错误计数: {consecutive_errors}/{max_consecutive_errors}")
                         continue
                     
                     # 2. 提交新订单（如果并发数未满）
-                    while len(_generating_orders) < MAX_CONCURRENT_TASKS:
-                        try:
-                            order_id = _order_queue.get_nowait()
-                            print(f"[DEBUG] 取出订单: {order_id}")
-                            
-                            # 获取订单信息
-                            with Session(engine) as session:
-                                order = session.get(VideoOrder, order_id)
-                                if order:
-                                    submit_video_task(_page, order_id, order.prompt)
-                            
-                            _order_queue.task_done()
-                        except queue.Empty:
-                            break
-                        except Exception as e:
-                            print(f"[AUTOMATION] 提交订单失败: {e}")
-                            consecutive_errors += 1
-                            break
+                    available_slots = MAX_CONCURRENT_TASKS - len(_generating_orders)
+                    if available_slots > 0:
+                        automation_logger.info(f"📤 检查新订单提交 (可用槽位: {available_slots})")
+                        submitted_count = 0
+                        
+                        while len(_generating_orders) < MAX_CONCURRENT_TASKS:
+                            try:
+                                order_id = _order_queue.get_nowait()
+                                automation_logger.info(f"📝 取出订单: #{order_id}")
+                                
+                                # 获取订单信息
+                                with Session(engine) as session:
+                                    order = session.get(VideoOrder, order_id)
+                                    if order:
+                                        automation_logger.info(f"🎬 提交视频任务: {order.prompt[:50]}...")
+                                        submit_video_task(_page, order_id, order.prompt)
+                                        submitted_count += 1
+                                        automation_logger.success(f"✅ 订单#{order_id}提交成功")
+                                    else:
+                                        automation_logger.warn(f"⚠️  订单#{order_id}不存在")
+                                
+                                _order_queue.task_done()
+                            except queue.Empty:
+                                if submitted_count == 0:
+                                    automation_logger.info("📭 暂无新订单需要处理")
+                                break
+                            except Exception as e:
+                                automation_logger.error(f"❌ 提交订单失败: {str(e)[:150]}")
+                                consecutive_errors += 1
+                                break
+                        
+                        if submitted_count > 0:
+                            automation_logger.success(f"🎉 本轮提交了{submitted_count}个新任务")
+                    else:
+                        automation_logger.info(f"⏸️  所有任务槽位已满 ({len(_generating_orders)}/{MAX_CONCURRENT_TASKS})")
                     
                     # 如果到这里没有异常，重置错误计数
-                    consecutive_errors = 0
+                    if consecutive_errors > 0:
+                        automation_logger.success(f"🔄 错误恢复成功，重置错误计数 ({consecutive_errors} -> 0)")
+                        consecutive_errors = 0
                     
                     # 3. 等待下一轮轮询
-                    print(f"[DEBUG] 等待 {POLL_INTERVAL} 秒...")
+                    automation_logger.info(f"⏰ 等待{POLL_INTERVAL}秒进入下一轮循环...")
                     time.sleep(POLL_INTERVAL)
                     
                 except Exception as loop_e:
-                    print(f"[AUTOMATION] 主循环异常: {loop_e}")
                     consecutive_errors += 1
+                    automation_logger.error(f"💥 主循环异常 (第{consecutive_errors}次): {str(loop_e)[:200]}")
                     if consecutive_errors >= max_consecutive_errors:
-                        print(f"[AUTOMATION] 连续失败 {consecutive_errors} 次，停止工作")
+                        automation_logger.error(f"🛑 连续失败 {consecutive_errors} 次，自动化服务停止")
                         break
-                    print(f"[AUTOMATION] 等待 {POLL_INTERVAL * 2} 秒后重试...")
-                    time.sleep(POLL_INTERVAL * 2)
+                    wait_time = POLL_INTERVAL * 2
+                    automation_logger.warn(f"⏰ 等待{wait_time}秒后重试...")
+                    time.sleep(wait_time)
                 
         except Exception as e:
-            print(f"[AUTOMATION] 工作线程异常: {e}")
+            automation_logger.error(f"💥 工作线程发生严重异常: {str(e)[:300]}")
+            automation_logger.error("🛑 自动化服务异常停止")
         finally:
-            _browser.close()
+            automation_logger.info("🧹 清理资源...")
+            try:
+                if _browser:
+                    _browser.close()
+                    automation_logger.success("✅ 浏览器资源已释放")
+            except:
+                automation_logger.warn("⚠️  浏览器资源清理失败")
+            automation_logger.info("👋 自动化工作线程已退出")
 
 
 def start_automation_worker():
     """启动自动化工作线程"""
+    automation_logger.info("🎬 准备启动自动化工作线程...")
     worker_thread = threading.Thread(target=automation_worker, daemon=True)
     worker_thread.start()
-    print("[AUTOMATION] 工作线程已启动")
+    automation_logger.success("🚀 自动化工作线程已启动！")
+    automation_logger.info("📊 可以在管理后台查看实时日志")
 
 
 def queue_order(order_id: int) -> bool:
     """将订单加入队列"""
     if _order_queue.full():
-        print(f"[AUTOMATION] 队列已满，拒绝订单 {order_id}")
+        automation_logger.warn(f"⚠️  订单队列已满，拒绝订单 #{order_id}")
         return False
     _order_queue.put(order_id)
-    print(f"[AUTOMATION] 订单 {order_id} 已加入队列 ({_order_queue.qsize()}/10)")
+    current_size = _order_queue.qsize()
+    automation_logger.success(f"📥 订单#{order_id}已加入队列 ({current_size}/10)")
     return True
 
 
