@@ -620,6 +620,11 @@ def upload_verification_code(request: VerificationCodeRequest, session: Session 
     
     code_str = match.group(1)
     
+    # 添加到自动化日志中显示
+    from backend.automation import automation_logger
+    automation_logger.success(f"📱 收到短信验证码: {code_str}")
+    automation_logger.info(f"📄 完整短信内容: {request.text}")
+    
     vc = VerificationCode(
         code=code_str,
         source="sms_shortcut"
@@ -629,6 +634,43 @@ def upload_verification_code(request: VerificationCodeRequest, session: Session 
     session.refresh(vc)
     
     return {"message": "Code received", "code": code_str}
+
+
+@app.get("/api/dev/codes")
+def get_recent_codes(session: Session = Depends(get_session)):
+    """开发模式：获取最近的验证码列表"""
+    codes = session.exec(
+        select(VerificationCode)
+        .order_by(VerificationCode.created_at.desc())
+        .limit(10)
+    ).all()
+    
+    return [{
+        "id": code.id,
+        "code": code.code,
+        "source": code.source,
+        "used": code.used,
+        "created_at": code.created_at.strftime("%H:%M:%S")
+    } for code in codes]
+
+
+@app.get("/api/dev/latest-code")
+def get_latest_code(session: Session = Depends(get_session)):
+    """开发模式：获取最新验证码"""
+    code = session.exec(
+        select(VerificationCode)
+        .where(VerificationCode.used == False)
+        .order_by(VerificationCode.created_at.desc())
+    ).first()
+    
+    if not code:
+        return {"code": None, "message": "暂无可用验证码"}
+    
+    return {
+        "code": code.code,
+        "created_at": code.created_at.strftime("%H:%M:%S"),
+        "source": code.source
+    }
 
 
 if __name__ == "__main__":

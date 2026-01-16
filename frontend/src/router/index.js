@@ -69,6 +69,17 @@ const routes = [
                 redirect: '/admin/dashboard'
             }
         ]
+    },
+    // 开发调试路由
+    {
+        path: '/dev',
+        children: [
+            {
+                path: 'codes',
+                name: 'DevCodes',
+                component: () => import('../views/DevCodes.vue')
+            }
+        ]
     }
 ]
 
