@@ -55,7 +55,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
 
 
-# 添加中间件（顺序很重要，Rate Limiting 需要在 CORS 之后）
+# 添加中间件（顺序很重要，CORS需要在最前面）
+app.add_middleware(RateLimitMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -63,7 +64,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-app.add_middleware(RateLimitMiddleware)
 
 
 # 后端启动时自动初始化数据库和启动自动化
