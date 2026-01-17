@@ -1275,13 +1275,22 @@ def automation_worker():
                     automation_logger.info("🔍 验证页面加载状态...")
                     # 检查页面是否正常加载
                     page_title = _page.title()
+                    page_url = _page.url
                     automation_logger.info(f"📋 页面标题: {page_title}")
+                    automation_logger.info(f"🔗 当前URL: {page_url}")
                     
-                    if page_title and "海螺" in page_title:
+                    # 更宽松的验证条件
+                    is_valid_page = (
+                        page_title and len(page_title.strip()) > 0 and  # 有标题
+                        "hailuoai.com" in page_url and                   # URL正确
+                        not page_url == "about:blank"                    # 不是空白页
+                    )
+                    
+                    if is_valid_page:
                         automation_logger.success("✅ 页面加载成功！")
                         break
                     else:
-                        automation_logger.warn(f"⚠️  页面标题异常，可能加载不完整")
+                        automation_logger.warn(f"⚠️  页面验证失败 - 标题: {page_title} | URL: {page_url}")
                         if attempt < max_retries - 1:
                             automation_logger.info("🔄 准备重新加载页面...")
                             continue
