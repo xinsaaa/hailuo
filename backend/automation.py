@@ -1198,7 +1198,7 @@ def automation_worker():
             automation_logger.info("🖥️  有界面环境，启用可视化模式")
         
         automation_logger.info("⚙️  配置浏览器优化参数...")
-        # 浏览器稳定性优化参数
+        # 浏览器稳定性优化参数 - 针对内存不足优化
         browser_args = [
             "--no-sandbox",
             "--disable-dev-shm-usage",
@@ -1213,8 +1213,16 @@ def automation_worker():
             "--disable-sync",
             "--disable-component-extensions-with-background-pages",
             "--disable-background-networking",
+            # 内存优化参数
             "--memory-pressure-off",
-            "--max_old_space_size=4096"
+            "--max_old_space_size=2048",  # 减少内存使用
+            "--aggressive",
+            "--disable-background-mode",
+            "--disable-plugins",
+            "--disable-preread-pcd",
+            "--disable-translate",
+            "--disable-logging",
+            "--disable-breakpad"
         ]
         
         if use_headless:
@@ -1272,12 +1280,30 @@ def automation_worker():
                 continue
         
         if not _browser:
-            automation_logger.error("❌ 所有浏览器启动失败！请检查系统中是否安装了Chrome、Edge或Chromium")
-            automation_logger.info("💡 建议解决方案:")
-            automation_logger.info("   1. 安装Google Chrome浏览器")
-            automation_logger.info("   2. 或运行: playwright install chromium")
-            automation_logger.info("   3. 或确保Microsoft Edge已安装且为最新版本")
-            return
+            # 检查是否是内存问题，如果是则尝试无界面模式
+            if not use_headless:
+                automation_logger.warn("💾 检测到可能的内存问题，尝试启用无界面模式...")
+                try:
+                    automation_logger.info("🎛️  强制启用无界面模式以节省内存...")
+                    _browser = p.chromium.launch(
+                        headless=True,  # 强制无界面
+                        args=browser_args + ["--disable-web-security", "--disable-features=VizDisplayCompositor"]
+                    )
+                    automation_logger.success("✅ 无界面模式启动成功！（内存优化）")
+                    browser_used = "Chromium (无界面)"
+                except Exception as headless_e:
+                    automation_logger.error(f"❌ 无界面模式也启动失败: {str(headless_e)[:100]}")
+                    _browser = None
+            
+            if not _browser:
+                automation_logger.error("❌ 所有浏览器启动失败！")
+                automation_logger.error("🚨 可能原因: 虚拟内存不足 (页面文件太小)")
+                automation_logger.info("💡 解决方案:")
+                automation_logger.info("   1. 运行 fix_memory_issue.bat 修复内存问题")
+                automation_logger.info("   2. 增加系统虚拟内存至少4GB")
+                automation_logger.info("   3. 或设置环境变量: AUTOMATION_HEADLESS=true")
+                automation_logger.info("   4. 清理系统临时文件和重启")
+                return
         
         automation_logger.info("🌐 创建浏览器上下文...")
         _context = _browser.new_context(
