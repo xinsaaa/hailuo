@@ -905,24 +905,53 @@ def select_model_from_popover(page: Page, model_name: str) -> bool:
         # 在弹框中查找模型选项
         automation_logger.info("🔍 搜索弹框中的模型选项...")
         
-        # 搜索所有可能的模型选项
+        # 基于测试结果，优化模型选项的查找策略
+        # 从测试输出可以看出弹框结构，使用更精确的选择器
         option_selectors = [
-            "*:has-text('Hailuo')",
-            ".cursor-pointer",
-            "[class*='option']",
-            "[class*='item']",
-            "div[role='option']"
+            # 基于弹框内容结构的选择器
+            "div.cursor-pointer",  # 最可能的选项容器
+            "div[class*='hover']:not([class*='bg-hl_bg_05'])",  # 悬停效果的选项
+            "*:has-text('Hailuo'):not(:has(*:has-text('Hailuo')))",  # 叶子节点包含Hailuo
+            "div:has-text('768P'):has-text('Hailuo')",  # 包含分辨率信息的选项
+            "div:has-text('720P'):has-text('Hailuo')",  # 包含分辨率信息的选项
         ]
         
         all_options = []
+        
+        # 先尝试找到具体的模型选项容器
         for selector in option_selectors:
             try:
                 options = popover.locator(selector).all()
                 for option in options:
                     if option.is_visible():
-                        all_options.append(option)
+                        text = option.text_content() or ""
+                        # 确保这是一个单独的模型选项，不是整个弹框的文本
+                        if ("hailuo" in text.lower() and 
+                            len(text.strip()) > 5 and 
+                            len(text.strip()) < 200 and
+                            not any(existing_text == text for _, existing_text, _ in 
+                                   [(None, existing_option.text_content() or "", None) 
+                                    for existing_option in all_options])):
+                            all_options.append(option)
             except:
                 continue
+        
+        # 如果没找到具体选项，回退到通用搜索
+        if not all_options:
+            try:
+                # 查找所有包含Hailuo的元素，然后过滤出合适的选项
+                hailuo_elements = popover.locator("*:has-text('Hailuo')").all()
+                for element in hailuo_elements:
+                    if element.is_visible():
+                        text = element.text_content() or ""
+                        # 过滤条件：文本长度适中，不是整个弹框内容
+                        if (20 <= len(text.strip()) <= 150 and 
+                            "hailuo" in text.lower() and
+                            ("768p" in text.lower() or "720p" in text.lower() or 
+                             "director" in text.lower() or "live" in text.lower())):
+                            all_options.append(element)
+            except:
+                pass
         
         automation_logger.info(f"找到 {len(all_options)} 个选项")
         
