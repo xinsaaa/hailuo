@@ -157,7 +157,7 @@ class RechargeRequest(BaseModel):
 
 class OrderRequest(BaseModel):
     prompt: str
-    model_name: Optional[str] = "Hailuo 1.0"  # 用户选择的生成模型
+    model_name: Optional[str] = "Hailuo 2.3"  # 用户选择的生成模型
     first_frame_image: Optional[str] = None   # 首帧图片路径
     last_frame_image: Optional[str] = None    # 尾帧图片路径
 
@@ -592,7 +592,7 @@ async def create_order(request: OrderRequest, background_tasks: BackgroundTasks,
         prompt=request.prompt,
         video_url=None,
         cost=cost,
-        model_name=request.model_name or "Hailuo 1.0",
+        model_name=request.model_name or "Hailuo 2.3",
         first_frame_image=request.first_frame_image,
         last_frame_image=request.last_frame_image
     )
@@ -691,37 +691,40 @@ def get_available_models():
     """获取可用的生成模型列表"""
     models = [
         {
-            "id": "hailuo_1_0",
-            "name": "Hailuo 1.0", 
-            "display_name": "海螺 1.0",
-            "description": "01系列的基础图生视频模型",
+            "id": "hailuo_2_3",
+            "name": "Hailuo 2.3", 
+            "display_name": "海螺 2.3",
+            "description": "表现力全面升级，更稳定，更真实",
             "type": "image_to_video",
             "is_default": True,
-            "features": ["图片转视频", "高质量生成", "快速处理"]
+            "features": ["768P-1080P", "6s-10s", "全面升级", "更稳定", "更真实"],
+            "badge": "NEW"
         },
         {
-            "id": "hailuo_1_5",
-            "name": "Hailuo 1.5",
-            "display_name": "海螺 1.5", 
-            "description": "升级版图生视频模型，效果更佳",
+            "id": "hailuo_2_3_fast",
+            "name": "Hailuo 2.3-Fast",
+            "display_name": "海螺 2.3-Fast", 
+            "description": "生成速度更快，超高性价比",
             "type": "image_to_video",
             "is_default": False,
-            "features": ["图片转视频", "超高质量", "细节优化", "动作流畅"]
+            "features": ["768P-1080P", "6s-10s", "生成速度快", "超高性价比"],
+            "badge": "NEW"
         },
         {
-            "id": "hailuo_pro",
-            "name": "Hailuo Pro",
-            "display_name": "海螺 Pro",
-            "description": "专业级图生视频模型，支持复杂场景",
+            "id": "hailuo_2_0",
+            "name": "Hailuo 2.0",
+            "display_name": "海螺 2.0",
+            "description": "最佳效果、超清画质、精准响应",
             "type": "image_to_video", 
             "is_default": False,
-            "features": ["专业级质量", "复杂场景", "长时间视频", "多样化风格"]
+            "features": ["首尾帧", "仅尾帧", "512P-1080P", "6s-10s", "超清画质"],
+            "badge": "NEW"
         }
     ]
     
     return {
         "models": models,
-        "default_model": "Hailuo 1.0",
+        "default_model": "Hailuo 2.3",
         "total": len(models)
     }
 
