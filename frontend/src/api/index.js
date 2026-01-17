@@ -150,15 +150,25 @@ export const confirmPayment = async (params) => {
     return response.data
 }
 
-export const createOrder = async (prompt, modelName = null, firstFrameImage = null, lastFrameImage = null) => {
-    const response = await api.post('/orders/create', { 
-        prompt,
-        model_name: modelName,
-        first_frame_image: firstFrameImage,
-        last_frame_image: lastFrameImage
-    })
-    return response.data
-}
+export const createOrder = async (prompt, model_name, firstFrameImage, lastFrameImage) => {
+    const formData = new FormData();
+    formData.append('prompt', prompt);
+    formData.append('model_name', model_name || "Hailuo 2.3");
+    
+    if (firstFrameImage) {
+        formData.append('first_frame_image', firstFrameImage);
+    }
+    if (lastFrameImage) {
+        formData.append('last_frame_image', lastFrameImage);
+    }
+    
+    const { data } = await api.post('/orders/create', formData, {
+        headers: {
+            'Content-Type': 'multipart/form-data'
+        }
+    });
+    return data;
+};
 
 export const getOrders = async () => {
     const response = await api.get('/orders')

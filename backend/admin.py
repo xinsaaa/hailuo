@@ -387,13 +387,27 @@ from backend.automation import automation_logger
 @router.get("/automation/status")
 def get_automation_status(admin=Depends(get_admin_user)):
     """获取自动化运行状态"""
+    from backend.automation import _browser, _page, _is_logged_in
+    
     browser_running = _browser is not None
     page_ready = _page is not None
+    logged_in = _is_logged_in
+    
+    # 更精确的状态判断
+    if browser_running and page_ready and logged_in:
+        status = "running"
+    elif browser_running and page_ready:
+        status = "connected"  # 浏览器连接但未登录
+    elif browser_running:
+        status = "starting"  # 浏览器启动中
+    else:
+        status = "stopped"
     
     return {
         "browser_running": browser_running,
         "page_ready": page_ready,
-        "status": "running" if browser_running and page_ready else "stopped"
+        "logged_in": logged_in,
+        "status": status
     }
 
 
@@ -405,7 +419,6 @@ def get_automation_logs(limit: int = 50, admin=Depends(get_admin_user)):
         "logs": logs,
         "total": len(logs)
     }
-
 
 @router.post("/automation/start")
 def start_automation(admin=Depends(get_admin_user)):
@@ -554,3 +567,37 @@ def update_config(
     session.commit()
     
     return {"message": "配置更新成功", "key": data.key, "value": data.value}
+
+
+# ============ 存储管理 ============
+
+@router.get("/storage/stats")
+def get_storage_stats(admin=Depends(get_admin_user)):
+    """获取存储使用统计"""
+    try:
+        from backend.cleanup import get_storage_stats
+        stats = get_storage_stats()
+        return {
+            "status": "success",
+            "data": stats
+        }
+    except Exception as e:
+        return {
+            "status": "error", 
+            "message": str(e)
+        }
+
+@router.post("/storage/cleanup")
+def manual_cleanup(admin=Depends(get_admin_user)):
+    """手动执行清理任务"""
+    try:
+        from backend.cleanup import cleanup_old_images, cleanup_old_orders
+        
+        # 执行清理
+        cleanup_old_images()
+        cleanup_old_orders()
+        
+        return {"message": "清理任务执行成功"}
+    except Exception as e:
+        automation_logger.error(f"手动清理失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"清理失败: {str(e)}")

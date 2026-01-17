@@ -1,0 +1,68 @@
+version: '3.8'
+
+services:
+  hailuo-ai:
+    build: .
+    container_name: hailuo-ai-server
+    ports:
+      - "8000:8000"
+    environment:
+      # Linux优化配置
+      - AUTOMATION_HEADLESS=true
+      - ENABLE_AUTO_WORKER=true
+      
+      # 性能配置
+      - MAX_CONCURRENT_TASKS=3
+      - POLL_INTERVAL=5
+      
+      # 应用配置
+      - HAILUO_PHONE=15781806380
+      
+      # Docker内存限制
+      - PLAYWRIGHT_BROWSERS_PATH=/app/.cache/ms-playwright
+      
+    volumes:
+      # 持久化数据
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - ./uploads:/app/uploads
+      - ./user_images:/app/user_images
+      
+      # 浏览器缓存(可选)
+      - playwright_cache:/app/.cache/ms-playwright
+      
+    restart: unless-stopped
+    
+    # 资源限制 (2GB内存服务器配置)
+    deploy:
+      resources:
+        limits:
+          memory: 1.5G
+          cpus: '1.5'
+        reservations:
+          memory: 512M
+          cpus: '0.5'
+    
+    # 健康检查
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/config"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    
+    # 依赖关系
+    depends_on: []
+    
+    # 网络模式
+    network_mode: "bridge"
+
+# 数据卷
+volumes:
+  playwright_cache:
+    driver: local
+
+# 网络配置 (可选)
+networks:
+  default:
+    driver: bridge

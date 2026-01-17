@@ -17,6 +17,12 @@ const availableModels = ref([])
 const selectedModel = ref(null)
 const showModelSelector = ref(false)
 
+// 首尾帧图片上传状态
+const firstFrameImage = ref(null)
+const lastFrameImage = ref(null)
+const firstFramePreview = ref(null)
+const lastFramePreview = ref(null)
+
 // 系统配置（从 API 加载）
 const config = ref({
   video_price: 0.99,
@@ -136,9 +142,12 @@ const handleCreateOrder = async () => {
   loading.value = true
   
   try {
-    await createOrder(prompt.value, selectedModel.value.name)
+    await createOrder(prompt.value, selectedModel.value.name, firstFrameImage.value, lastFrameImage.value)
     showNotification('订单提交成功！AI 正在为您生成...', 'success')
     prompt.value = ''
+    // 清理图片状态
+    removeImage('first')
+    removeImage('last')
     await loadData()
   } catch (err) {
     showNotification(err.response?.data?.detail || '创建订单失败', 'error')
@@ -150,6 +159,56 @@ const handleCreateOrder = async () => {
 const selectModel = (model) => {
   selectedModel.value = model
   showModelSelector.value = false
+}
+
+// 图片上传处理函数
+const handleImageUpload = (event, type) => {
+  const file = event.target.files[0]
+  if (!file) return
+  
+  // 检查文件类型
+  if (!file.type.startsWith('image/')) {
+    showNotification('请选择图片文件', 'error')
+    return
+  }
+  
+  // 检查文件大小 (5MB)
+  if (file.size > 5 * 1024 * 1024) {
+    showNotification('图片大小不能超过5MB', 'error')
+    return
+  }
+  
+  // 保存文件
+  if (type === 'first') {
+    firstFrameImage.value = file
+    // 创建预览URL
+    if (firstFramePreview.value) {
+      URL.revokeObjectURL(firstFramePreview.value)
+    }
+    firstFramePreview.value = URL.createObjectURL(file)
+  } else {
+    lastFrameImage.value = file
+    if (lastFramePreview.value) {
+      URL.revokeObjectURL(lastFramePreview.value)
+    }
+    lastFramePreview.value = URL.createObjectURL(file)
+  }
+}
+
+const removeImage = (type) => {
+  if (type === 'first') {
+    firstFrameImage.value = null
+    if (firstFramePreview.value) {
+      URL.revokeObjectURL(firstFramePreview.value)
+      firstFramePreview.value = null
+    }
+  } else {
+    lastFrameImage.value = null
+    if (lastFramePreview.value) {
+      URL.revokeObjectURL(lastFramePreview.value)
+      lastFramePreview.value = null
+    }
+  }
 }
 
 const statusMap = {

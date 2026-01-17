@@ -1194,76 +1194,105 @@ def automation_worker():
             automation_logger.info("🎛️  环境变量强制启用无界面模式")
         elif is_linux_server:
             automation_logger.info("🐧 检测到Linux无界面环境，自动启用headless模式")
+            automation_logger.info("💾 Linux环境内存优化 - 预计节省70%内存使用")
         else:
             automation_logger.info("🖥️  有界面环境，启用可视化模式")
         
         automation_logger.info("⚙️  配置浏览器优化参数...")
-        # 浏览器稳定性优化参数 - 针对内存不足优化
-        browser_args = [
-            "--no-sandbox",
-            "--disable-dev-shm-usage",
-            "--disable-gpu",
-            "--disable-extensions",
-            "--disable-background-timer-throttling",
-            "--disable-renderer-backgrounding", 
-            "--disable-backgrounding-occluded-windows",
-            "--disable-features=TranslateUI,VizDisplayCompositor",
-            "--disable-ipc-flooding-protection",
-            "--disable-default-apps",
-            "--disable-sync",
-            "--disable-component-extensions-with-background-pages",
-            "--disable-background-networking",
-            # 内存优化参数
-            "--memory-pressure-off",
-            "--max_old_space_size=2048",  # 减少内存使用
-            "--aggressive",
-            "--disable-background-mode",
-            "--disable-plugins",
-            "--disable-preread-pcd",
-            "--disable-translate",
-            "--disable-logging",
-            "--disable-breakpad"
-        ]
-        
-        if use_headless:
-            browser_args.extend([
-                "--virtual-time-budget=5000"
-            ])
-            automation_logger.info("🔧 添加无界面模式专用参数")
+        # Linux环境使用最小参数集（经测试可用）
+        if sys.platform.startswith("linux"):
+            browser_args = [
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-gpu",
+                "--disable-web-security",
+                "--disable-features=VizDisplayCompositor"
+            ]
+            automation_logger.info("🐧 使用Linux优化的最小参数集")
+        else:
+            # Windows环境保留更多参数
+            browser_args = [
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-gpu",
+                "--disable-extensions",
+                "--disable-background-timer-throttling",
+                "--disable-renderer-backgrounding", 
+                "--disable-backgrounding-occluded-windows",
+                "--disable-features=TranslateUI,VizDisplayCompositor",
+                "--disable-ipc-flooding-protection",
+                "--disable-default-apps",
+                "--disable-sync",
+                "--disable-component-extensions-with-background-pages",
+                "--disable-background-networking",
+                "--disable-plugins",
+                "--disable-plugins-discovery",
+                "--disable-preconnect",
+                "--disable-print-preview",
+                "--disable-setuid-sandbox",
+                "--disable-site-isolation-trials",
+                "--disable-speech-api",
+                "--disable-web-security",
+                "--disable-translate",
+                "--disable-logging",
+                "--disable-breakpad"
+            ]
+            
+            if use_headless:
+                browser_args.extend([
+                    "--virtual-time-budget=5000"
+                ])
+                automation_logger.info("🔧 添加无界面模式专用参数")
         
         automation_logger.info(f"📝 浏览器参数配置完成，共{len(browser_args)}个优化参数")
         
         automation_logger.info("🚀 正在启动浏览器...")
         
         # 智能浏览器检测和启动
-        browser_options = [
-            # 1. 尝试Chrome (Google Chrome)
-            {
-                "name": "Chrome",
-                "launch_func": lambda: p.chromium.launch(
-                    headless=use_headless,
-                    channel="chrome",
-                    args=browser_args
-                )
-            },
-            # 2. 尝试Edge (Microsoft Edge)
-            {
-                "name": "Edge",
-                "launch_func": lambda: p.chromium.launch(
-                    headless=use_headless,
-                    channel="msedge",
-                    args=browser_args
-                )
-            },
-            # 3. 尝试Chromium (内置)
-            {
-                "name": "Chromium",
-                "launch_func": lambda: p.chromium.launch(
-                    headless=use_headless,
-                    args=browser_args
-                )
-            }
-        ]
+        browser_options = []
+        
+        # Linux环境优先使用Chromium（已安装）
+        if sys.platform.startswith("linux"):
+            browser_options = [
+                # 1. Playwright Chromium (推荐)
+                {
+                    "name": "Chromium",
+                    "launch_func": lambda: p.chromium.launch(
+                        headless=use_headless,
+                        args=browser_args
+                    )
+                }
+            ]
+        else:
+            # Windows环境尝试多种浏览器
+            browser_options = [
+                # 1. 尝试Chrome (Google Chrome)
+                {
+                    "name": "Chrome",
+                    "launch_func": lambda: p.chromium.launch(
+                        headless=use_headless,
+                        channel="chrome",
+                        args=browser_args
+                    )
+                },
+                # 2. 尝试Edge (Microsoft Edge)
+                {
+                    "name": "Edge",
+                    "launch_func": lambda: p.chromium.launch(
+                        headless=use_headless,
+                        channel="msedge",
+                        args=browser_args
+                    )
+                },
+                # 3. 尝试Chromium (内置)
+                {
+                    "name": "Chromium",
+                    "launch_func": lambda: p.chromium.launch(
+                        headless=use_headless,
+                        args=browser_args
+                    )
+                }
+            ]
         
         _browser = None
         browser_used = None

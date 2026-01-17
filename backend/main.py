@@ -1,5 +1,7 @@
-from fastapi import FastAPI, Depends, HTTPException, status, BackgroundTasks, Request
+from fastapi import FastAPI, Depends, HTTPException, status, BackgroundTasks, Request, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from starlette.responses import FileResponse
 from starlette.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from sqlmodel import Session, select
@@ -59,8 +61,11 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://152.32.213.113:5173",  # 正确的前端地址
+        "http://152.32.213.113:8000",  # 后端集成前端服务
+        "http://152.32.213.113:5173",  # 开发模式备用
+        "http://localhost:8000",
         "http://localhost:5173",
+        "http://127.0.0.1:8000",
         "http://127.0.0.1:5173",
         "*"
     ],
@@ -295,7 +300,20 @@ def login(data: LoginWithCaptcha, request: Request, session: Session = Depends(g
             record_fail(client_ip)
             raise HTTPException(status_code=400, detail="验证码验证失败")
     
-    # 验证用户名密码
+    # 检查是否为管理员登录
+    from backend.admin import ADMIN_USERNAME, ADMIN_PASSWORD_HASH
+    if data.username == ADMIN_USERNAME:
+        if not verify_password(data.password, ADMIN_PASSWORD_HASH):
+            is_banned = record_fail(client_ip)
+            if is_banned:
+                raise HTTPException(status_code=403, detail="行为异常，已被临时封禁 30 分钟")
+            raise HTTPException(status_code=401, detail="用户名或密码错误")
+        
+        record_success(client_ip)
+        access_token = create_access_token(data={"sub": data.username, "is_admin": True})
+        return {"access_token": access_token, "token_type": "bearer", "is_admin": True}
+    
+    # 验证普通用户名密码
     user = session.exec(select(User).where(User.username == data.username)).first()
     if not user or not verify_password(data.password, user.hashed_password):
         is_banned = record_fail(client_ip)
@@ -304,8 +322,8 @@ def login(data: LoginWithCaptcha, request: Request, session: Session = Depends(g
         raise HTTPException(status_code=401, detail="用户名或密码错误")
     
     record_success(client_ip)
-    access_token = create_access_token(data={"sub": user.username})
-    return {"access_token": access_token, "token_type": "bearer"}
+    access_token = create_access_token(data={"sub": user.username, "is_admin": user.is_superuser})
+    return {"access_token": access_token, "token_type": "bearer", "is_admin": user.is_superuser}
 
 
 @app.get("/api/security/status")
@@ -592,22 +610,68 @@ def get_payment_status(
 
 
 @app.post("/api/orders/create")
-async def create_order(request: OrderRequest, background_tasks: BackgroundTasks, current_user: User = Depends(get_current_user), session: Session = Depends(get_session)):
+async def create_order(
+    prompt: str = Form(...),
+    model_name: str = Form("Hailuo 2.3"),
+    first_frame_image: Optional[UploadFile] = File(None),
+    last_frame_image: Optional[UploadFile] = File(None),
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session)
+):
     cost = 0.99
     if current_user.balance < cost:
         raise HTTPException(status_code=400, detail="Insufficient balance")
+    
+    # 处理首帧图片上传
+    first_frame_path = None
+    if first_frame_image:
+        if not first_frame_image.content_type.startswith('image/'):
+            raise HTTPException(status_code=400, detail="首帧文件必须是图片")
+        
+        import os
+        import uuid
+        from datetime import datetime
+        
+        # 按用户ID分类存储
+        user_upload_dir = os.path.join("user_images", f"user_{current_user.id}")
+        os.makedirs(user_upload_dir, exist_ok=True)
+        
+        file_ext = first_frame_image.filename.split('.')[-1]
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"first_{timestamp}_{uuid.uuid4().hex[:8]}.{file_ext}"
+        first_frame_path = os.path.join(user_upload_dir, filename)
+        
+        with open(first_frame_path, "wb") as f:
+            content = await first_frame_image.read()
+            f.write(content)
+    
+    # 处理尾帧图片上传
+    last_frame_path = None
+    if last_frame_image:
+        if not last_frame_image.content_type.startswith('image/'):
+            raise HTTPException(status_code=400, detail="尾帧文件必须是图片")
+            
+        # 使用相同的用户目录
+        file_ext = last_frame_image.filename.split('.')[-1]
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"last_{timestamp}_{uuid.uuid4().hex[:8]}.{file_ext}"
+        last_frame_path = os.path.join(user_upload_dir, filename)
+        
+        with open(last_frame_path, "wb") as f:
+            content = await last_frame_image.read()
+            f.write(content)
     
     current_user.balance -= cost
     session.add(current_user)
     
     new_order = VideoOrder(
         user_id=current_user.id,
-        prompt=request.prompt,
+        prompt=prompt,
         video_url=None,
         cost=cost,
-        model_name=request.model_name or "Hailuo 2.3",
-        first_frame_image=request.first_frame_image,
-        last_frame_image=request.last_frame_image
+        model_name=model_name,
+        first_frame_image=first_frame_path,
+        last_frame_image=last_frame_path
     )
     session.add(new_order)
     
@@ -790,6 +854,42 @@ def get_available_models():
         "default_model": "Hailuo 2.3",
         "total": len(models)
     }
+
+
+# ============ 静态文件服务 ============
+import os
+
+# 检查前端构建目录是否存在
+frontend_dist_path = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist")
+if os.path.exists(frontend_dist_path):
+    # 挂载静态资源文件（CSS, JS, 图片等）
+    app.mount("/assets", StaticFiles(directory=os.path.join(frontend_dist_path, "assets")), name="assets")
+    
+    # SPA路由处理 - 所有非API路径都返回index.html
+    @app.get("/{full_path:path}")
+    async def serve_spa(full_path: str):
+        # API路径直接跳过，让FastAPI处理
+        if full_path.startswith("api/"):
+            raise HTTPException(404, "Not found")
+        
+        # 检查是否为静态文件请求
+        if "." in full_path.split("/")[-1]:  # 有文件扩展名的请求
+            file_path = os.path.join(frontend_dist_path, full_path)
+            if os.path.exists(file_path):
+                return FileResponse(file_path)
+            else:
+                raise HTTPException(404, "File not found")
+        
+        # 其他所有路径都返回index.html（SPA路由）
+        index_path = os.path.join(frontend_dist_path, "index.html")
+        if os.path.exists(index_path):
+            return FileResponse(index_path)
+        else:
+            raise HTTPException(404, "Frontend not built")
+    
+    print("✅ 前端静态文件服务已启用（SPA路由支持）")
+else:
+    print("⚠️  前端dist目录不存在，请先运行: cd frontend && npm run build")
 
 
 if __name__ == "__main__":
