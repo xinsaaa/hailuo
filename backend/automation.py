@@ -710,124 +710,138 @@ def upload_last_frame_image(page: Page, image_path: str) -> bool:
 
 
 def select_generation_model(page: Page, model_name: str = "Hailuo 2.3") -> bool:
-    """选择生成模型 - 简化版本专注于找到触发器"""
+    """选择生成模型 - 基于用户提供的精确HTML结构"""
     try:
         automation_logger.info(f"🎯 开始模型选择: {model_name}")
         
         # 等待页面稳定
         page.wait_for_timeout(3000)
         
-        # 简化策略：直接遍历所有可能的触发器
-        automation_logger.info("🔍 开始全面搜索页面元素...")
+        # 根据用户提供的HTML结构，精确定位模型选择下拉框
+        automation_logger.info("🔍 查找模型选择下拉框...")
         
-        # 获取页面上所有可见的交互元素
-        potential_triggers = []
-        
-        # 1. 搜索所有包含Hailuo的元素
-        automation_logger.info("  搜索包含Hailuo的元素...")
-        try:
-            hailuo_elements = page.locator("*:has-text('Hailuo')").all()
-            for element in hailuo_elements:
-                if element.is_visible():
-                    potential_triggers.append(('hailuo_text', element))
-        except Exception as e:
-            automation_logger.warn(f"搜索Hailuo元素失败: {str(e)[:50]}")
-        
-        # 2. 搜索所有按钮
-        automation_logger.info("  搜索所有按钮...")
-        try:
-            buttons = page.locator("button").all()
-            for button in buttons:
-                if button.is_visible():
-                    potential_triggers.append(('button', button))
-        except Exception as e:
-            automation_logger.warn(f"搜索按钮失败: {str(e)[:50]}")
-        
-        # 3. 搜索带有cursor-pointer类的元素
-        automation_logger.info("  搜索可点击元素...")
-        try:
-            clickable = page.locator(".cursor-pointer").all()
-            for element in clickable:
-                if element.is_visible():
-                    potential_triggers.append(('clickable', element))
-        except Exception as e:
-            automation_logger.warn(f"搜索可点击元素失败: {str(e)[:50]}")
-        
-        # 4. 搜索dropdown相关元素
-        automation_logger.info("  搜索下拉菜单元素...")
-        try:
-            dropdowns = page.locator("[class*='dropdown']").all()
-            for element in dropdowns:
-                if element.is_visible():
-                    potential_triggers.append(('dropdown', element))
-        except Exception as e:
-            automation_logger.warn(f"搜索下拉菜单失败: {str(e)[:50]}")
-        
-        automation_logger.info(f"  总共找到 {len(potential_triggers)} 个潜在触发器")
-        
-        # 按优先级尝试点击
-        for i, (trigger_type, element) in enumerate(potential_triggers):
-            try:
-                text = element.text_content() or ""
-                # 清理文本用于显示
-                clean_text = text.replace('\n', ' ').strip()[:80]
-                
-                automation_logger.info(f"  尝试 {i+1}/{len(potential_triggers)} [{trigger_type}]: {clean_text}")
-                
-                # 优先处理包含模型相关关键词的元素
-                if any(keyword in text.lower() for keyword in ["hailuo", "模型", "设置"]):
-                    automation_logger.info(f"  👆 点击包含关键词的元素: {clean_text}")
-                    element.click()
-                    page.wait_for_timeout(2000)
-                    
-                    # 检查是否出现了弹框
-                    if check_popover_appeared(page):
-                        automation_logger.success("✅ 点击成功，弹框已出现！")
-                        return select_model_from_popover(page, model_name)
-                    
-                    # 如果没有弹框，继续尝试下一个
-                    automation_logger.info(f"    未出现弹框，继续尝试...")
-                    continue
-                    
-            except Exception as e:
-                automation_logger.warn(f"    点击失败: {str(e)[:50]}")
-                continue
-        
-        # 如果优先级搜索失败，尝试点击所有其他元素
-        automation_logger.info("🔍 尝试点击其他所有元素...")
-        for i, (trigger_type, element) in enumerate(potential_triggers):
-            try:
-                text = element.text_content() or ""
-                clean_text = text.replace('\n', ' ').strip()[:80]
-                
-                # 跳过已经尝试过的元素
-                if any(keyword in text.lower() for keyword in ["hailuo", "模型", "设置"]):
-                    continue
-                
-                # 跳过明显不相关的元素
-                if len(text.strip()) > 200:
-                    continue
-                    
-                automation_logger.info(f"  尝试点击 {i+1}: {clean_text}")
-                element.click()
-                page.wait_for_timeout(1500)
-                
-                if check_popover_appeared(page):
-                    automation_logger.success("✅ 找到正确的触发器！")
-                    return select_model_from_popover(page, model_name)
-                    
-            except Exception as e:
-                continue
-        
-        # 如果都没有成功，保存调试信息
-        automation_logger.error("❌ 未找到有效的模型选择触发器")
-        try:
-            page.screenshot(path="debug_no_model_trigger.png")
-            automation_logger.info("📸 保存调试截图: debug_no_model_trigger.png")
-        except:
-            pass
+        # 基于用户提供的精确HTML结构构建选择器
+        dropdown_selectors = [
+            # 精确的结构选择器
+            'div.flex.h-full.w-full.items-center.overflow-hidden:has(img[alt*="AI Video model"]):has(div.text-hl_text_00:has-text("Hailuo"))',
             
-        return False
+            # 更具体的选择器
+            'div:has(> div.bg-hl_bg_05 img[alt*="AI Video model"]) div.text-hl_text_00:has-text("Hailuo")',
+            
+            # 基于图片的选择器
+            'img[alt="AI Video model Image by Hailuo AI Video Generator"]',
+            
+            # 基于包含结构的选择器
+            'div:has(img[src*="hailuoai.com"]):has(div:has-text("Hailuo"))',
+            
+            # 基于类名组合的选择器  
+            'div.flex.items-center:has(div.bg-hl_bg_05):has(div.text-hl_text_00)',
+            
+            # 更宽泛的备用选择器
+            '*:has(img[alt*="AI Video model"])',
+            '*:has(div.text-hl_text_00:has-text("Hailuo"))'
+        ]
+        
+        dropdown_element = None
+        
+        for i, selector in enumerate(dropdown_selectors):
+            try:
+                automation_logger.info(f"  尝试选择器 {i+1}: {selector[:80]}...")
+                elements = page.locator(selector).all()
+                
+                for element in elements:
+                    if element.is_visible():
+                        # 检查元素内容是否包含Hailuo模型名称
+                        text_content = element.text_content() or ""
+                        if "hailuo" in text_content.lower():
+                            dropdown_element = element
+                            automation_logger.success(f"✅ 找到模型选择下拉框: {text_content[:50]}")
+                            break
+                
+                if dropdown_element:
+                    break
+                    
+            except Exception as e:
+                automation_logger.warn(f"  选择器 {i+1} 失败: {str(e)[:50]}")
+                continue
+        
+        # 如果没找到精确的，尝试查找父容器
+        if not dropdown_element:
+            automation_logger.info("🔍 尝试查找包含模型信息的父容器...")
+            try:
+                # 查找包含Hailuo文本的可点击父元素
+                parent_selectors = [
+                    'div:has(div:has-text("Hailuo 1.0-Live"))',
+                    'div:has(div:has-text("Hailuo 1.0-Director"))', 
+                    'div:has(div:has-text("Hailuo 2.3"))',
+                    '*:has(div.text-hl_text_00)',
+                    'div.flex:has-text("Hailuo")'
+                ]
+                
+                for selector in parent_selectors:
+                    try:
+                        elements = page.locator(selector).all()
+                        for element in elements:
+                            if element.is_visible():
+                                text = element.text_content() or ""
+                                if "hailuo" in text.lower() and len(text.strip()) < 100:
+                                    dropdown_element = element
+                                    automation_logger.success(f"✅ 找到父容器: {text[:50]}")
+                                    break
+                        if dropdown_element:
+                            break
+                    except:
+                        continue
+                        
+            except Exception as e:
+                automation_logger.warn(f"查找父容器失败: {str(e)[:50]}")
+        
+        if not dropdown_element:
+            automation_logger.error("❌ 未找到模型选择下拉框")
+            
+            # 调试信息：截图并列出所有包含Hailuo的元素
+            try:
+                page.screenshot(path="debug_no_dropdown.png")
+                automation_logger.info("📸 保存调试截图: debug_no_dropdown.png")
+                
+                # 列出页面上所有包含Hailuo的元素
+                automation_logger.info("🔍 页面上所有包含Hailuo的元素:")
+                all_hailuo = page.locator("*:has-text('Hailuo')").all()
+                for i, elem in enumerate(all_hailuo[:10]):
+                    try:
+                        text = elem.text_content() or ""
+                        if text.strip():
+                            automation_logger.info(f"  {i+1}: {text[:100]}")
+                    except:
+                        continue
+            except:
+                pass
+            
+            return False
+        
+        # 点击找到的下拉框元素
+        automation_logger.info("👆 点击模型选择下拉框...")
+        try:
+            dropdown_element.click()
+            page.wait_for_timeout(2000)  # 等待下拉菜单加载
+            automation_logger.success("✅ 已点击下拉框，等待选项加载...")
+            
+        except Exception as e:
+            automation_logger.error(f"❌ 点击下拉框失败: {str(e)[:100]}")
+            return False
+        
+        # 检查是否出现了模型选择弹框/下拉菜单
+        if check_popover_appeared(page):
+            automation_logger.success("✅ 模型选择菜单已出现！")
+            return select_model_from_popover(page, model_name)
+        else:
+            automation_logger.error("❌ 点击后未出现模型选择菜单")
+            try:
+                page.screenshot(path="debug_no_popover_after_click.png")
+                automation_logger.info("📸 保存调试截图: debug_no_popover_after_click.png")
+            except:
+                pass
+            return False
     
     except Exception as e:
         automation_logger.error(f"💥 模型选择异常: {str(e)[:200]}")
