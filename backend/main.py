@@ -80,7 +80,20 @@ def startup_event():
     from backend.models import create_db_and_tables
     create_db_and_tables()
     print("[MAIN] Database tables initialized.")
-    print("[MAIN] Backend started. Automation worker disabled.")
+    
+    # 自动启动自动化工作线程
+    import os
+    enable_auto_worker = os.getenv("ENABLE_AUTO_WORKER", "true").lower() == "true"
+    
+    if enable_auto_worker:
+        print("[MAIN] 🚀 Auto-starting automation worker...")
+        try:
+            start_automation_worker()
+            print("[MAIN] ✅ Automation worker started successfully!")
+        except Exception as e:
+            print(f"[MAIN] ❌ Failed to start automation worker: {str(e)[:100]}")
+    else:
+        print("[MAIN] Backend started. Automation worker disabled by config.")
 
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")

@@ -38,6 +38,7 @@ user_images/
 *.gif
 
 # 测试文件 (本地测试，不上传服务器)
+# 测试脚本
 test_automation.py
 测试说明.md
 test_images/
