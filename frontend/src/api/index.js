@@ -150,13 +150,23 @@ export const confirmPayment = async (params) => {
     return response.data
 }
 
-export const createOrder = async (prompt) => {
-    const response = await api.post('/orders/create', { prompt })
+export const createOrder = async (prompt, modelName = null, firstFrameImage = null, lastFrameImage = null) => {
+    const response = await api.post('/orders/create', { 
+        prompt,
+        model_name: modelName,
+        first_frame_image: firstFrameImage,
+        last_frame_image: lastFrameImage
+    })
     return response.data
 }
 
 export const getOrders = async () => {
     const response = await api.get('/orders')
+    return response.data
+}
+
+export const getAvailableModels = async () => {
+    const response = await api.get('/models')
     return response.data
 }
 

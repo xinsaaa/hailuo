@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { getCurrentUser, createOrder, getOrders, getPublicConfig } from '../api'
+import { getCurrentUser, createOrder, getOrders, getPublicConfig, getAvailableModels } from '../api'
 
 const route = useRoute()
 const router = useRouter()
@@ -11,6 +11,11 @@ const user = ref(null)
 const orders = ref([])
 const prompt = ref(route.query.prompt || '')
 const loading = ref(false)
+
+// 模型选择相关状态
+const availableModels = ref([])
+const selectedModel = ref(null)
+const showModelSelector = ref(false)
 
 // 系统配置（从 API 加载）
 const config = ref({
@@ -50,14 +55,23 @@ const startOrdersPolling = () => {
   }, 1500) // 1.5秒刷新一次
 }
 
+// 点击外部关闭模型选择器
+const handleClickOutside = (event) => {
+  if (showModelSelector.value && !event.target.closest('.model-selector')) {
+    showModelSelector.value = false
+  }
+}
+
 onMounted(() => {
   window.addEventListener('mousemove', handleMouseMove)
+  document.addEventListener('click', handleClickOutside)
   loadData()
   startOrdersPolling()
 })
 
 onUnmounted(() => {
   window.removeEventListener('mousemove', handleMouseMove)
+  document.removeEventListener('click', handleClickOutside)
   if (ordersInterval) clearInterval(ordersInterval)
 })
 
@@ -79,16 +93,22 @@ const showNotification = (message, type = 'info') => {
 
 const loadData = async () => {
   try {
-    // 并行加载用户、订单和配置
-    const [userData, ordersData, configData] = await Promise.all([
+    // 并行加载用户、订单、配置和模型
+    const [userData, ordersData, configData, modelsData] = await Promise.all([
       getCurrentUser(),
       getOrders(),
-      getPublicConfig().catch(() => null)
+      getPublicConfig().catch(() => null),
+      getAvailableModels().catch(() => null)
     ])
     user.value = userData
     orders.value = ordersData
     if (configData) {
       config.value = configData
+    }
+    if (modelsData && modelsData.models) {
+      availableModels.value = modelsData.models
+      // 设置默认选中模型
+      selectedModel.value = modelsData.models.find(m => m.is_default) || modelsData.models[0]
     }
   } catch (err) {
     if (err.response?.status === 401) {
@@ -103,6 +123,11 @@ const handleCreateOrder = async () => {
     return
   }
   
+  if (!selectedModel.value) {
+    showNotification('请选择生成模型', 'error')
+    return
+  }
+  
   if (!user.value || user.value.balance < config.value.video_price) {
     showNotification(`余额不足，需 ${config.value.video_price} 元`, 'error')
     return
@@ -111,7 +136,7 @@ const handleCreateOrder = async () => {
   loading.value = true
   
   try {
-    await createOrder(prompt.value)
+    await createOrder(prompt.value, selectedModel.value.name)
     showNotification('订单提交成功！AI 正在为您生成...', 'success')
     prompt.value = ''
     await loadData()
@@ -120,6 +145,11 @@ const handleCreateOrder = async () => {
   } finally {
     loading.value = false
   }
+}
+
+const selectModel = (model) => {
+  selectedModel.value = model
+  showModelSelector.value = false
 }
 
 const statusMap = {
@@ -201,7 +231,74 @@ const handleLogout = () => {
             <div class="relative bg-[#12121a] border border-white/10 rounded-2xl p-8">
               <div class="flex justify-between items-center mb-6">
                 <h2 class="text-xl font-bold text-white">开始创作</h2>
-                <span class="text-xs font-medium text-cyan-400 bg-cyan-500/10 px-3 py-1 rounded-full border border-cyan-500/20">Pro 模型</span>
+                <div class="flex items-center gap-3">
+                  <!-- 模型选择器 -->
+                  <div class="relative model-selector">
+                    <button 
+                      @click="showModelSelector = !showModelSelector"
+                      class="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/15 border border-white/20 rounded-lg text-sm text-white transition-all"
+                    >
+                      <div class="flex items-center gap-2">
+                        <div class="w-2 h-2 bg-cyan-400 rounded-full"></div>
+                        <span>{{ selectedModel?.display_name || '选择模型' }}</span>
+                        <span v-if="selectedModel?.badge" class="px-2 py-0.5 bg-cyan-500/20 text-cyan-400 text-xs rounded border border-cyan-500/30">
+                          {{ selectedModel.badge }}
+                        </span>
+                      </div>
+                      <svg class="w-4 h-4 transition-transform" :class="{ 'rotate-180': showModelSelector }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </button>
+
+                    <!-- 模型选择下拉菜单 -->
+                    <Transition name="dropdown">
+                      <div v-if="showModelSelector" class="absolute top-full right-0 mt-2 w-80 bg-[#12121a] border border-white/20 rounded-xl shadow-2xl z-50 overflow-hidden">
+                        <div class="p-3 border-b border-white/10">
+                          <h3 class="text-sm font-bold text-white mb-1">选择生成模型</h3>
+                          <p class="text-xs text-gray-400">不同模型有不同的效果和价格</p>
+                        </div>
+                        <div class="max-h-60 overflow-y-auto">
+                          <div 
+                            v-for="model in availableModels" 
+                            :key="model.id"
+                            @click="selectModel(model)"
+                            class="p-3 hover:bg-white/5 cursor-pointer border-b border-white/5 last:border-b-0 transition-all"
+                            :class="{ 'bg-cyan-500/10': selectedModel?.id === model.id }"
+                          >
+                            <div class="flex items-start justify-between">
+                              <div class="flex-1">
+                                <div class="flex items-center gap-2 mb-1">
+                                  <span class="font-medium text-white text-sm">{{ model.display_name }}</span>
+                                  <span v-if="model.badge" class="px-2 py-0.5 bg-cyan-500/20 text-cyan-400 text-xs rounded border border-cyan-500/30">
+                                    {{ model.badge }}
+                                  </span>
+                                  <span v-if="model.is_default" class="px-2 py-0.5 bg-green-500/20 text-green-400 text-xs rounded border border-green-500/30">
+                                    推荐
+                                  </span>
+                                </div>
+                                <p class="text-xs text-gray-400 mb-2">{{ model.description }}</p>
+                                <div class="flex flex-wrap gap-1">
+                                  <span 
+                                    v-for="feature in model.features" 
+                                    :key="feature"
+                                    class="px-2 py-0.5 bg-white/10 text-gray-300 text-xs rounded"
+                                  >
+                                    {{ feature }}
+                                  </span>
+                                </div>
+                              </div>
+                              <div v-if="selectedModel?.id === model.id" class="ml-3 text-cyan-400">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                                </svg>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </Transition>
+                  </div>
+                </div>
               </div>
               
               <div class="relative">
@@ -260,6 +357,10 @@ const handleLogout = () => {
                     <p class="text-white font-medium line-clamp-2 leading-relaxed">{{ order.prompt }}</p>
                     <div class="flex items-center gap-3 mt-2">
                       <p class="text-xs text-gray-500">{{ new Date(order.created_at).toLocaleString() }}</p>
+                      <div v-if="order.model_name" class="flex items-center gap-1">
+                        <div class="w-1 h-1 bg-gray-600 rounded-full"></div>
+                        <span class="text-xs text-purple-400">{{ order.model_name }}</span>
+                      </div>
                       <a v-if="order.status === 'completed' && order.video_url" 
                          :href="order.video_url" 
                          target="_blank"
@@ -311,5 +412,24 @@ const handleLogout = () => {
 .toast-leave-to {
   opacity: 0;
   transform: translate(-50%, -20px);
+}
+
+.dropdown-enter-active,
+.dropdown-leave-active {
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transform-origin: top right;
+}
+
+.dropdown-enter-from,
+.dropdown-leave-to {
+  opacity: 0;
+  transform: scale(0.95) translateY(-10px);
+}
+
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 </style>
