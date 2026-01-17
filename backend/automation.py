@@ -160,6 +160,123 @@ def get_latest_verification_code_sync() -> Optional[str]:
     return None
 
 
+# ============ 登录状态管理 ============
+
+def save_login_state(page: Page):
+    """保存登录状态（cookies和localStorage）"""
+    try:
+        import json
+        import os
+        
+        # 创建状态保存目录
+        state_dir = "login_state"
+        os.makedirs(state_dir, exist_ok=True)
+        
+        # 保存cookies
+        cookies = page.context.cookies()
+        with open(f"{state_dir}/cookies.json", "w") as f:
+            json.dump(cookies, f)
+        
+        # 保存localStorage
+        local_storage = page.evaluate("() => JSON.stringify(localStorage)")
+        with open(f"{state_dir}/localStorage.json", "w") as f:
+            f.write(local_storage)
+            
+        automation_logger.success("💾 登录状态已保存")
+        
+    except Exception as e:
+        automation_logger.warn(f"⚠️  保存登录状态失败: {str(e)[:100]}")
+
+
+def restore_login_state(page: Page) -> bool:
+    """恢复登录状态"""
+    try:
+        import json
+        import os
+        
+        state_dir = "login_state"
+        
+        # 检查状态文件是否存在
+        if not (os.path.exists(f"{state_dir}/cookies.json") and 
+                os.path.exists(f"{state_dir}/localStorage.json")):
+            automation_logger.info("ℹ️  未找到保存的登录状态")
+            return False
+        
+        automation_logger.info("🔄 正在恢复登录状态...")
+        
+        # 恢复cookies
+        with open(f"{state_dir}/cookies.json", "r") as f:
+            cookies = json.load(f)
+        
+        page.context.add_cookies(cookies)
+        automation_logger.success("🍪 Cookies已恢复")
+        
+        # 恢复localStorage
+        with open(f"{state_dir}/localStorage.json", "r") as f:
+            local_storage_data = f.read()
+        
+        page.evaluate(f"""
+            const data = {local_storage_data};
+            for (const [key, value] of Object.entries(data)) {{
+                localStorage.setItem(key, value);
+            }}
+        """)
+        automation_logger.success("💾 localStorage已恢复")
+        
+        return True
+        
+    except Exception as e:
+        automation_logger.warn(f"⚠️  恢复登录状态失败: {str(e)[:100]}")
+        return False
+
+
+def check_login_status(page: Page) -> bool:
+    """检查当前页面的登录状态"""
+    try:
+        automation_logger.info("🔍 检查登录状态...")
+        
+        # 等待页面稳定
+        page.wait_for_timeout(2000)
+        
+        # 方法1: 检查是否存在登录按钮
+        try:
+            login_btn = page.locator("div.border-hl_line_00:has-text('登录')").first
+            login_btn.wait_for(state="visible", timeout=3000)
+            automation_logger.info("❌ 发现登录按钮，未登录状态")
+            return False
+        except:
+            # 没有找到登录按钮，可能已登录
+            pass
+        
+        # 方法2: 检查视频创建输入框
+        try:
+            create_input = page.locator("#video-create-input [contenteditable='true']")
+            create_input.wait_for(state="visible", timeout=5000)
+            automation_logger.success("✅ 确认已登录状态")
+            return True
+        except:
+            automation_logger.info("❓ 登录状态不明确")
+            return False
+            
+    except Exception as e:
+        automation_logger.warn(f"⚠️  检查登录状态出错: {str(e)[:100]}")
+        return False
+
+
+def clear_login_state():
+    """清除保存的登录状态"""
+    try:
+        import os
+        import shutil
+        
+        state_dir = "login_state"
+        if os.path.exists(state_dir):
+            shutil.rmtree(state_dir)
+            automation_logger.info("🗑️  已清除登录状态")
+    except Exception as e:
+        automation_logger.warn(f"⚠️  清除登录状态失败: {str(e)[:100]}")
+
+
 # ============ 登录流程 ============
 
 def login_to_hailuo(page: Page) -> bool:
@@ -256,6 +373,11 @@ def login_to_hailuo(page: Page) -> bool:
                 state="visible", timeout=30000
             )
             automation_logger.success("🎉 登录验证成功！")
+            
+            # 保存登录状态
+            automation_logger.info("💾 保存登录状态以便下次使用...")
+            save_login_state(page)
+            
             return True
         except:
             automation_logger.error("❌ 登录验证失败")
@@ -600,9 +722,36 @@ def automation_worker():
                         automation_logger.error(f"💥 页面加载最终失败，已重试 {max_retries} 次")
                         raise Exception(f"页面加载失败，已重试 {max_retries} 次")
             
-            # 登录
-            automation_logger.info("🔐 开始登录流程...")
-            _is_logged_in = login_to_hailuo(_page)
+            # 智能登录流程
+            automation_logger.info("🔐 开始智能登录流程...")
+            
+            # 步骤1: 尝试恢复之前的登录状态
+            automation_logger.info("🔄 尝试恢复之前的登录状态...")
+            login_restored = restore_login_state(_page)
+            
+            if login_restored:
+                # 刷新页面以应用恢复的状态
+                automation_logger.info("🔄 刷新页面以应用登录状态...")
+                _page.reload(timeout=20000)
+                _page.wait_for_timeout(3000)
+                
+                # 检查恢复后的登录状态
+                if check_login_status(_page):
+                    automation_logger.success("✅ 登录状态恢复成功，跳过登录流程")
+                    _is_logged_in = True
+                else:
+                    automation_logger.warn("⚠️  登录状态已过期，需要重新登录")
+                    clear_login_state()  # 清除无效的状态
+                    _is_logged_in = False
+            else:
+                automation_logger.info("ℹ️  无可用的登录状态，准备执行登录")
+                _is_logged_in = False
+            
+            # 步骤2: 如果状态恢复失败，执行完整登录流程
+            if not _is_logged_in:
+                automation_logger.info("🔐 执行完整登录流程...")
+                _is_logged_in = login_to_hailuo(_page)
+                
             if not _is_logged_in:
                 automation_logger.error("❌ 登录失败，自动化服务停止")
                 return

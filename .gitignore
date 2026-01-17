@@ -22,6 +22,11 @@ build/
 .env.*.local
 .env.production
 .env.development
+config.ini
+
+# 登录状态文件
+login_state/
+login_state/*.json
 
 # IDE
 .idea/
