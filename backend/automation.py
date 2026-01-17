@@ -20,7 +20,7 @@ from backend.models import VerificationCode, VideoOrder, engine
 
 # ============ 常量配置 ============
 import os
-HAILUO_URL = "https://hailuoai.com/create/text-to-video"
+HAILUO_URL = "https://hailuoai.com/create/image-to-video"
 PHONE_NUMBER = os.getenv("HAILUO_PHONE", "17366935232")
 MAX_CONCURRENT_TASKS = 2  # 海螺 AI 允许的最大并发任务数
 POLL_INTERVAL = 5  # 轮询间隔（秒）
@@ -390,31 +390,104 @@ def login_to_hailuo(page: Page) -> bool:
 
 # ============ 视频生成流程 ============
 
-def submit_video_task(page: Page, order_id: int, prompt: str) -> bool:
-    """提交视频生成任务"""
+def submit_video_task(page: Page, order_id: int, prompt: str, first_frame_path: str = None, last_frame_path: str = None) -> bool:
+    """提交图片转视频任务"""
     try:
-        automation_logger.info(f"🎬 开始提交视频任务 (订单#{order_id})")
+        automation_logger.info(f"🎬 开始提交图片转视频任务 (订单#{order_id})")
         
-        # 添加追踪 ID
-        automation_logger.info("🏷️  添加订单追踪标识...")
-        prompt_with_id = add_tracking_id(prompt, order_id)
-        automation_logger.info(f"📝 最终提示词: {prompt_with_id[:100]}...")
+        # 检查图片路径
+        if not first_frame_path:
+            automation_logger.error("❌ 首帧图片路径不能为空")
+            return False
         
-        # 填写提示词
-        automation_logger.info("🎯 定位输入框...")
-        input_area = page.locator("#video-create-input [contenteditable='true']")
-        automation_logger.info("👆 点击输入框...")
-        input_area.click()
-        automation_logger.info("📝 填写提示词...")
-        input_area.fill(prompt_with_id)
-        automation_logger.info("⏳ 等待输入完成...")
-        page.wait_for_timeout(500)
-        automation_logger.success("✅ 提示词填写完成")
+        automation_logger.info(f"🖼️  首帧图片: {first_frame_path}")
+        automation_logger.info(f"🖼️  尾帧图片: {last_frame_path if last_frame_path else '无'}")
         
-        # 点击生成按钮
+        # 步骤1: 上传首帧图片
+        automation_logger.info("📤 开始上传首帧图片...")
+        first_frame_uploaded = upload_first_frame_image(page, first_frame_path)
+        if not first_frame_uploaded:
+            automation_logger.error("❌ 首帧图片上传失败")
+            return False
+        
+        # 步骤2: 如果有尾帧图片，切换到尾帧模式并上传
+        if last_frame_path:
+            automation_logger.info("🔄 切换到尾帧模式...")
+            switched_to_last_frame = switch_to_last_frame_mode(page)
+            if not switched_to_last_frame:
+                automation_logger.error("❌ 切换到尾帧模式失败")
+                return False
+            
+            automation_logger.info("📤 开始上传尾帧图片...")
+            last_frame_uploaded = upload_last_frame_image(page, last_frame_path)
+            if not last_frame_uploaded:
+                automation_logger.error("❌ 尾帧图片上传失败")
+                return False
+        
+        # 步骤3: 填写提示词（如果有）
+        if prompt and prompt.strip():
+            automation_logger.info("📝 填写描述文本...")
+            prompt_with_id = add_tracking_id(prompt, order_id)
+            automation_logger.info(f"📝 最终提示词: {prompt_with_id[:100]}...")
+            
+            # 查找文本输入框（图片转视频页面的输入框可能不同）
+            automation_logger.info("🎯 定位文本输入框...")
+            try:
+                # 尝试多个可能的选择器
+                text_input = None
+                selectors = [
+                    "textarea[placeholder*='描述']",
+                    "textarea[placeholder*='提示']", 
+                    "input[placeholder*='描述']",
+                    "input[placeholder*='提示']",
+                    "[contenteditable='true']"
+                ]
+                
+                for selector in selectors:
+                    try:
+                        text_input = page.locator(selector).first
+                        if text_input.is_visible():
+                            automation_logger.success(f"✅ 找到文本输入框: {selector}")
+                            break
+                    except:
+                        continue
+                
+                if text_input and text_input.is_visible():
+                    automation_logger.info("👆 点击输入框...")
+                    text_input.click()
+                    automation_logger.info("📝 填写提示词...")
+                    text_input.fill(prompt_with_id)
+                    automation_logger.success("✅ 提示词填写完成")
+                else:
+                    automation_logger.warn("⚠️  未找到文本输入框，跳过提示词填写")
+                    
+            except Exception as e:
+                automation_logger.warn(f"⚠️  填写提示词失败: {str(e)[:100]}")
+        
+        # 步骤4: 点击生成按钮
         automation_logger.info("🔍 查找生成按钮...")
-        generate_btn = page.locator("button.new-color-btn-bg").first
-        if generate_btn.is_visible():
+        generate_btn = None
+        
+        # 尝试多个可能的生成按钮选择器
+        button_selectors = [
+            "button.new-color-btn-bg",
+            "button:has-text('生成')",
+            "button:has-text('开始生成')", 
+            "button[type='submit']",
+            ".generate-btn"
+        ]
+        
+        for selector in button_selectors:
+            try:
+                btn = page.locator(selector).first
+                if btn.is_visible():
+                    generate_btn = btn
+                    automation_logger.success(f"✅ 找到生成按钮: {selector}")
+                    break
+            except:
+                continue
+        
+        if generate_btn:
             automation_logger.info("🚀 点击生成按钮...")
             generate_btn.click()
             automation_logger.success(f"✅ 订单#{order_id}已成功提交生成")
@@ -433,13 +506,189 @@ def submit_video_task(page: Page, order_id: int, prompt: str) -> bool:
                 else:
                     automation_logger.warn(f"⚠️  订单#{order_id}在数据库中不存在")
             
-            automation_logger.success(f"🎉 任务提交完成! 当前生成中: {len(_generating_orders)}个")
+            automation_logger.success(f"🎉 图片转视频任务提交完成! 当前生成中: {len(_generating_orders)}个")
             return True
         else:
             automation_logger.error("❌ 未找到生成按钮")
             return False
+            
     except Exception as e:
         automation_logger.error(f"💥 提交订单#{order_id}失败: {str(e)[:200]}")
+        return False
+
+
+def upload_first_frame_image(page: Page, image_path: str) -> bool:
+    """上传首帧图片"""
+    try:
+        automation_logger.info("🔍 查找首帧上传区域...")
+        
+        # 根据你提供的HTML结构查找上传区域
+        upload_wrapper = page.locator(".upload-image-wrapper").first
+        
+        if not upload_wrapper.is_visible():
+            automation_logger.error("❌ 未找到首帧上传区域")
+            return False
+        
+        automation_logger.success("✅ 找到首帧上传区域")
+        
+        # 查找隐藏的文件输入框
+        file_input = upload_wrapper.locator("input[type='file']")
+        
+        if not file_input.count():
+            automation_logger.error("❌ 未找到文件输入框")
+            return False
+        
+        automation_logger.info(f"📤 上传首帧图片: {image_path}")
+        
+        # 检查文件是否存在
+        import os
+        if not os.path.exists(image_path):
+            automation_logger.error(f"❌ 图片文件不存在: {image_path}")
+            return False
+        
+        # 上传文件
+        file_input.set_input_files(image_path)
+        automation_logger.success("✅ 首帧图片上传完成")
+        
+        # 等待上传处理
+        automation_logger.info("⏳ 等待图片处理...")
+        page.wait_for_timeout(3000)
+        
+        # 验证上传是否成功（可以通过检查页面变化）
+        try:
+            # 等待图片预览出现或上传完成的标识
+            page.wait_for_function("() => document.querySelector('.upload-image-wrapper img') !== null", timeout=10000)
+            automation_logger.success("✅ 首帧图片预览已显示")
+        except:
+            automation_logger.warn("⚠️  无法验证图片上传状态，继续流程")
+        
+        return True
+        
+    except Exception as e:
+        automation_logger.error(f"💥 上传首帧图片失败: {str(e)[:200]}")
+        return False
+
+
+def switch_to_last_frame_mode(page: Page) -> bool:
+    """切换到尾帧模式"""
+    try:
+        automation_logger.info("🔍 查找尾帧切换按钮...")
+        
+        # 根据你提供的HTML结构查找尾帧按钮
+        last_frame_btn = page.locator("div:has-text('尾帧')").filter(has=page.locator("svg"))
+        
+        if not last_frame_btn.is_visible():
+            automation_logger.warn("⚠️  未找到尾帧切换按钮，尝试其他选择器...")
+            
+            # 尝试其他可能的选择器
+            selectors = [
+                "button:has-text('尾帧')",
+                "div:has-text('尾帧')",
+                "[class*='frame']:has-text('尾帧')",
+                "div.text-hl_white_75:has-text('尾帧')"
+            ]
+            
+            for selector in selectors:
+                try:
+                    btn = page.locator(selector).first
+                    if btn.is_visible():
+                        last_frame_btn = btn
+                        automation_logger.success(f"✅ 找到尾帧按钮: {selector}")
+                        break
+                except:
+                    continue
+                    
+            if not last_frame_btn or not last_frame_btn.is_visible():
+                automation_logger.error("❌ 未找到尾帧切换按钮")
+                return False
+        
+        automation_logger.info("👆 点击切换到尾帧模式...")
+        last_frame_btn.click()
+        
+        # 等待界面切换
+        automation_logger.info("⏳ 等待界面切换...")
+        page.wait_for_timeout(2000)
+        
+        # 验证是否成功切换到尾帧模式
+        try:
+            # 检查是否出现尾帧上传区域
+            last_frame_upload = page.locator(".upload-image-wrapper:has-text('尾帧')").or_(
+                page.locator("span:has-text('拖拽/粘贴/点击上传尾帧图片')")
+            )
+            
+            if last_frame_upload.is_visible():
+                automation_logger.success("✅ 成功切换到尾帧模式")
+                return True
+            else:
+                automation_logger.warn("⚠️  无法确认是否切换成功，继续流程")
+                return True
+                
+        except Exception as e:
+            automation_logger.warn(f"⚠️  验证尾帧模式切换失败: {str(e)[:100]}")
+            return True  # 假设切换成功，继续流程
+        
+    except Exception as e:
+        automation_logger.error(f"💥 切换尾帧模式失败: {str(e)[:200]}")
+        return False
+
+
+def upload_last_frame_image(page: Page, image_path: str) -> bool:
+    """上传尾帧图片"""
+    try:
+        automation_logger.info("🔍 查找尾帧上传区域...")
+        
+        # 查找尾帧上传区域（可能与首帧区域有相同的class但内容不同）
+        upload_wrappers = page.locator(".upload-image-wrapper").all()
+        
+        last_frame_wrapper = None
+        for wrapper in upload_wrappers:
+            try:
+                # 检查是否包含尾帧相关文本
+                text_content = wrapper.text_content()
+                if "尾帧" in text_content or "上传尾帧图片" in text_content:
+                    last_frame_wrapper = wrapper
+                    break
+            except:
+                continue
+        
+        if not last_frame_wrapper:
+            automation_logger.warn("⚠️  未找到专门的尾帧上传区域，使用第二个上传区域...")
+            # 如果找不到专门的尾帧区域，使用第二个上传区域
+            if len(upload_wrappers) >= 2:
+                last_frame_wrapper = upload_wrappers[1]
+            else:
+                automation_logger.error("❌ 未找到尾帧上传区域")
+                return False
+        
+        automation_logger.success("✅ 找到尾帧上传区域")
+        
+        # 查找文件输入框
+        file_input = last_frame_wrapper.locator("input[type='file']")
+        
+        if not file_input.count():
+            automation_logger.error("❌ 未找到尾帧文件输入框")
+            return False
+        
+        automation_logger.info(f"📤 上传尾帧图片: {image_path}")
+        
+        # 检查文件是否存在
+        import os
+        if not os.path.exists(image_path):
+            automation_logger.error(f"❌ 尾帧图片文件不存在: {image_path}")
+            return False
+        
+        # 上传文件
+        file_input.set_input_files(image_path)
+        automation_logger.success("✅ 尾帧图片上传完成")
+        
+        # 等待上传处理
+        automation_logger.info("⏳ 等待尾帧图片处理...")
+        page.wait_for_timeout(3000)
+        
+        return True
+        
+    except Exception as e:
+        automation_logger.error(f"💥 上传尾帧图片失败: {str(e)[:200]}")
         return False
 
 
@@ -819,10 +1068,24 @@ def automation_worker():
                                 with Session(engine) as session:
                                     order = session.get(VideoOrder, order_id)
                                     if order:
-                                        automation_logger.info(f"🎬 提交视频任务: {order.prompt[:50]}...")
-                                        submit_video_task(_page, order_id, order.prompt)
-                                        submitted_count += 1
-                                        automation_logger.success(f"✅ 订单#{order_id}提交成功")
+                                        automation_logger.info(f"🎬 提交图片转视频任务: {order.prompt[:50]}...")
+                                        automation_logger.info(f"🖼️  首帧: {order.first_frame_image or '无'}")
+                                        automation_logger.info(f"🖼️  尾帧: {order.last_frame_image or '无'}")
+                                        
+                                        # 调用图片转视频任务提交
+                                        success = submit_video_task(
+                                            _page, 
+                                            order_id, 
+                                            order.prompt,
+                                            order.first_frame_image,
+                                            order.last_frame_image
+                                        )
+                                        
+                                        if success:
+                                            submitted_count += 1
+                                            automation_logger.success(f"✅ 订单#{order_id}提交成功")
+                                        else:
+                                            automation_logger.error(f"❌ 订单#{order_id}提交失败")
                                     else:
                                         automation_logger.warn(f"⚠️  订单#{order_id}不存在")
                                 

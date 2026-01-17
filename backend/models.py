@@ -21,6 +21,9 @@ class VideoOrder(SQLModel, table=True):
     cost: float = Field(default=0.99)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     task_id: Optional[str] = None # External task ID from automation if applicable
+    # 图片转视频功能
+    first_frame_image: Optional[str] = None  # 首帧图片路径
+    last_frame_image: Optional[str] = None   # 尾帧图片路径
 
 class Transaction(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)

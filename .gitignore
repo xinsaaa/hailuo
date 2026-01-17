@@ -28,6 +28,15 @@ config.ini
 login_state/
 login_state/*.json
 
+# 用户上传的图片
+uploads/
+user_images/
+*.jpg
+*.jpeg
+*.png
+*.webp
+*.gif
+
 # IDE
 .idea/
 .vscode/
