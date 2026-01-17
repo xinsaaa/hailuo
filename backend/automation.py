@@ -710,158 +710,184 @@ def upload_last_frame_image(page: Page, image_path: str) -> bool:
 
 
 def select_generation_model(page: Page, model_name: str = "Hailuo 2.3") -> bool:
-    """选择生成模型 - 基于最新HTML结构实现"""
+    """选择生成模型 - 基于真实HTML结构精确实现"""
     try:
-        automation_logger.info(f"🔍 查找模型选择触发按钮: {model_name}")
+        automation_logger.info(f"🎯 开始模型选择: {model_name}")
         
-        # 根据你提供的HTML结构，查找模型触发按钮
-        trigger_selectors = [
-            # 基于最新HTML结构的选择器
-            "div.flex.flex-row.items-center:has-text('Hailuo')",
-            ".text-hl_text_00:has-text('Hailuo')",
-            "*:has-text('Hailuo 2.3')",
-            "*:has-text('NEW')",
+        # 第一步：查找并点击模型触发按钮
+        # 基于HTML分析，可能的触发按钮位置
+        trigger_strategies = [
+            # 策略1: 查找显示当前模型的区域（通常在页面底部工具栏）
+            "*:has-text('Hailuo 1.0-Director')",  # 当前选中的模型
+            "*:has-text('模型'):not(.ant-popover)",  # 模型标签但不在弹框内
+            "button:has-text('Hailuo')",  # 模型按钮
             
-            # 通用的模型相关选择器
-            "div:has-text('模型')",
-            "*[class*='model']",
-            ".cursor-pointer:has-text('Hailuo')"
+            # 策略2: 查找包含模型信息的可点击区域
+            ".cursor-pointer:has-text('Hailuo'):not(.ant-popover *)",
+            "div:has-text('Hailuo'):has([class*='cursor'])",
+            
+            # 策略3: 通用策略，查找页面上的模型相关元素
+            "[class*='model']:not(.ant-popover *)",
+            ".text-hl_text_00:has-text('Hailuo'):not(.ant-popover *)"
         ]
         
-        trigger_button = None
-        
-        for selector in trigger_selectors:
+        trigger_clicked = False
+        for strategy in trigger_strategies:
             try:
-                elements = page.locator(selector).all()
+                automation_logger.info(f"🔍 尝试触发策略: {strategy}")
+                elements = page.locator(strategy).all()
+                
                 for element in elements:
-                    if element.is_visible():
-                        text_content = element.text_content() or ""
-                        # 查找包含Hailuo或模型的可点击元素
-                        if ("hailuo" in text_content.lower() or "模型" in text_content) and len(text_content.strip()) < 100:
-                            trigger_button = element
-                            automation_logger.success(f"✅ 找到模型触发按钮: {text_content.strip()[:30]}")
-                            break
-                        
-                if trigger_button:
+                    if element.is_visible() and not trigger_clicked:
+                        try:
+                            text = element.text_content() or ""
+                            # 确保元素不在已打开的弹框内，且包含模型信息
+                            if ("hailuo" in text.lower() or "模型" in text) and len(text.strip()) < 200:
+                                automation_logger.info(f"👆 尝试点击: {text[:50]}...")
+                                element.click()
+                                page.wait_for_timeout(2000)  # 等待弹框出现
+                                trigger_clicked = True
+                                break
+                        except Exception as e:
+                            automation_logger.warn(f"点击失败: {str(e)[:50]}")
+                            continue
+                
+                if trigger_clicked:
+                    break
+                    
+            except Exception as e:
+                automation_logger.warn(f"策略失败: {str(e)[:50]}")
+                continue
+        
+        if not trigger_clicked:
+            automation_logger.warn("⚠️  未能触发模型选择，尝试查找已打开的弹框...")
+        
+        # 第二步：等待并查找模型选择弹框
+        automation_logger.info("🔍 查找模型选择弹框...")
+        
+        # 基于真实HTML结构的选择器
+        popover_selectors = [
+            ".ant-popover.model-selection-options:not(.ant-popover-hidden)",
+            ".model-selection-options:not(.ant-popover-hidden)",
+            ".ant-popover:has-text('模型'):not(.ant-popover-hidden)",
+            ".ant-popover-inner-content:has-text('Hailuo 2.3')"
+        ]
+        
+        popover = None
+        for selector in popover_selectors:
+            try:
+                element = page.locator(selector).first
+                if element.is_visible():
+                    popover = element
+                    automation_logger.success(f"✅ 找到模型选择弹框: {selector}")
                     break
             except:
                 continue
         
-        if not trigger_button:
-            automation_logger.warn("⚠️  未找到模型触发按钮，尝试通用方法...")
-            # 尝试查找任何包含"Hailuo"的可点击元素
-            hailuo_elements = page.locator("*:has-text('Hailuo')").all()
-            for element in hailuo_elements:
-                try:
-                    if element.is_visible() and len(element.text_content() or "") < 50:
-                        trigger_button = element
-                        automation_logger.info(f"✅ 找到Hailuo元素: {element.text_content()[:30]}")
-                        break
-                except:
-                    continue
-        
-        if not trigger_button:
-            automation_logger.error("❌ 无法找到模型选择触发按钮")
+        if not popover:
+            automation_logger.error("❌ 无法找到模型选择弹框")
             return False
         
-        # 点击触发按钮打开模型选择列表
-        automation_logger.info("👆 点击模型选择触发按钮...")
-        trigger_button.click()
-        page.wait_for_timeout(1500)  # 等待选项加载
+        # 第三步：在弹框中查找模型选项
+        automation_logger.info("🔍 查找模型选项...")
         
-        # 查找模型选项列表
-        automation_logger.info("🔍 查找模型选项列表...")
+        # 基于真实HTML结构的精确选择器
+        option_selector = "div.hover\\:bg-hl_bg_05.flex.items-center.justify-between.rounded-lg.px-4.py-2.cursor-pointer"
         
-        # 根据你提供的HTML结构查找模型选项
-        option_selectors = [
-            # 基于最新HTML结构
-            "div.hover\\:bg-hl_bg_05.flex.items-center.justify-between.rounded-lg.px-4.py-2.cursor-pointer",
-            ".hover\\:bg-hl_bg_05:has(img[alt*='model'])",
-            ".cursor-pointer:has(img[alt*='Hailuo'])",
-            "div:has-text('Hailuo'):has(.cursor-pointer)",
-            
-            # 通用选择器
-            ".cursor-pointer:has-text('Hailuo')",
-            "div[class*='hover']:has-text('Hailuo')"
-        ]
-        
-        model_options = []
-        
-        for selector in option_selectors:
-            try:
-                options = page.locator(selector).all()
-                if options:
-                    model_options = options
-                    automation_logger.success(f"✅ 找到{len(options)}个模型选项")
-                    break
-            except:
-                continue
+        try:
+            model_options = popover.locator(option_selector).all()
+            automation_logger.success(f"✅ 找到 {len(model_options)} 个模型选项")
+        except:
+            # 备用选择器
+            model_options = popover.locator(".cursor-pointer:has(img[alt*='model'])").all()
+            if not model_options:
+                model_options = popover.locator("*:has-text('Hailuo')").all()
         
         if not model_options:
-            automation_logger.error("❌ 未找到模型选项")
+            automation_logger.error("❌ 弹框中未找到模型选项")
             return False
         
-        # 选择指定的模型
-        automation_logger.info(f"🎯 查找目标模型: {model_name}")
-        model_selected = False
+        # 第四步：选择目标模型
+        automation_logger.info(f"🎯 开始匹配目标模型: {model_name}")
         
-        # 创建模型名称映射
+        # 扩展的模型映射表（基于HTML中实际的模型）
         model_mapping = {
             "hailuo 2.3": ["hailuo 2.3", "2.3"],
             "hailuo 2.3-fast": ["hailuo 2.3-fast", "2.3-fast", "fast"],
             "hailuo 2.0": ["hailuo 2.0", "2.0"],
-            "hailuo 1.5": ["hailuo 1.5", "1.5"],
+            "beta 3.1": ["beta 3.1", "3.1"],
+            "beta 3.1 fast": ["beta 3.1 fast", "3.1 fast"],
+            "hailuo 1.0-director": ["hailuo 1.0-director", "director"],
+            "hailuo 1.0-live": ["hailuo 1.0-live", "live"],
             "hailuo 1.0": ["hailuo 1.0", "1.0"]
         }
         
-        # 查找匹配的模型选项
-        for option in model_options:
+        model_selected = False
+        target_lower = model_name.lower().strip()
+        
+        for i, option in enumerate(model_options):
             try:
                 option_text = option.text_content() or ""
-                automation_logger.info(f"🔍 检查选项: {option_text[:100].replace(chr(10), ' ')}")
+                clean_text = option_text.replace('\n', ' ').strip()
+                option_lower = clean_text.lower()
                 
-                # 检查是否匹配目标模型
-                target_model_lower = model_name.lower()
-                option_text_lower = option_text.lower()
+                automation_logger.info(f"🔍 选项 {i+1}: {clean_text[:60]}")
                 
-                # 直接匹配或通过映射匹配
-                if (target_model_lower in option_text_lower or 
-                    any(alias in option_text_lower for alias in model_mapping.get(target_model_lower, [target_model_lower]))):
-                    
-                    automation_logger.info(f"👆 选择模型选项...")
+                # 精确匹配逻辑
+                is_match = False
+                
+                # 直接名称匹配
+                if target_lower in option_lower:
+                    is_match = True
+                    automation_logger.info(f"✅ 直接匹配: {target_lower}")
+                
+                # 映射匹配
+                if not is_match and target_lower in model_mapping:
+                    aliases = model_mapping[target_lower]
+                    for alias in aliases:
+                        if alias in option_lower:
+                            is_match = True
+                            automation_logger.info(f"✅ 别名匹配: {alias}")
+                            break
+                
+                if is_match:
+                    automation_logger.info("👆 点击选择此模型...")
                     option.click()
-                    automation_logger.success(f"✅ 已选择模型: {option_text[:50].replace(chr(10), ' ')}")
+                    page.wait_for_timeout(1000)
+                    
+                    automation_logger.success(f"✅ 成功选择模型: {clean_text[:50]}")
                     model_selected = True
                     break
                     
             except Exception as e:
-                automation_logger.warn(f"⚠️  检查选项失败: {str(e)[:100]}")
+                automation_logger.warn(f"⚠️  处理选项 {i+1} 失败: {str(e)[:80]}")
                 continue
         
-        # 如果没有找到指定模型，选择第一个选项
+        # 如果没找到匹配的，选择第一个
         if not model_selected and model_options:
             try:
-                automation_logger.info("📋 选择第一个可用模型...")
+                automation_logger.warn("📋 未找到指定模型，选择第一个可用选项...")
                 first_option = model_options[0]
-                first_option_text = first_option.text_content() or "未知模型"
+                first_text = first_option.text_content() or "未知"
                 first_option.click()
-                automation_logger.success(f"✅ 已选择默认模型: {first_option_text[:50].replace(chr(10), ' ')}")
+                page.wait_for_timeout(1000)
+                automation_logger.success(f"✅ 已选择: {first_text[:50]}")
                 model_selected = True
             except Exception as e:
-                automation_logger.warn(f"⚠️  选择默认模型失败: {str(e)[:100]}")
+                automation_logger.error(f"❌ 选择第一个选项失败: {str(e)[:100]}")
         
-        # 等待选择完成
+        # 等待弹框关闭
         page.wait_for_timeout(1000)
         
         if model_selected:
-            automation_logger.success("✅ 模型选择完成")
+            automation_logger.success("🎉 模型选择流程完成")
             return True
         else:
             automation_logger.error("❌ 模型选择失败")
             return False
         
     except Exception as e:
-        automation_logger.error(f"💥 选择模型失败: {str(e)[:200]}")
+        automation_logger.error(f"💥 模型选择异常: {str(e)[:200]}")
         return False
 
 

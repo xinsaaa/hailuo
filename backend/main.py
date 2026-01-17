@@ -697,7 +697,7 @@ def get_available_models():
             "description": "表现力全面升级，更稳定，更真实",
             "type": "image_to_video",
             "is_default": True,
-            "features": ["768P-1080P", "6s-10s", "全面升级", "更稳定", "更真实"],
+            "features": ["768P-1080P", "6s-10s"],
             "badge": "NEW"
         },
         {
@@ -707,7 +707,7 @@ def get_available_models():
             "description": "生成速度更快，超高性价比",
             "type": "image_to_video",
             "is_default": False,
-            "features": ["768P-1080P", "6s-10s", "生成速度快", "超高性价比"],
+            "features": ["768P-1080P", "6s-10s"],
             "badge": "NEW"
         },
         {
@@ -717,8 +717,58 @@ def get_available_models():
             "description": "最佳效果、超清画质、精准响应",
             "type": "image_to_video", 
             "is_default": False,
-            "features": ["首尾帧", "仅尾帧", "512P-1080P", "6s-10s", "超清画质"],
+            "features": ["首尾帧", "仅尾帧", "512P-1080P", "6s-10s"],
             "badge": "NEW"
+        },
+        {
+            "id": "beta_3_1",
+            "name": "Beta 3.1",
+            "display_name": "Beta 3.1",
+            "description": "音画同步，高保真，精准控制",
+            "type": "image_to_video", 
+            "is_default": False,
+            "features": ["音画同出", "首尾帧", "720P-1080P", "8s"],
+            "badge": "3.7折"
+        },
+        {
+            "id": "beta_3_1_fast",
+            "name": "Beta 3.1 Fast",
+            "display_name": "Beta 3.1 Fast",
+            "description": "音画同步，更高速，更高性价比",
+            "type": "image_to_video", 
+            "is_default": False,
+            "features": ["音画同出", "首尾帧", "720P-1080P", "8s"],
+            "badge": "5折"
+        },
+        {
+            "id": "hailuo_1_0_director",
+            "name": "Hailuo 1.0-Director",
+            "display_name": "海螺 1.0-Director",
+            "description": "像专业导演一样控制镜头运动",
+            "type": "image_to_video", 
+            "is_default": False,
+            "features": ["720P", "6s"],
+            "badge": null
+        },
+        {
+            "id": "hailuo_1_0_live",
+            "name": "Hailuo 1.0-Live",
+            "display_name": "海螺 1.0-Live",
+            "description": "角色表现增强，稳定、流畅、生动",
+            "type": "image_to_video", 
+            "is_default": False,
+            "features": ["720P", "6s"],
+            "badge": null
+        },
+        {
+            "id": "hailuo_1_0",
+            "name": "Hailuo 1.0",
+            "display_name": "海螺 1.0",
+            "description": "01系列的基础图生视频模型",
+            "type": "image_to_video", 
+            "is_default": False,
+            "features": ["720P", "6s"],
+            "badge": null
         }
     ]
     
