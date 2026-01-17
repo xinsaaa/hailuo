@@ -157,6 +157,9 @@ class RechargeRequest(BaseModel):
 
 class OrderRequest(BaseModel):
     prompt: str
+    model_name: Optional[str] = "Hailuo 1.0"  # 用户选择的生成模型
+    first_frame_image: Optional[str] = None   # 首帧图片路径
+    last_frame_image: Optional[str] = None    # 尾帧图片路径
 
 
 class VerificationCodeRequest(BaseModel):
@@ -588,7 +591,10 @@ async def create_order(request: OrderRequest, background_tasks: BackgroundTasks,
         user_id=current_user.id,
         prompt=request.prompt,
         video_url=None,
-        cost=cost
+        cost=cost,
+        model_name=request.model_name or "Hailuo 1.0",
+        first_frame_image=request.first_frame_image,
+        last_frame_image=request.last_frame_image
     )
     session.add(new_order)
     
@@ -677,6 +683,46 @@ def get_latest_code(session: Session = Depends(get_session)):
         "code": code.code,
         "created_at": code.created_at.strftime("%H:%M:%S"),
         "source": code.source
+    }
+
+
+@app.get("/api/models")
+def get_available_models():
+    """获取可用的生成模型列表"""
+    models = [
+        {
+            "id": "hailuo_1_0",
+            "name": "Hailuo 1.0", 
+            "display_name": "海螺 1.0",
+            "description": "01系列的基础图生视频模型",
+            "type": "image_to_video",
+            "is_default": True,
+            "features": ["图片转视频", "高质量生成", "快速处理"]
+        },
+        {
+            "id": "hailuo_1_5",
+            "name": "Hailuo 1.5",
+            "display_name": "海螺 1.5", 
+            "description": "升级版图生视频模型，效果更佳",
+            "type": "image_to_video",
+            "is_default": False,
+            "features": ["图片转视频", "超高质量", "细节优化", "动作流畅"]
+        },
+        {
+            "id": "hailuo_pro",
+            "name": "Hailuo Pro",
+            "display_name": "海螺 Pro",
+            "description": "专业级图生视频模型，支持复杂场景",
+            "type": "image_to_video", 
+            "is_default": False,
+            "features": ["专业级质量", "复杂场景", "长时间视频", "多样化风格"]
+        }
+    ]
+    
+    return {
+        "models": models,
+        "default_model": "Hailuo 1.0",
+        "total": len(models)
     }
 
 

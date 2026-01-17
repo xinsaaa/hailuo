@@ -390,7 +390,7 @@ def login_to_hailuo(page: Page) -> bool:
 
 # ============ 视频生成流程 ============
 
-def submit_video_task(page: Page, order_id: int, prompt: str, first_frame_path: str = None, last_frame_path: str = None) -> bool:
+def submit_video_task(page: Page, order_id: int, prompt: str, first_frame_path: str = None, last_frame_path: str = None, model_name: str = "Hailuo 1.0") -> bool:
     """提交图片转视频任务"""
     try:
         automation_logger.info(f"🎬 开始提交图片转视频任务 (订单#{order_id})")
@@ -475,11 +475,11 @@ def submit_video_task(page: Page, order_id: int, prompt: str, first_frame_path: 
             except Exception as e:
                 automation_logger.warn(f"⚠️  填写提示词失败: {str(e)[:100]}")
         
-        # 步骤4: 选择模型（如果需要）
-        automation_logger.info("🎛️  开始选择生成模型...")
-        model_selected = select_generation_model(page)
+        # 步骤4: 选择用户指定的模型
+        automation_logger.info(f"🎛️  开始选择用户指定的模型: {model_name}")
+        model_selected = select_generation_model(page, model_name)
         if not model_selected:
-            automation_logger.warn("⚠️  模型选择失败，使用默认模型继续")
+            automation_logger.warn("⚠️  用户指定模型选择失败，使用默认模型继续")
         
         # 步骤5: 点击生成按钮
         automation_logger.info("🔍 查找生成按钮...")
@@ -1255,6 +1255,7 @@ def automation_worker():
                                         automation_logger.info(f"🎬 提交图片转视频任务: {order.prompt[:50]}...")
                                         automation_logger.info(f"🖼️  首帧: {order.first_frame_image or '无'}")
                                         automation_logger.info(f"🖼️  尾帧: {order.last_frame_image or '无'}")
+                                        automation_logger.info(f"🎛️  用户选择的模型: {order.model_name or 'Hailuo 1.0'}")
                                         
                                         # 调用图片转视频任务提交
                                         success = submit_video_task(
@@ -1262,7 +1263,8 @@ def automation_worker():
                                             order_id, 
                                             order.prompt,
                                             order.first_frame_image,
-                                            order.last_frame_image
+                                            order.last_frame_image,
+                                            order.model_name or "Hailuo 1.0"
                                         )
                                         
                                         if success:
