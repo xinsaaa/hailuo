@@ -37,6 +37,16 @@ user_images/
 *.webp
 *.gif
 
+# 测试文件 (本地测试，不上传服务器)
+test_automation.py
+测试说明.md
+test_images/
+debug_*.png
+test_results/
+*.test.log
+run_test.bat
+run_test.sh
+
 # IDE
 .idea/
 .vscode/
