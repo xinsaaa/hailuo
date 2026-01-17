@@ -21,7 +21,7 @@ from backend.models import VerificationCode, VideoOrder, engine
 # ============ 常量配置 ============
 import os
 HAILUO_URL = "https://hailuoai.com/create/image-to-video"
-PHONE_NUMBER = os.getenv("HAILUO_PHONE", "17366935232")
+PHONE_NUMBER = os.getenv("HAILUO_PHONE", "15781806380")
 MAX_CONCURRENT_TASKS = 2  # 海螺 AI 允许的最大并发任务数
 POLL_INTERVAL = 5  # 轮询间隔（秒）
 
@@ -430,17 +430,17 @@ def submit_video_task(page: Page, order_id: int, prompt: str, first_frame_path: 
             prompt_with_id = add_tracking_id(prompt, order_id)
             automation_logger.info(f"📝 最终提示词: {prompt_with_id[:100]}...")
             
-            # 查找文本输入框（图片转视频页面的输入框可能不同）
-            automation_logger.info("🎯 定位文本输入框...")
+            # 查找文本输入框（使用精确的选择器）
+            automation_logger.info("🎯 定位视频描述输入框...")
             try:
-                # 尝试多个可能的选择器
+                # 使用你提供的精确选择器
                 text_input = None
                 selectors = [
-                    "textarea[placeholder*='描述']",
-                    "textarea[placeholder*='提示']", 
-                    "input[placeholder*='描述']",
-                    "input[placeholder*='提示']",
-                    "[contenteditable='true']"
+                    "#video-create-textarea",  # 最精确的ID选择器
+                    "#video-create-input [contenteditable='true']",  # 容器内的可编辑区域
+                    "div[role='textbox'][contenteditable='true']",  # 角色为textbox的可编辑区域
+                    "[data-slate-editor='true']",  # Slate编辑器
+                    ".description_wrap [contenteditable='true']"  # 描述区域内的可编辑元素
                 ]
                 
                 for selector in selectors:
@@ -456,15 +456,32 @@ def submit_video_task(page: Page, order_id: int, prompt: str, first_frame_path: 
                     automation_logger.info("👆 点击输入框...")
                     text_input.click()
                     automation_logger.info("📝 填写提示词...")
-                    text_input.fill(prompt_with_id)
-                    automation_logger.success("✅ 提示词填写完成")
+                    
+                    # 对于contenteditable元素，可能需要特殊处理
+                    try:
+                        # 先清空内容
+                        page.keyboard.press("Control+A")
+                        page.keyboard.press("Delete")
+                        # 然后输入内容
+                        page.keyboard.type(prompt_with_id)
+                        automation_logger.success("✅ 提示词填写完成")
+                    except:
+                        # 回退到fill方法
+                        text_input.fill(prompt_with_id)
+                        automation_logger.success("✅ 提示词填写完成(回退方法)")
                 else:
                     automation_logger.warn("⚠️  未找到文本输入框，跳过提示词填写")
                     
             except Exception as e:
                 automation_logger.warn(f"⚠️  填写提示词失败: {str(e)[:100]}")
         
-        # 步骤4: 点击生成按钮
+        # 步骤4: 选择模型（如果需要）
+        automation_logger.info("🎛️  开始选择生成模型...")
+        model_selected = select_generation_model(page)
+        if not model_selected:
+            automation_logger.warn("⚠️  模型选择失败，使用默认模型继续")
+        
+        # 步骤5: 点击生成按钮
         automation_logger.info("🔍 查找生成按钮...")
         generate_btn = None
         
@@ -689,6 +706,112 @@ def upload_last_frame_image(page: Page, image_path: str) -> bool:
         
     except Exception as e:
         automation_logger.error(f"💥 上传尾帧图片失败: {str(e)[:200]}")
+        return False
+
+
+def select_generation_model(page: Page, model_name: str = None) -> bool:
+    """选择生成模型"""
+    try:
+        automation_logger.info("🔍 查找模型选择下拉框...")
+        
+        # 常见的下拉框选择器模式
+        dropdown_selectors = [
+            # 通用下拉框选择器
+            "select",
+            ".ant-select",
+            ".dropdown",
+            ".select-dropdown",
+            "[role='combobox']",
+            "[aria-haspopup='listbox']",
+            
+            # 可能的模型选择相关选择器
+            "*[class*='model']",
+            "*[class*='Model']", 
+            "*[id*='model']",
+            "*[id*='Model']",
+            "button[aria-expanded]",
+            
+            # 基于文本的查找
+            "button:has-text('模型')",
+            "div:has-text('模型')",
+            "*:has-text('选择模型')",
+            "*:has-text('生成模型')"
+        ]
+        
+        dropdown_element = None
+        
+        for selector in dropdown_selectors:
+            try:
+                elements = page.locator(selector).all()
+                for element in elements:
+                    if element.is_visible():
+                        # 检查元素文本内容是否与模型相关
+                        text_content = element.text_content() or ""
+                        if any(keyword in text_content.lower() for keyword in ['模型', 'model', '选择', '下拉']):
+                            dropdown_element = element
+                            automation_logger.success(f"✅ 找到模型选择框: {selector}")
+                            break
+                        
+                if dropdown_element:
+                    break
+            except:
+                continue
+        
+        if not dropdown_element:
+            automation_logger.warn("⚠️  未找到模型选择下拉框")
+            automation_logger.info("💡 提示：请手动提供下拉框的HTML结构")
+            return False
+        
+        # 点击打开下拉框
+        automation_logger.info("👆 点击打开模型选择框...")
+        dropdown_element.click()
+        page.wait_for_timeout(1000)
+        
+        # 如果指定了模型名称，尝试选择
+        if model_name:
+            automation_logger.info(f"🎯 尝试选择模型: {model_name}")
+            
+            # 查找模型选项
+            option_selectors = [
+                f"*:has-text('{model_name}')",
+                f"[value*='{model_name}']",
+                f".option:has-text('{model_name}')",
+                f".ant-select-item:has-text('{model_name}')"
+            ]
+            
+            option_selected = False
+            for selector in option_selectors:
+                try:
+                    option = page.locator(selector).first
+                    if option.is_visible():
+                        option.click()
+                        automation_logger.success(f"✅ 已选择模型: {model_name}")
+                        option_selected = True
+                        break
+                except:
+                    continue
+            
+            if not option_selected:
+                automation_logger.warn(f"⚠️  未找到模型选项: {model_name}")
+        else:
+            automation_logger.info("📋 使用默认模型选项")
+            
+            # 尝试选择第一个可见选项（通常是默认选项）
+            try:
+                first_option = page.locator(".option, .ant-select-item, [role='option']").first
+                if first_option.is_visible():
+                    first_option.click()
+                    automation_logger.success("✅ 已选择默认模型")
+            except:
+                automation_logger.warn("⚠️  无法选择默认模型选项")
+        
+        # 等待选择完成
+        page.wait_for_timeout(1000)
+        automation_logger.success("✅ 模型选择完成")
+        return True
+        
+    except Exception as e:
+        automation_logger.error(f"💥 选择模型失败: {str(e)[:200]}")
         return False
 
 
