@@ -1226,24 +1226,58 @@ def automation_worker():
         automation_logger.info(f"📝 浏览器参数配置完成，共{len(browser_args)}个优化参数")
         
         automation_logger.info("🚀 正在启动浏览器...")
-        try:
-            _browser = p.chromium.launch(
-                headless=use_headless,
-                channel="chrome" if not use_headless else None,
-                args=browser_args
-            )
-            automation_logger.success(f"✅ 浏览器启动成功 ({'无界面' if use_headless else '有界面'}模式)")
-        except Exception as e:
-            automation_logger.warn(f"⚠️  Chrome未找到，尝试使用Chromium: {str(e)[:100]}")
-            try:
-                _browser = p.chromium.launch(
+        
+        # 智能浏览器检测和启动
+        browser_options = [
+            # 1. 尝试Chrome (Google Chrome)
+            {
+                "name": "Chrome",
+                "launch_func": lambda: p.chromium.launch(
+                    headless=use_headless,
+                    channel="chrome",
+                    args=browser_args
+                )
+            },
+            # 2. 尝试Edge (Microsoft Edge)
+            {
+                "name": "Edge",
+                "launch_func": lambda: p.chromium.launch(
+                    headless=use_headless,
+                    channel="msedge",
+                    args=browser_args
+                )
+            },
+            # 3. 尝试Chromium (内置)
+            {
+                "name": "Chromium",
+                "launch_func": lambda: p.chromium.launch(
                     headless=use_headless,
                     args=browser_args
                 )
-                automation_logger.success(f"✅ Chromium启动成功 ({'无界面' if use_headless else '有界面'}模式)")
-            except Exception as e2:
-                automation_logger.error(f"❌ 浏览器启动失败: {e2}")
-                return
+            }
+        ]
+        
+        _browser = None
+        browser_used = None
+        
+        for browser_option in browser_options:
+            try:
+                automation_logger.info(f"🔍 尝试启动 {browser_option['name']}...")
+                _browser = browser_option['launch_func']()
+                browser_used = browser_option['name']
+                automation_logger.success(f"✅ {browser_used} 启动成功 ({'无界面' if use_headless else '有界面'}模式)")
+                break
+            except Exception as e:
+                automation_logger.warn(f"⚠️  {browser_option['name']} 启动失败: {str(e)[:80]}")
+                continue
+        
+        if not _browser:
+            automation_logger.error("❌ 所有浏览器启动失败！请检查系统中是否安装了Chrome、Edge或Chromium")
+            automation_logger.info("💡 建议解决方案:")
+            automation_logger.info("   1. 安装Google Chrome浏览器")
+            automation_logger.info("   2. 或运行: playwright install chromium")
+            automation_logger.info("   3. 或确保Microsoft Edge已安装且为最新版本")
+            return
         
         automation_logger.info("🌐 创建浏览器上下文...")
         _context = _browser.new_context(
