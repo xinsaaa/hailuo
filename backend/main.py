@@ -825,7 +825,7 @@ def get_available_models():
             "type": "image_to_video", 
             "is_default": False,
             "features": ["720P", "6s"],
-            "badge": null
+            "badge": None
         },
         {
             "id": "hailuo_1_0_live",
@@ -835,7 +835,7 @@ def get_available_models():
             "type": "image_to_video", 
             "is_default": False,
             "features": ["720P", "6s"],
-            "badge": null
+            "badge": None
         },
         {
             "id": "hailuo_1_0",
@@ -845,7 +845,7 @@ def get_available_models():
             "type": "image_to_video", 
             "is_default": False,
             "features": ["720P", "6s"],
-            "badge": null
+            "badge": None
         }
     ]
     
