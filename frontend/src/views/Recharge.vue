@@ -120,25 +120,15 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="min-h-screen bg-[#0a0a0f] relative overflow-hidden flex flex-col">
-    
-    <!-- 动态网格背景 -->
-    <div class="absolute inset-0 bg-[linear-gradient(rgba(6,182,212,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(6,182,212,0.03)_1px,transparent_1px)] bg-[size:50px_50px]"></div>
-    
-    <!-- 鼠标跟随光晕 -->
-    <div 
-      class="pointer-events-none fixed w-[600px] h-[600px] rounded-full bg-gradient-to-r from-cyan-500/20 to-purple-500/20 blur-[120px] transition-all duration-700 ease-out"
-      :style="{ left: mouseX - 300 + 'px', top: mouseY - 300 + 'px' }"
-    ></div>
-
+  <div class="min-h-screen relative overflow-hidden flex flex-col">
     <!-- Toast Notification -->
     <Transition name="toast">
       <div v-if="showToast" class="fixed top-6 left-1/2 transform -translate-x-1/2 z-50">
         <div :class="{
-            'bg-red-500/20 text-red-400 border-red-500/30': toastType === 'error',
-            'bg-green-500/20 text-green-400 border-green-500/30': toastType === 'success',
-            'bg-cyan-500/20 text-cyan-400 border-cyan-500/30': toastType === 'info'
-        }" class="flex items-center gap-3 px-6 py-3 rounded-xl border backdrop-blur-xl shadow-2xl">
+            'bg-red-500/80 text-white border-red-500/50 shadow-red-900/50': toastType === 'error',
+            'bg-green-500/80 text-white border-green-500/50 shadow-green-900/50': toastType === 'success',
+            'bg-blue-500/80 text-white border-blue-500/50 shadow-blue-900/50': toastType === 'info'
+        }" class="flex items-center gap-3 px-6 py-3 rounded-xl border shadow-lg backdrop-blur-xl">
           <svg v-if="toastType === 'error'" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
             <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
           </svg>
@@ -151,16 +141,16 @@ onUnmounted(() => {
     </Transition>
     
     <!-- Navbar -->
-    <nav class="relative z-20 px-8 py-4 border-b border-white/5">
+    <nav class="relative z-20 px-8 py-4 border-b border-white/10 bg-black/20 backdrop-blur-md">
       <div class="max-w-7xl mx-auto flex justify-between items-center">
         <div class="text-2xl font-extrabold cursor-pointer flex items-center gap-2" @click="router.push('/')">
-          <span class="text-white">大帝</span><span class="text-cyan-400">AI</span>
+          <span class="text-white drop-shadow-md">大帝</span><span class="text-cyan-400 drop-shadow-md">AI</span>
         </div>
         <div class="flex items-center gap-6">
-          <div v-if="user" class="text-sm text-gray-400 bg-white/5 px-4 py-2 rounded-xl border border-white/10">
-            余额: <span class="font-bold text-white">¥{{ user.balance.toFixed(2) }}</span>
+          <div v-if="user" class="text-sm text-gray-300 bg-black/40 px-4 py-2 rounded-xl border border-white/10 backdrop-blur-sm shadow-inner">
+            余额: <span class="font-bold text-white text-shadow-sm">¥{{ user.balance.toFixed(2) }}</span>
           </div>
-          <button @click="handleLogout" class="text-sm text-gray-500 hover:text-white transition-colors">退出</button>
+          <button @click="handleLogout" class="text-sm text-gray-300 hover:text-white transition-colors hover:drop-shadow-sm">退出</button>
         </div>
       </div>
     </nav>
@@ -170,9 +160,9 @@ onUnmounted(() => {
       <div class="max-w-md w-full">
         <div class="relative group">
           <!-- 卡片发光边框 -->
-          <div class="absolute -inset-0.5 bg-gradient-to-r from-cyan-500/30 via-purple-500/30 to-pink-500/30 rounded-2xl blur opacity-60 group-hover:opacity-100 transition duration-500"></div>
+          <div class="absolute -inset-1 bg-gradient-to-r from-cyan-500/30 via-purple-500/30 to-pink-500/30 rounded-3xl blur-xl opacity-50"></div>
           
-          <div class="relative bg-[#12121a]/90 backdrop-blur-xl border border-white/10 rounded-2xl p-8">
+          <div class="relative bg-black/40 backdrop-blur-xl border border-white/10 rounded-2xl p-8 shadow-2xl">
             <div class="text-center mb-8">
               <h1 class="text-2xl font-bold text-white mb-2">账户充值</h1>
               <p class="text-gray-400 text-sm">

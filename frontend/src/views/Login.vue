@@ -202,22 +202,12 @@ const handleSubmit = async () => {
 </script>
 
 <template>
-  <div class="min-h-screen flex items-center justify-center bg-[#0a0a0f] relative overflow-hidden">
-    
-    <!-- 动态网格背景 -->
-    <div class="absolute inset-0 bg-[linear-gradient(rgba(6,182,212,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(6,182,212,0.03)_1px,transparent_1px)] bg-[size:50px_50px]"></div>
-    
-    <!-- 鼠标跟随小球 -->
-    <div 
-      class="pointer-events-none fixed w-[500px] h-[500px] rounded-full bg-gradient-to-r from-cyan-500/20 to-purple-500/20 blur-[100px] transition-all duration-700 ease-out"
-      :style="{ left: mouseX - 250 + 'px', top: mouseY - 250 + 'px' }"
-    ></div>
-
+  <div class="min-h-screen flex items-center justify-center relative overflow-hidden">
     <!-- Toast Alert -->
     <Transition name="toast">
       <div v-if="showModal" class="fixed top-6 left-1/2 transform -translate-x-1/2 z-50">
-        <div :class="modalType === 'error' ? 'bg-red-500/20 text-red-400 border-red-500/30' : 'bg-green-500/20 text-green-400 border-green-500/30'" 
-             class="flex items-center gap-3 px-6 py-3 rounded-xl border backdrop-blur-xl">
+        <div :class="modalType === 'error' ? 'bg-red-500/80 text-white border-red-500/50 shadow-red-900/50' : 'bg-green-500/80 text-white border-green-500/50 shadow-green-900/50'" 
+             class="flex items-center gap-3 px-6 py-3 rounded-xl border shadow-lg backdrop-blur-xl">
           <svg v-if="modalType === 'error'" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
             <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
           </svg>
@@ -231,16 +221,16 @@ const handleSubmit = async () => {
     
     <!-- Login Card -->
     <div class="relative z-10 w-full max-w-md mx-4">
-      <div class="absolute -inset-0.5 bg-gradient-to-r from-cyan-500 via-purple-500 to-pink-500 rounded-3xl opacity-30 blur"></div>
+      <div class="absolute -inset-1 bg-gradient-to-br from-cyan-500/20 to-blue-500/20 rounded-3xl opacity-40 blur-2xl"></div>
       
-      <div class="relative bg-[#12121a] border border-white/10 p-10 rounded-3xl shadow-2xl">
+      <div class="relative bg-white/5 border border-white/10 border-t-white/20 p-10 rounded-3xl shadow-2xl backdrop-blur-3xl">
         
         <!-- Logo -->
         <div class="text-center mb-8">
-          <div class="text-3xl font-extrabold mb-2">
-            <span class="text-white">大帝</span><span class="text-cyan-400">AI</span>
+          <div class="text-3xl font-extrabold mb-2 flex justify-center items-center gap-2">
+            <span class="text-white drop-shadow-md">大帝</span><span class="text-cyan-400 drop-shadow-md">AI</span>
           </div>
-          <p class="text-gray-500 text-sm">
+          <p class="text-gray-400 text-sm">
             {{ isLoginMode ? '登录开启你的 AI 创作之旅' : '注册即可免费体验 AI 创作' }}
           </p>
         </div>
@@ -253,7 +243,7 @@ const handleSubmit = async () => {
               v-model="username"
               type="text" 
               placeholder="请输入用户名" 
-              class="w-full px-4 py-3.5 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-500 outline-none focus:border-cyan-500/50 focus:ring-2 focus:ring-cyan-500/20 transition-all"
+              class="w-full px-4 py-3.5 rounded-xl bg-black/20 border border-white/10 text-white placeholder-gray-500 outline-none focus:border-cyan-500/50 focus:ring-2 focus:ring-cyan-500/20 transition-all shadow-inner backdrop-blur-sm"
               @keyup.enter="handleSubmit"
             />
           </div>
@@ -263,7 +253,7 @@ const handleSubmit = async () => {
               v-model="password"
               type="password" 
               placeholder="请输入密码" 
-              class="w-full px-4 py-3.5 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-500 outline-none focus:border-cyan-500/50 focus:ring-2 focus:ring-cyan-500/20 transition-all"
+              class="w-full px-4 py-3.5 rounded-xl bg-black/20 border border-white/10 text-white placeholder-gray-500 outline-none focus:border-cyan-500/50 focus:ring-2 focus:ring-cyan-500/20 transition-all shadow-inner backdrop-blur-sm"
               @keyup.enter="handleSubmit"
             />
           </div>

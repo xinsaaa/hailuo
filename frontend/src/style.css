@@ -5,7 +5,28 @@
 @tailwind utilities;
 
 body {
-    @apply bg-google-gray text-gray-800 antialiased font-sans;
+    @apply antialiased font-sans text-white bg-black;
+    @apply bg-[url('/images/bg.jpg')] bg-fixed bg-cover bg-center;
+    position: relative;
+    min-height: 100vh;
+}
+
+/* Global Overlay */
+body::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    @apply bg-black/60 backdrop-blur-[2px];
+    z-index: -1;
+    pointer-events: none;
+}
+
+#app {
+    position: relative;
+    z-index: 1;
 }
 
 /* Custom "Glass" or Tech utilities */

@@ -20,15 +20,15 @@ const handleLogout = () => {
 </script>
 
 <template>
-  <div class="min-h-screen bg-gray-900 text-white flex">
+  <div class="min-h-screen flex">
     <!-- Sidebar -->
-    <aside class="w-64 bg-gray-800 border-r border-gray-700 flex flex-col">
-      <div class="p-6 border-b border-gray-700">
+    <aside class="w-64 bg-black/40 border-r border-white/10 flex flex-col backdrop-blur-xl">
+      <div class="p-6 border-b border-white/10">
         <h2 class="text-xl font-bold text-white flex items-center gap-2 tracking-wide">
            <div class="w-8 h-8 rounded-lg bg-gradient-to-tr from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg">
              <span class="text-white text-sm font-bold">A</span>
            </div>
-           <span class="bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-indigo-300">ADMIN</span>
+           <span class="bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-indigo-300 drop-shadow-sm">ADMIN</span>
         </h2>
       </div>
       
@@ -39,8 +39,8 @@ const handleLogout = () => {
           :to="item.path"
           class="flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group relative overflow-hidden"
           :class="{ 
-            'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-900/50 translate-x-1': route.path === item.path,
-            'text-gray-400 hover:bg-gray-800 hover:text-white': route.path !== item.path
+            'bg-gradient-to-r from-blue-600/80 to-indigo-600/80 text-white shadow-lg shadow-blue-900/20 translate-x-1 border border-blue-500/20': route.path === item.path,
+            'text-gray-400 hover:bg-white/5 hover:text-white': route.path !== item.path
           }"
         >
           <svg class="w-5 h-5 transition-transform duration-200" :class="{ 'scale-110': route.path === item.path }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -50,8 +50,8 @@ const handleLogout = () => {
         </router-link>
       </nav>
       
-      <div class="p-4 border-t border-gray-700 space-y-2">
-        <a href="/" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-gray-400 hover:bg-gray-800 hover:text-white transition-all duration-200 group">
+      <div class="p-4 border-t border-white/10 space-y-2">
+        <a href="/" class="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-gray-400 hover:bg-white/5 hover:text-white transition-all duration-200 group">
             <svg class="w-5 h-5 group-hover:-translate-x-1 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
             </svg>
@@ -70,12 +70,12 @@ const handleLogout = () => {
     </aside>
 
     <!-- Main Content -->
-    <main class="flex-1 overflow-auto bg-gray-900">
-      <header class="h-16 bg-gray-800 border-b border-gray-700 flex items-center justify-between px-8">
+    <main class="flex-1 overflow-auto bg-transparent">
+      <header class="h-16 bg-black/20 border-b border-white/5 flex items-center justify-between px-8 backdrop-blur-sm">
         <h3 class="text-lg font-medium text-gray-200">{{ route.name }}</h3>
         <div class="flex items-center gap-4">
           <span class="text-sm text-gray-400">管理员</span>
-          <div class="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center text-sm font-bold">A</div>
+          <div class="w-8 h-8 rounded-full bg-gradient-to-r from-blue-500 to-indigo-500 flex items-center justify-center text-sm font-bold shadow-lg">A</div>
         </div>
       </header>
       

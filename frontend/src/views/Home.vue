@@ -37,39 +37,20 @@ const handleStart = () => {
 </script>
 
 <template>
-  <div class="min-h-screen flex flex-col bg-[#0a0a0f] overflow-hidden relative selection:bg-cyan-500 selection:text-white">
-    
-    <!-- 动态网格背景 -->
-    <div class="absolute inset-0 bg-[linear-gradient(rgba(6,182,212,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(6,182,212,0.03)_1px,transparent_1px)] bg-[size:50px_50px]"></div>
-    
-    <!-- 顶部渐变光晕 -->
-    <div class="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-gradient-radial from-cyan-500/20 via-transparent to-transparent blur-3xl"></div>
-    
-    <!-- 鼠标跟随小球 -->
-    <div 
-      class="pointer-events-none fixed w-[500px] h-[500px] rounded-full bg-gradient-to-r from-cyan-500/30 to-purple-500/30 blur-[100px] transition-all duration-700 ease-out"
-      :style="{ left: mouseX - 250 + 'px', top: mouseY - 250 + 'px' }"
-    ></div>
-    
-    <!-- 装饰性浮动粒子 -->
-    <div class="absolute top-20 left-[10%] w-2 h-2 bg-cyan-400 rounded-full animate-pulse opacity-60"></div>
-    <div class="absolute top-40 right-[15%] w-1.5 h-1.5 bg-purple-400 rounded-full animate-ping opacity-40"></div>
-    <div class="absolute bottom-32 left-[20%] w-1 h-1 bg-pink-400 rounded-full animate-pulse opacity-50"></div>
-    <div class="absolute top-1/2 right-[8%] w-2 h-2 bg-yellow-400 rounded-full animate-ping opacity-30"></div>
-    <div class="absolute bottom-1/4 right-[25%] w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse opacity-40"></div>
+  <div class="min-h-screen flex flex-col overflow-hidden relative selection:bg-cyan-500 selection:text-white">
     
     <!-- 右上角登录按钮 -->
     <nav class="absolute top-6 right-8 z-20">
       <div class="flex gap-4 items-center">
         <template v-if="isLoggedIn">
-           <span class="text-gray-400 font-medium mr-2">你好, <span class="text-cyan-400">{{ user?.username || '创作者' }}</span></span>
-           <router-link to="/dashboard" class="px-6 py-2.5 bg-white text-gray-900 rounded-full font-semibold hover:bg-gray-100 transition-all duration-300 shadow-lg">
+           <span class="text-gray-300 font-medium mr-2 text-shadow-sm">你好, <span class="text-cyan-400 font-bold">{{ user?.username || '创作者' }}</span></span>
+           <router-link to="/dashboard" class="px-6 py-2.5 bg-white/90 text-gray-900 rounded-full font-bold hover:bg-white transition-all duration-300 shadow-lg hover:shadow-cyan-500/20 backdrop-blur-sm">
              进入控制台
            </router-link>
         </template>
         <template v-else>
-            <router-link to="/login" class="px-6 py-2 text-gray-400 hover:text-white font-medium transition-colors">登录</router-link>
-            <router-link to="/login" class="px-6 py-2.5 bg-white text-gray-900 rounded-full font-semibold hover:bg-gray-100 transition-all duration-300 shadow-lg">
+            <router-link to="/login" class="px-6 py-2 text-gray-300 hover:text-white font-medium transition-colors hover:drop-shadow-md">登录</router-link>
+            <router-link to="/login" class="px-6 py-2.5 bg-white/90 text-gray-900 rounded-full font-bold hover:bg-white transition-all duration-300 shadow-lg hover:shadow-cyan-500/20 backdrop-blur-sm">
               开始制作
             </router-link>
         </template>
@@ -80,73 +61,73 @@ const handleStart = () => {
     <main class="flex-grow flex flex-col items-center justify-center px-4 relative z-10">
       
       <!-- 中央Logo -->
-      <div class="text-center mb-8">
-        <div class="text-4xl md:text-6xl font-extrabold tracking-tight mb-3">
-          <span class="text-white">大帝</span><span class="text-cyan-400">AI</span>
+      <div class="text-center mb-12">
+        <div class="text-5xl md:text-7xl font-extrabold tracking-tight mb-4 flex justify-center items-center gap-2">
+          <span class="text-white drop-shadow-lg">大帝</span><span class="text-cyan-400 drop-shadow-[0_0_15px_rgba(34,211,238,0.5)]">AI</span>
         </div>
-        <p class="text-lg text-gray-400 mb-2">想象. 输入. 生成.</p>
-        <p class="text-sm text-gray-500">使用先进的 AI 技术，将你的创意转化为专业品质的视频</p>
+        <p class="text-xl text-gray-200 mb-2 font-light tracking-wide drop-shadow-md">想象 · 输入 · 生成</p>
+        <p class="text-sm text-gray-400 font-medium">使用先进的 AI 技术，将你的创意转化为专业品质的视频</p>
       </div>
       
       <!-- AI模型卡片网格 -->
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 w-full max-w-6xl">
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 w-full max-w-6xl">
         
         <!-- 海螺AI卡片 -->
-        <div class="group relative">
-          <!-- 发光边框 -->
-          <div class="absolute -inset-0.5 bg-gradient-to-r from-cyan-500 via-purple-500 to-pink-500 rounded-2xl opacity-40 blur group-hover:opacity-60 transition-opacity duration-500"></div>
+        <div class="group relative md:col-start-2 lg:col-start-auto">
+          <!-- 发光边框 - 优化为单色简约光晕 -->
+          <div class="absolute -inset-0.5 bg-gradient-to-b from-cyan-500/20 to-blue-500/5 rounded-3xl blur opacity-20 group-hover:opacity-60 transition-opacity duration-700"></div>
           
-          <div class="relative bg-[#12121a] border border-white/20 rounded-2xl p-4 shadow-2xl h-full cursor-pointer transition-all duration-300 hover:scale-105" @click="handleStart">
+          <div class="relative bg-white/5 border border-white/5 border-t-white/20 rounded-2xl p-6 shadow-2xl h-full cursor-pointer transition-all duration-500 hover:scale-[1.02] hover:-translate-y-1 backdrop-blur-3xl hover:bg-white/10 hover:shadow-cyan-500/10" @click="handleStart">
             <!-- 顶部标签 -->
-            <div class="flex justify-between items-center mb-3">
-              <div class="px-2 py-1 rounded-full bg-gradient-to-r from-orange-500 to-red-500 text-white text-xs font-bold">
-                最热门
+            <div class="flex justify-between items-center mb-4">
+              <div class="px-2.5 py-1 rounded-full bg-gradient-to-r from-red-500 to-orange-500 text-white text-xs font-bold shadow-sm ring-1 ring-white/10">
+                HOT
               </div>
-              <div class="text-2xl font-black text-transparent bg-gradient-to-r from-cyan-400 to-purple-400 bg-clip-text text-right">
+              <div class="text-xl font-bold text-white drop-shadow-sm tracking-wide">
                 ¥0.99
               </div>
             </div>
             
             <!-- 模型名称 -->
-            <h3 class="text-xl font-bold text-white mb-3 flex items-center gap-2">
-              海螺 AI <span class="text-sm text-gray-400 font-normal">（官网正品）</span>
-              <div class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+            <h3 class="text-xl font-bold text-white mb-4 flex items-center gap-2">
+              海螺 AI <span class="text-[10px] text-gray-400 font-normal px-1.5 py-0.5 border border-white/10 rounded tracking-wider uppercase">Official</span>
+              <div class="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,199,89,0.8)] animate-pulse"></div>
             </h3>
             
             <!-- 特性标签 -->
-            <div class="space-y-2 mb-5">
-              <div class="px-3 py-1.5 rounded-lg border border-cyan-500/30 bg-cyan-500/10 text-cyan-400 text-xs font-medium flex items-center gap-1">
-                <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
-                最顶级 AI 模型
+            <div class="space-y-2 mb-6">
+              <div class="px-3 py-2 rounded-lg bg-black/20 text-gray-300 text-xs font-medium flex items-center gap-2 border border-white/5 group-hover:border-white/10 transition-colors">
+                <svg class="w-3.5 h-3.5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                顶级生成效果
               </div>
-              <div class="px-3 py-1.5 rounded-lg border border-purple-500/30 bg-purple-500/10 text-purple-400 text-xs font-medium">
-                Minimax 海螺模型
+              <div class="px-3 py-2 rounded-lg bg-black/20 text-gray-300 text-xs font-medium border border-white/5 group-hover:border-white/10 transition-colors">
+                Minimax 海螺模型驱动
               </div>
             </div>
             
             <!-- 价格说明 -->
-            <div class="text-center mb-4">
-              <div class="text-sm font-semibold text-gray-300 leading-relaxed">
-                仅需<span class="text-yellow-400 text-lg font-bold">0.99元</span>即可生成一条视频
+            <div class="text-center mb-6">
+              <div class="text-sm font-medium text-gray-400">
+                单次生成仅需 <span class="text-white font-bold mx-1">0.99元</span>
               </div>
             </div>
             
             <!-- 生成按钮 -->
             <div>
-              <button class="w-full py-3 bg-gradient-to-r from-cyan-500 to-purple-500 text-white rounded-xl font-bold text-sm hover:shadow-lg hover:shadow-cyan-500/25 transition-all duration-300">
-                立即生成视频
+              <button class="w-full py-3.5 bg-white text-black hover:bg-gray-50 rounded-xl font-bold text-sm transition-all duration-300 shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-95">
+                立即生成
               </button>
             </div>
           </div>
         </div>
         
         <!-- GPT 视频模型 -->
-        <div class="group relative opacity-60">
-          <div class="absolute -inset-0.5 bg-gradient-to-r from-green-500 to-emerald-600 rounded-2xl opacity-20 blur"></div>
+        <div class="group relative opacity-70 hover:opacity-100 transition-all duration-500 md:col-start-2 md:row-start-2 lg:col-start-auto lg:row-start-auto">
+          <div class="absolute -inset-0.5 bg-white/5 rounded-3xl opacity-0"></div>
           
-          <div class="relative bg-[#12121a] border border-gray-700/50 rounded-2xl p-4 shadow-2xl h-full">
-            <div class="flex justify-between items-center mb-3">
-              <div class="px-2 py-1 rounded-full bg-gray-600 text-gray-400 text-xs font-bold">
+          <div class="relative bg-white/5 border border-white/5 border-t-white/10 rounded-2xl p-6 shadow-xl h-full backdrop-blur-3xl transition-all duration-500 hover:bg-white/10 hover:border-white/10 hover:-translate-y-1">
+            <div class="flex justify-between items-center mb-4">
+              <div class="px-2.5 py-1 rounded-full bg-white/5 text-gray-400 text-xs font-bold border border-white/5">
                 即将推出
               </div>
               <div class="text-3xl font-black text-gray-600">
@@ -154,15 +135,15 @@ const handleStart = () => {
               </div>
             </div>
             
-            <h3 class="text-xl font-bold text-gray-500 mb-3">
+            <h3 class="text-xl font-bold text-gray-500 mb-3 group-hover:text-gray-300 transition-colors">
               GPT 视频
             </h3>
             
             <div class="space-y-2 mb-4">
-              <div class="px-3 py-1.5 rounded-lg border border-gray-600/30 bg-gray-600/10 text-gray-500 text-xs font-medium">
+              <div class="px-3 py-1.5 rounded-lg border border-white/5 bg-black/20 text-gray-500 text-xs font-medium group-hover:text-gray-400">
                 OpenAI 技术
               </div>
-              <div class="px-3 py-1.5 rounded-lg border border-gray-600/30 bg-gray-600/10 text-gray-500 text-xs font-medium">
+              <div class="px-3 py-1.5 rounded-lg border border-white/5 bg-black/20 text-gray-500 text-xs font-medium group-hover:text-gray-400">
                 更强理解能力
               </div>
             </div>
@@ -181,12 +162,12 @@ const handleStart = () => {
         </div>
         
         <!-- Runway Gen 模型 -->
-        <div class="group relative opacity-60">
-          <div class="absolute -inset-0.5 bg-gradient-to-r from-purple-500 to-pink-600 rounded-2xl opacity-20 blur"></div>
+        <div class="group relative opacity-60 hover:opacity-100 transition-all duration-500 md:col-start-auto lg:col-start-auto">
+          <div class="absolute -inset-0.5 bg-white/5 rounded-3xl opacity-0"></div>
           
-          <div class="relative bg-[#12121a] border border-gray-700/50 rounded-2xl p-4 shadow-2xl h-full">
-            <div class="flex justify-between items-center mb-3">
-              <div class="px-2 py-1 rounded-full bg-gray-600 text-gray-400 text-xs font-bold">
+          <div class="relative bg-white/5 border border-white/5 border-t-white/10 rounded-2xl p-6 shadow-xl h-full backdrop-blur-3xl transition-all duration-500 hover:bg-white/10 hover:border-white/10 hover:-translate-y-1">
+            <div class="flex justify-between items-center mb-4">
+              <div class="px-2.5 py-1 rounded-full bg-white/5 text-gray-400 text-xs font-bold border border-white/5">
                 筹备中
               </div>
               <div class="text-3xl font-black text-gray-600">
@@ -194,15 +175,15 @@ const handleStart = () => {
               </div>
             </div>
             
-            <h3 class="text-xl font-bold text-gray-500 mb-3">
+            <h3 class="text-xl font-bold text-gray-500 mb-3 group-hover:text-gray-300 transition-colors">
               Runway Gen
             </h3>
             
             <div class="space-y-2 mb-4">
-              <div class="px-3 py-1.5 rounded-lg border border-gray-600/30 bg-gray-600/10 text-gray-500 text-xs font-medium">
+              <div class="px-3 py-1.5 rounded-lg border border-white/5 bg-black/20 text-gray-500 text-xs font-medium group-hover:text-gray-400">
                 专业级质量
               </div>
-              <div class="px-3 py-1.5 rounded-lg border border-gray-600/30 bg-gray-600/10 text-gray-500 text-xs font-medium">
+              <div class="px-3 py-1.5 rounded-lg border border-white/5 bg-black/20 text-gray-500 text-xs font-medium group-hover:text-gray-400">
                 电影级效果
               </div>
             </div>

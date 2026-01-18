@@ -226,25 +226,15 @@ const handleLogout = () => {
 </script>
 
 <template>
-  <div class="min-h-screen bg-[#0a0a0f] relative overflow-hidden flex flex-col">
-    
-    <!-- 动态网格背景 -->
-    <div class="absolute inset-0 bg-[linear-gradient(rgba(6,182,212,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(6,182,212,0.03)_1px,transparent_1px)] bg-[size:50px_50px]"></div>
-    
-    <!-- 鼠标跟随小球 -->
-    <div 
-      class="pointer-events-none fixed w-[600px] h-[600px] rounded-full bg-gradient-to-r from-cyan-500/20 to-purple-500/20 blur-[120px] transition-all duration-700 ease-out"
-      :style="{ left: mouseX - 300 + 'px', top: mouseY - 300 + 'px' }"
-    ></div>
-
+  <div class="min-h-screen relative overflow-hidden flex flex-col">
     <!-- Toast Notification -->
     <Transition name="toast">
       <div v-if="showToast" class="fixed top-6 left-1/2 transform -translate-x-1/2 z-50">
         <div :class="{
-            'bg-red-500/20 text-red-400 border-red-500/30': toastType === 'error',
-            'bg-green-500/20 text-green-400 border-green-500/30': toastType === 'success',
-            'bg-cyan-500/20 text-cyan-400 border-cyan-500/30': toastType === 'info'
-        }" class="flex items-center gap-3 px-6 py-3 rounded-xl border backdrop-blur-xl">
+            'bg-red-500/80 text-white border-red-500/50 shadow-red-900/50': toastType === 'error',
+            'bg-green-500/80 text-white border-green-500/50 shadow-green-900/50': toastType === 'success',
+            'bg-blue-500/80 text-white border-blue-500/50 shadow-blue-900/50': toastType === 'info'
+        }" class="flex items-center gap-3 px-6 py-3 rounded-xl border shadow-lg backdrop-blur-xl">
           <svg v-if="toastType === 'error'" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
             <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
           </svg>
@@ -260,22 +250,22 @@ const handleLogout = () => {
     </Transition>
     
     <!-- Navbar -->
-    <nav class="relative z-20 px-8 py-4 border-b border-white/5">
+    <nav class="relative z-20 px-8 py-4 border-b border-white/10 bg-black/20 backdrop-blur-md">
       <div class="max-w-7xl mx-auto flex justify-between items-center">
         <div class="text-2xl font-extrabold cursor-pointer flex items-center gap-2" @click="router.push('/')">
-          <span class="text-white">大帝</span><span class="text-cyan-400">AI</span>
+          <span class="text-white drop-shadow-md">大帝</span><span class="text-cyan-400 drop-shadow-md">AI</span>
         </div>
         <div class="flex items-center gap-6">
-          <div class="flex items-center gap-3 bg-white/5 p-1 pr-4 rounded-xl border border-white/10">
+          <div class="flex items-center gap-3 bg-black/40 p-1 pr-4 rounded-xl border border-white/10 backdrop-blur-sm shadow-inner">
              <button 
                @click="router.push('/recharge')"
-               class="px-4 py-1.5 bg-gradient-to-r from-cyan-500 to-blue-500 text-white text-xs font-bold rounded-lg hover:opacity-90 transition-opacity shadow-lg shadow-cyan-500/20"
+               class="px-4 py-1.5 bg-gradient-to-r from-cyan-600 to-blue-600 text-white text-xs font-bold rounded-lg hover:brightness-110 transition-all shadow-lg shadow-cyan-900/40"
              >
                充值
              </button>
-             <span class="text-sm text-gray-400">余额: <span class="font-bold text-white">¥{{ formattedBalance }}</span></span>
+             <span class="text-sm text-gray-300">余额: <span class="font-bold text-white text-shadow-sm">¥{{ formattedBalance }}</span></span>
           </div>
-          <button @click="handleLogout" class="text-sm text-gray-500 hover:text-white transition-colors">退出</button>
+          <button @click="handleLogout" class="text-sm text-gray-300 hover:text-white transition-colors hover:drop-shadow-sm">退出</button>
         </div>
       </div>
     </nav>
@@ -286,68 +276,73 @@ const handleLogout = () => {
         
         <!-- Generator -->
           <div class="relative">
-            <div class="absolute -inset-0.5 bg-gradient-to-r from-cyan-500 via-purple-500 to-pink-500 rounded-2xl opacity-20 blur"></div>
-            <div class="relative bg-[#12121a] border border-white/10 rounded-2xl p-8">
+            <!-- Glow effect behind card -->
+            <div class="absolute -inset-1 bg-gradient-to-br from-cyan-500/20 to-blue-500/20 rounded-3xl blur-2xl opacity-40"></div>
+            
+            <div class="relative bg-white/5 backdrop-blur-3xl border border-white/10 border-t-white/20 rounded-3xl p-8 shadow-2xl">
               <div class="flex justify-between items-center mb-6">
-                <h2 class="text-xl font-bold text-white">开始创作</h2>
+                <h2 class="text-xl font-bold text-white flex items-center gap-2">
+                  <span class="w-1 h-6 bg-cyan-500 rounded-full"></span>
+                  开始创作
+                </h2>
                 <div class="flex items-center gap-3">
                   <!-- 模型选择器 -->
                   <div class="relative model-selector">
                     <button 
                       @click="showModelSelector = !showModelSelector"
-                      class="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/15 border border-white/20 rounded-lg text-sm text-white transition-all"
+                      class="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-sm text-white transition-all hover:border-white/20 hover:shadow-lg hover:shadow-cyan-500/10"
                     >
                       <div class="flex items-center gap-2">
-                        <div class="w-2 h-2 bg-cyan-400 rounded-full"></div>
-                        <span>{{ selectedModel?.display_name || '选择模型' }}</span>
-                        <span v-if="selectedModel?.badge" class="px-2 py-0.5 bg-cyan-500/20 text-cyan-400 text-xs rounded border border-cyan-500/30">
+                        <div class="w-2 h-2 bg-cyan-400 rounded-full shadow-[0_0_8px_rgba(34,211,238,0.8)]"></div>
+                        <span class="font-medium tracking-wide">{{ selectedModel?.display_name || '选择模型' }}</span>
+                        <span v-if="selectedModel?.badge" class="px-1.5 py-0.5 bg-gradient-to-r from-pink-500 to-rose-500 text-white text-[10px] font-bold rounded uppercase tracking-wider shadow-sm">
                           {{ selectedModel.badge }}
                         </span>
                       </div>
-                      <svg class="w-4 h-4 transition-transform" :class="{ 'rotate-180': showModelSelector }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg class="w-4 h-4 text-gray-400 transition-transform duration-300" :class="{ 'rotate-180': showModelSelector }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7" />
                       </svg>
                     </button>
 
                     <!-- 模型选择下拉菜单 -->
                     <Transition name="dropdown">
-                      <div v-if="showModelSelector" class="absolute top-full right-0 mt-2 w-80 bg-[#12121a] border border-white/20 rounded-xl shadow-2xl z-50 overflow-hidden">
-                        <div class="p-3 border-b border-white/10">
+                      <div v-if="showModelSelector" class="absolute top-full right-0 mt-3 w-80 bg-[#0f1115]/95 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-2xl z-50 overflow-hidden ring-1 ring-white/5">
+                        <div class="p-4 border-b border-white/5 bg-white/5">
                           <h3 class="text-sm font-bold text-white mb-1">选择生成模型</h3>
-                          <p class="text-xs text-gray-400">不同模型有不同的效果和价格</p>
+                          <p class="text-xs text-gray-400">不同模型有不同的效果和消耗</p>
                         </div>
-                        <div class="max-h-60 overflow-y-auto">
+                        <div class="max-h-[320px] overflow-y-auto custom-scrollbar">
                           <div 
                             v-for="model in availableModels" 
                             :key="model.id"
                             @click="selectModel(model)"
-                            class="p-3 hover:bg-white/5 cursor-pointer border-b border-white/5 last:border-b-0 transition-all"
+                            class="p-3 hover:bg-white/5 cursor-pointer border-b border-white/5 last:border-b-0 transition-all group"
                             :class="{ 'bg-cyan-500/10': selectedModel?.id === model.id }"
                           >
                             <div class="flex items-start justify-between">
                               <div class="flex-1">
                                 <div class="flex items-center gap-2 mb-1">
-                                  <span class="font-medium text-white text-sm">{{ model.display_name }}</span>
-                                  <span v-if="model.badge" class="px-2 py-0.5 bg-cyan-500/20 text-cyan-400 text-xs rounded border border-cyan-500/30">
+                                  <span class="font-bold text-white text-sm group-hover:text-cyan-400 transition-colors">{{ model.display_name }}</span>
+                                  <span v-if="model.badge" class="px-1.5 py-0.5 bg-gradient-to-r from-pink-500 to-rose-500 text-white text-[10px] font-bold rounded shadow-sm">
                                     {{ model.badge }}
                                   </span>
-                                  <span v-if="model.is_default" class="px-2 py-0.5 bg-green-500/20 text-green-400 text-xs rounded border border-green-500/30">
+                                  <span v-if="model.is_default" class="px-1.5 py-0.5 bg-green-500/20 text-green-400 text-[10px] font-bold rounded border border-green-500/30">
                                     推荐
                                   </span>
                                 </div>
-                                <p class="text-xs text-gray-400 mb-2">{{ model.description }}</p>
+                                <p class="text-xs text-gray-400 mb-2 leading-relaxed">{{ model.description }}</p>
                                 <div class="flex flex-wrap gap-1">
                                   <span 
                                     v-for="feature in model.features" 
                                     :key="feature"
-                                    class="px-2 py-0.5 bg-white/10 text-gray-300 text-xs rounded"
+                                    class="px-2 py-0.5 bg-white/5 text-gray-300 text-[10px] rounded border border-white/5"
                                   >
                                     {{ feature }}
                                   </span>
                                 </div>
                               </div>
                               <div v-if="selectedModel?.id === model.id" class="ml-3 text-cyan-400">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <svg class="w-5 h-5 drop-shadow-[0_0_8px_rgba(34,211,238,0.5)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
                                 </svg>
                               </div>
@@ -360,19 +355,21 @@ const handleLogout = () => {
                 </div>
               </div>
               
-              <div class="relative">
+              <div class="relative group">
+                <div class="absolute -inset-0.5 bg-gradient-to-r from-cyan-500/20 to-purple-500/20 rounded-2xl blur opacity-0 group-hover:opacity-100 transition duration-500"></div>
                 <textarea 
                   v-model="prompt"
                   placeholder="请输入详细的画面描述... (例如: 赛博朋克风格的雨夜街道，霓虹灯闪烁)"
-                  class="w-full h-40 p-5 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-500 outline-none focus:border-cyan-500/50 focus:ring-2 focus:ring-cyan-500/20 transition-all resize-none text-lg"
+                  class="relative w-full h-40 p-6 rounded-2xl bg-black/20 border border-white/10 text-white placeholder-gray-500 outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 transition-all resize-none text-lg shadow-inner backdrop-blur-sm"
                 ></textarea>
-                <div class="absolute bottom-4 right-4 text-xs text-gray-600">
-                  支持中文 · 自动优化提示词
+                <div class="absolute bottom-4 right-4 text-xs text-gray-500 flex items-center gap-1 bg-black/20 px-2 py-1 rounded-lg border border-white/5 backdrop-blur-md pointer-events-none">
+                  <svg class="w-3 h-3 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                  支持中文 · 自动优化
                 </div>
               </div>
               
               <!-- 首尾帧上传区域 -->
-              <div class="mt-4 grid grid-cols-2 gap-4">
+              <div class="mt-6 grid grid-cols-2 gap-6">
                 <!-- 首帧上传 -->
                 <div class="relative">
                   <input 
@@ -384,34 +381,36 @@ const handleLogout = () => {
                   />
                   <label 
                     :for="'first-frame-input'"
-                    class="block cursor-pointer"
+                    class="block cursor-pointer group"
                   >
                     <div 
                       v-if="!firstFramePreview"
-                      class="h-24 border-2 border-dashed border-white/20 hover:border-cyan-500/50 rounded-xl flex flex-col items-center justify-center gap-2 transition-all bg-white/5 hover:bg-white/10"
+                      class="h-28 border border-dashed border-white/20 rounded-2xl flex flex-col items-center justify-center gap-3 transition-all bg-white/[0.02] hover:bg-white/[0.05] hover:border-cyan-500/30 hover:shadow-[0_0_20px_rgba(6,182,212,0.1)]"
                     >
-                      <svg class="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                      </svg>
-                      <span class="text-xs text-gray-400">上传首帧（可选）</span>
+                      <div class="p-3 bg-white/5 rounded-full group-hover:scale-110 transition-transform duration-300">
+                        <svg class="w-6 h-6 text-gray-400 group-hover:text-cyan-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                      </div>
+                      <span class="text-xs text-gray-400 font-medium group-hover:text-gray-300">上传首帧（可选）</span>
                     </div>
-                    <div v-else class="relative h-24 rounded-xl overflow-hidden group">
-                      <img :src="firstFramePreview" class="w-full h-full object-cover" />
-                      <div class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                        <span class="text-white text-xs">点击更换</span>
+                    <div v-else class="relative h-28 rounded-2xl overflow-hidden group shadow-lg border border-white/10">
+                      <img :src="firstFramePreview" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
+                      <div class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center backdrop-blur-sm">
+                        <span class="text-white text-xs font-medium border border-white/20 px-3 py-1.5 rounded-full bg-white/10">点击更换</span>
                       </div>
                     </div>
                   </label>
                   <button 
                     v-if="firstFramePreview"
                     @click.stop="removeImage('first')"
-                    class="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center text-xs hover:bg-red-600 transition-colors z-10"
+                    class="absolute -top-2 -right-2 w-7 h-7 bg-red-500 text-white rounded-full flex items-center justify-center text-sm hover:bg-red-600 transition-all shadow-lg z-10 hover:scale-110"
                   >
                     ×
                   </button>
                 </div>
                 
-                <!-- 尾帧上传 - 仅支持特定模型 -->
+                <!-- 尾帧上传 -->
                 <div class="relative">
                   <input 
                     type="file" 
@@ -423,58 +422,64 @@ const handleLogout = () => {
                   />
                   <label 
                     :for="'last-frame-input'"
-                    class="block"
-                    :class="selectedModel?.supports_last_frame ? 'cursor-pointer' : 'cursor-not-allowed'"
+                    class="block h-full"
+                    :class="selectedModel?.supports_last_frame ? 'cursor-pointer group' : 'cursor-not-allowed opacity-60'"
                   >
                     <div 
                       v-if="!lastFramePreview"
-                      class="h-24 border-2 border-dashed rounded-xl flex flex-col items-center justify-center gap-2 transition-all"
+                      class="h-28 border border-dashed rounded-2xl flex flex-col items-center justify-center gap-3 transition-all h-full"
                       :class="selectedModel?.supports_last_frame 
-                        ? 'border-white/20 hover:border-purple-500/50 bg-white/5 hover:bg-white/10' 
-                        : 'border-white/10 bg-white/3 opacity-50'"
+                        ? 'border-white/20 bg-white/[0.02] hover:bg-white/[0.05] hover:border-purple-500/30 hover:shadow-[0_0_20px_rgba(168,85,247,0.1)]' 
+                        : 'border-white/5 bg-black/20'"
                     >
-                      <svg class="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                      </svg>
-                      <span class="text-xs text-gray-400">
+                      <div class="p-3 bg-white/5 rounded-full transition-transform duration-300" :class="{ 'group-hover:scale-110': selectedModel?.supports_last_frame }">
+                        <svg class="w-6 h-6" :class="selectedModel?.supports_last_frame ? 'text-gray-400 group-hover:text-purple-400' : 'text-gray-600'" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                      </div>
+                      <span class="text-xs font-medium" :class="selectedModel?.supports_last_frame ? 'text-gray-400 group-hover:text-gray-300' : 'text-gray-600'">
                         {{ selectedModel?.supports_last_frame ? '上传尾帧（可选）' : '当前模型不支持尾帧' }}
                       </span>
                     </div>
-                    <div v-else class="relative h-24 rounded-xl overflow-hidden group">
-                      <img :src="lastFramePreview" class="w-full h-full object-cover" />
-                      <div class="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                        <span class="text-white text-xs">点击更换</span>
+                    <div v-else class="relative h-28 rounded-2xl overflow-hidden group shadow-lg border border-white/10">
+                      <img :src="lastFramePreview" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
+                      <div class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center backdrop-blur-sm">
+                        <span class="text-white text-xs font-medium border border-white/20 px-3 py-1.5 rounded-full bg-white/10">点击更换</span>
                       </div>
                     </div>
                   </label>
                   <button 
                     v-if="lastFramePreview"
                     @click.stop="removeImage('last')"
-                    class="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center text-xs hover:bg-red-600 transition-colors z-10"
+                    class="absolute -top-2 -right-2 w-7 h-7 bg-red-500 text-white rounded-full flex items-center justify-center text-sm hover:bg-red-600 transition-all shadow-lg z-10 hover:scale-110"
                   >
                     ×
                   </button>
                 </div>
               </div>
               
-              <div class="flex justify-between items-center mt-6">
-                <div class="flex items-center gap-2 text-sm text-gray-500">
-                  <span class="relative flex h-2 w-2">
+              <div class="flex justify-between items-center mt-8 pt-6 border-t border-white/10">
+                <div class="flex items-center gap-2 text-sm text-gray-400">
+                  <span class="relative flex h-2.5 w-2.5">
                     <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                    <span class="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                    <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500"></span>
                   </span>
-                  <span>预计耗时 2-5 分钟</span>
+                  <span class="font-medium">系统状态正常 · 预计耗时 2-5 分钟</span>
                 </div>
                 
-                <div class="flex items-center gap-4">
-                  <span class="text-sm font-medium text-gray-400">消耗: <span class="text-white">¥{{ config.video_price }}</span></span>
+                <div class="flex items-center gap-6">
+                  <div class="text-right">
+                     <span class="text-xs text-gray-500 block">本次消耗</span>
+                     <span class="text-lg font-bold text-white leading-none">¥{{ config.video_price }}</span>
+                  </div>
                   <button 
                     @click="handleCreateOrder"
                     :disabled="loading"
-                    class="py-3 px-8 bg-white text-gray-900 rounded-xl font-semibold transition-all duration-300 hover:bg-gray-100 disabled:opacity-50 flex items-center gap-2 shadow-lg"
+                    class="relative py-3 px-8 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white rounded-xl font-bold transition-all duration-300 transform hover:scale-105 hover:shadow-[0_0_20px_rgba(6,182,212,0.4)] disabled:opacity-50 disabled:scale-100 disabled:hover:shadow-none flex items-center gap-2 overflow-hidden group"
                   >
-                    <span v-if="loading" class="animate-spin w-4 h-4 border-2 border-gray-900 border-t-transparent rounded-full"></span>
-                    {{ loading ? '生成中...' : '立即生成' }}
+                    <div class="absolute inset-0 bg-white/20 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000"></div>
+                    <span v-if="loading" class="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full"></span>
+                    {{ loading ? '正在提交...' : '立即生成' }}
                   </button>
                 </div>
               </div>
@@ -483,63 +488,80 @@ const handleLogout = () => {
           
           <!-- History -->
           <div>
-            <h3 class="text-lg font-bold text-white mb-4 px-2">历史记录</h3>
+            <h3 class="text-lg font-bold text-white mb-4 px-2 flex items-center gap-2">
+              <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+              历史记录
+            </h3>
             <div class="space-y-4">
-              <div v-if="orders.length === 0" class="text-center py-12 bg-white/5 rounded-2xl border border-white/10 text-gray-500">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-12 w-12 mx-auto mb-3 opacity-50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
-                </svg>
-                <p>暂无生成记录</p>
+              <div v-if="orders.length === 0" class="text-center py-16 bg-black/20 backdrop-blur-md rounded-3xl border border-white/5 text-gray-500">
+                <div class="w-16 h-16 bg-white/5 rounded-full flex items-center justify-center mx-auto mb-4">
+                   <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 opacity-40" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                   </svg>
+                </div>
+                <p>暂无生成记录，快去创作吧~</p>
               </div>
 
               <div 
                 v-for="order in orders" 
                 :key="order.id"
-                class="group bg-white/5 hover:bg-white/10 border border-white/10 p-5 rounded-xl transition-all"
+                class="group bg-white/5 hover:bg-white/10 border border-white/5 border-t-white/10 hover:border-white/20 p-6 rounded-2xl transition-all duration-300 backdrop-blur-3xl shadow-lg hover:shadow-xl hover:-translate-y-0.5"
               >
                 <div class="flex justify-between items-start">
-                  <div class="flex-1 mr-4">
-                    <p class="text-white font-medium line-clamp-2 leading-relaxed">{{ order.prompt }}</p>
-                    <div class="flex items-center gap-3 mt-2">
-                      <p class="text-xs text-gray-500">{{ new Date(order.created_at).toLocaleString() }}</p>
-                      <div v-if="order.model_name" class="flex items-center gap-1">
-                        <div class="w-1 h-1 bg-gray-600 rounded-full"></div>
-                        <span class="text-xs text-purple-400">{{ order.model_name }}</span>
+                  <div class="flex-1 mr-6">
+                    <p class="text-gray-200 font-medium line-clamp-2 leading-relaxed text-sm">{{ order.prompt }}</p>
+                    <div class="flex items-center gap-4 mt-3">
+                      <p class="text-xs text-gray-500 font-mono">{{ new Date(order.created_at).toLocaleString() }}</p>
+                      <div v-if="order.model_name" class="flex items-center gap-1.5 px-2 py-0.5 bg-white/5 rounded border border-white/5">
+                        <div class="w-1.5 h-1.5 bg-purple-400 rounded-full shadow-[0_0_5px_rgba(192,132,252,0.8)]"></div>
+                        <span class="text-xs text-gray-300">{{ order.model_name }}</span>
                       </div>
                       <a v-if="order.status === 'completed' && order.video_url" 
                          :href="order.video_url" 
                          target="_blank"
-                         class="text-xs text-cyan-400 hover:text-cyan-300 font-medium flex items-center gap-1 transition-colors">
-                         <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                         class="px-3 py-1 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 text-xs rounded-full border border-cyan-500/20 hover:border-cyan-500/40 transition-all flex items-center gap-1.5 group/btn">
+                         <svg class="w-3 h-3 transition-transform group-hover/btn:scale-110" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
                          </svg>
-                         查看视频
+                         <span class="font-bold">观看视频</span>
                       </a>
                     </div>
                   </div>
                   <div>
-                    <span :class="`px-3 py-1 rounded-lg text-xs font-bold border ${statusMap[order.status]?.class || 'bg-gray-500/20 text-gray-400 border-gray-500/30'}`">
+                    <span :class="`px-3 py-1.5 rounded-lg text-xs font-bold border flex items-center gap-1.5 ${statusMap[order.status]?.class || 'bg-gray-500/10 text-gray-400 border-gray-500/20'}`">
+                      <span v-if="order.status === 'processing' || order.status === 'generating'" class="w-2 h-2 rounded-full border-2 border-current border-t-transparent animate-spin"></span>
                       {{ statusMap[order.status]?.text || order.status }}
                     </span>
                   </div>
                 </div>
-                <!-- 进度条：仅在 processing 或 generating 状态显示 -->
-                <div v-if="order.status === 'processing' || order.status === 'generating'" class="mt-4">
-                  <div class="flex items-center justify-between mb-1.5">
-                    <span class="text-xs text-gray-400">生成进度</span>
-                    <span class="text-xs font-mono text-cyan-400">{{ order.progress || 0 }}%</span>
+                <!-- 进度条 -->
+                <div v-if="order.status === 'processing' || order.status === 'generating'" class="mt-4 bg-white/5 rounded-lg p-3 border border-white/5">
+                  <div class="flex items-center justify-between mb-2">
+                    <span class="text-xs text-gray-400 flex items-center gap-1">
+                       <svg class="w-3 h-3 text-cyan-400 animate-spin" fill="none" viewBox="0 0 24 24">
+                           <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                           <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                       </svg>
+                       {{ order.progress === -1 ? '排队中，等待生成...' : 'AI 正在努力生成中...' }}
+                    </span>
+                    <span class="text-xs font-mono font-bold text-cyan-400">
+                      {{ order.progress === -1 ? '准备中...' : (order.progress || 0) + '%' }}
+                    </span>
                   </div>
-                  <div class="h-2 bg-gray-700 rounded-full overflow-hidden">
+                  <div class="h-1.5 bg-gray-700/50 rounded-full overflow-hidden">
                     <div 
-                      class="h-full bg-gradient-to-r from-cyan-500 to-purple-500 rounded-full transition-all duration-500"
-                      :style="{ width: (order.progress || 0) + '%' }"
-                    ></div>
+                      class="h-full bg-gradient-to-r from-cyan-500 via-purple-500 to-pink-500 rounded-full transition-all duration-500 relative"
+                      :style="{ width: order.progress === -1 ? '5%' : (order.progress || 0) + '%' }"
+                    >
+                       <div class="absolute inset-0 bg-white/20 animate-pulse"></div>
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
           </div>
+
           
 
       </div>

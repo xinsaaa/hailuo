@@ -438,6 +438,14 @@ def submit_video_task(page: Page, order_id: int, prompt: str, first_frame_path: 
         first_frame_uploaded = upload_first_frame_image(page, first_frame_path)
         if not first_frame_uploaded:
             automation_logger.error("❌ 首帧图片上传失败")
+            # 更新订单状态为失败
+            with Session(engine) as session:
+                order = session.get(VideoOrder, order_id)
+                if order:
+                    order.status = "failed"
+                    # 这里也可以扩展一个 failure_reason 字段，暂时复用 status 或 log
+                    session.add(order)
+                    session.commit()
             return False
         
         # 步骤2: 如果有尾帧图片，切换到尾帧模式并上传
@@ -603,11 +611,20 @@ def upload_first_frame_image(page: Page, image_path: str) -> bool:
         
         # 验证上传是否成功（可以通过检查页面变化）
         try:
+            # 检查是否有错误提示 "图片尺寸过小"
+            error_hint = page.locator(".adm-auto-center-content:has-text('图片尺寸过小')")
+            if error_hint.is_visible():
+                automation_logger.error("❌ 上传失败: 图片尺寸过小，请上传更清晰的图片")
+                return False
+
             # 等待图片预览出现或上传完成的标识
             page.wait_for_function("() => document.querySelector('.upload-image-wrapper img') !== null", timeout=10000)
             automation_logger.success("✅ 首帧图片预览已显示")
-        except:
-            automation_logger.warn("⚠️  无法验证图片上传状态，继续流程")
+        except Exception as check_e:
+            # 如果是上面的检测抛出异常(如timeout)，需要区分处理
+            if "图片尺寸过小" in str(check_e):
+                return False
+            automation_logger.warn(f"⚠️  无法验证图片上传状态: {str(check_e)[:100]}")
         
         return True
         
@@ -1056,7 +1073,7 @@ def select_model_from_popover(page: Page, model_name: str) -> bool:
 
 
 def scan_for_completed_videos(page: Page):
-    """扫描页面上已完成的视频，提取分享链接"""
+    """扫描页面上已完成的视频，提取分享链接，返回找到的订单ID集合"""
     try:
         automation_logger.info("🔍 开始扫描已完成的视频...")
         
@@ -1067,6 +1084,7 @@ def scan_for_completed_videos(page: Page):
         
         completed_count = 0
         processing_count = 0
+        found_order_ids = set()  # 记录页面上找到的所有订单ID
         
         for i, span in enumerate(prompt_spans):
             try:
@@ -1085,6 +1103,7 @@ def scan_for_completed_videos(page: Page):
                     continue
                 
                 automation_logger.info(f"🎯 发现平台订单#{order_id}")
+                found_order_ids.add(order_id)  # 记录已在页面上找到的订单
                 
                 # 检查订单是否已处理
                 with Session(engine) as session:
@@ -1101,11 +1120,45 @@ def scan_for_completed_videos(page: Page):
                 # 找到父级视频卡片
                 parent = span.locator("xpath=ancestor::div[contains(@class, 'group/video-card')]").first
                 
+                # 检查是否处于排队/准备状态（"低速生成中，约等待X分钟"）
+                queue_hint = parent.locator("div:has-text('低速生成中')")
+                if queue_hint.is_visible():
+                    automation_logger.info(f"⏳ 订单#{order_id}正在排队/准备中...")
+                    # 更新数据库状态为准备中，进度设为 -1 表示排队状态
+                    try:
+                        with Session(engine) as session:
+                            current_order = session.get(VideoOrder, order_id)
+                            if current_order and current_order.progress != -1:
+                                current_order.progress = -1  # -1 表示排队/准备中
+                                session.add(current_order)
+                                session.commit()
+                                automation_logger.info(f"💾 更新订单#{order_id}为排队状态")
+                    except Exception as e:
+                        automation_logger.warn(f"⚠️ 更新排队状态失败: {e}")
+                    processing_count += 1
+                    continue
+                
                 # 检查是否有进度条（有进度条说明还在生成中）
                 progress = parent.locator(".ant-progress-text")
                 if progress.is_visible():
                     progress_text = progress.text_content() or "0%"
                     automation_logger.info(f"⏳ 订单#{order_id}仍在生成中 (进度: {progress_text})")
+                    
+                    # 解析进度百分比
+                    try:
+                        progress_val = int(progress_text.replace("%", "").strip())
+                        with Session(engine) as session:
+                            current_order = session.get(VideoOrder, order_id)
+                            if current_order:
+                                # 只在进度变化时更新
+                                if current_order.progress != progress_val:
+                                    current_order.progress = progress_val
+                                    session.add(current_order)
+                                    session.commit()
+                                    automation_logger.info(f"💾 更新订单#{order_id}进度: {progress_val}%")
+                    except Exception as e:
+                        automation_logger.warn(f"⚠️ 更新进度失败: {e}")
+                        
                     processing_count += 1
                     continue
                 
@@ -1170,9 +1223,59 @@ def scan_for_completed_videos(page: Page):
             automation_logger.info(f"⏳ 仍有 {processing_count} 个视频在生成中")
         if completed_count == 0 and processing_count == 0:
             automation_logger.info("📭 暂无需要处理的视频")
+        
+        # 返回页面上找到的订单ID集合，供后续检测丢失订单使用
+        return found_order_ids
                 
     except Exception as e:
         automation_logger.error(f"💥 扫描视频失败: {str(e)[:200]}")
+        return set()
+
+
+def check_missing_orders(page: Page, found_order_ids: set):
+    """检查是否有已提交但在页面上丢失的订单，如有则重新加入队列"""
+    global _generating_orders
+    
+    if not _generating_orders:
+        return
+    
+    automation_logger.info("🔍 检查是否有丢失的订单...")
+    
+    # 找出在 _generating_orders 中但不在页面上的订单
+    missing_orders = _generating_orders - found_order_ids
+    
+    if not missing_orders:
+        automation_logger.info("✅ 所有生成中订单均在页面上")
+        return
+    
+    automation_logger.warn(f"⚠️ 发现 {len(missing_orders)} 个订单可能丢失: {missing_orders}")
+    
+    for order_id in list(missing_orders):  # 使用 list() 避免迭代时修改
+        try:
+            with Session(engine) as session:
+                order = session.get(VideoOrder, order_id)
+                if order and order.status == "generating":
+                    automation_logger.info(f"🔄 重新将订单#{order_id}加入队列...")
+                    
+                    # 从生成中列表移除
+                    _generating_orders.discard(order_id)
+                    
+                    # 重置状态为 pending
+                    order.status = "pending"
+                    order.progress = 0
+                    session.add(order)
+                    session.commit()
+                    
+                    # 重新加入队列
+                    queue_order(order_id)
+                    automation_logger.success(f"✅ 订单#{order_id}已重新加入队列")
+                elif order and order.status == "completed":
+                    # 如果已完成，只需从生成中列表移除
+                    _generating_orders.discard(order_id)
+                    automation_logger.info(f"ℹ️ 订单#{order_id}已完成，从生成列表移除")
+                    
+        except Exception as e:
+            automation_logger.error(f"💥 处理丢失订单#{order_id}失败: {str(e)[:100]}")
 
 
 def check_progress(page: Page) -> Dict[int, int]:
@@ -1502,8 +1605,9 @@ def automation_worker():
                     
                     # 1. 扫描已完成的视频
                     automation_logger.info("📹 开始扫描已完成的视频...")
+                    found_order_ids = set()
                     try:
-                        scan_result = scan_for_completed_videos(_page)
+                        found_order_ids = scan_for_completed_videos(_page)
                         automation_logger.success("✅ 视频扫描完成")
                     except Exception as e:
                         automation_logger.error(f"❌ 扫描视频失败: {str(e)[:150]}")
@@ -1513,6 +1617,12 @@ def automation_worker():
                             raise Exception(f"连续失败 {consecutive_errors} 次，停止工作")
                         automation_logger.warn(f"⚠️  跳过此次扫描，错误计数: {consecutive_errors}/{max_consecutive_errors}")
                         continue
+                    
+                    # 1.5 检查丢失的订单（已提交但不在页面上的），重新加入队列
+                    try:
+                        check_missing_orders(_page, found_order_ids)
+                    except Exception as e:
+                        automation_logger.warn(f"⚠️ 检查丢失订单失败: {str(e)[:100]}")
                     
                     # 2. 提交新订单（如果并发数未满）
                     available_slots = MAX_CONCURRENT_TASKS - len(_generating_orders)
