@@ -30,12 +30,24 @@ from collections import deque
 from datetime import datetime
 
 class AutomationLogger:
-    """自动化服务日志收集器"""
+    """自动化服务日志收集器 - 优化版"""
+    
+    # 日志级别图标
+    LEVEL_ICONS = {
+        "INFO": "ℹ️",
+        "WARN": "⚠️",
+        "ERROR": "❌",
+        "SUCCESS": "✅",
+        "DEBUG": "🔍",
+        "TASK": "📋"
+    }
+    
     def __init__(self, max_logs: int = 100):
         self._logs = deque(maxlen=max_logs)
         self._lock = threading.Lock()
+        self._debug_mode = False  # 关闭详细调试日志
     
-    def log(self, level: str, message: str):
+    def log(self, level: str, message: str, print_to_console: bool = True):
         """记录日志"""
         with self._lock:
             entry = {
@@ -44,11 +56,16 @@ class AutomationLogger:
                 "message": message
             }
             self._logs.append(entry)
-            # 同时打印到控制台
-            print(f"[AUTOMATION][{level}] {message}")
+            
+            # 打印到控制台（更简洁的格式）
+            if print_to_console:
+                icon = self.LEVEL_ICONS.get(level, "•")
+                timestamp = datetime.now().strftime("%H:%M:%S")
+                print(f"{icon} [{timestamp}] {message}")
     
-    def info(self, message: str):
-        self.log("INFO", message)
+    def info(self, message: str, quiet: bool = False):
+        """普通信息（quiet=True 时不打印到控制台）"""
+        self.log("INFO", message, print_to_console=not quiet)
     
     def warn(self, message: str):
         self.log("WARN", message)
@@ -58,6 +75,19 @@ class AutomationLogger:
     
     def success(self, message: str):
         self.log("SUCCESS", message)
+    
+    def task(self, message: str):
+        """任务进度日志"""
+        self.log("TASK", message)
+    
+    def debug(self, message: str):
+        """调试日志（仅在 debug_mode=True 时输出）"""
+        if self._debug_mode:
+            self.log("DEBUG", message)
+    
+    def set_debug_mode(self, enabled: bool):
+        """设置调试模式"""
+        self._debug_mode = enabled
     
     def get_logs(self, limit: int = 50) -> list:
         """获取最近的日志"""
