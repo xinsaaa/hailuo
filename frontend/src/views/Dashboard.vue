@@ -411,7 +411,7 @@ const handleLogout = () => {
                   </button>
                 </div>
                 
-                <!-- 尾帧上传 -->
+                <!-- 尾帧上传 - 仅支持特定模型 -->
                 <div class="relative">
                   <input 
                     type="file" 
@@ -419,19 +419,26 @@ const handleLogout = () => {
                     @change="(e) => handleImageUpload(e, 'last')"
                     class="hidden"
                     :id="'last-frame-input'"
+                    :disabled="!selectedModel?.supports_last_frame"
                   />
                   <label 
                     :for="'last-frame-input'"
-                    class="block cursor-pointer"
+                    class="block"
+                    :class="selectedModel?.supports_last_frame ? 'cursor-pointer' : 'cursor-not-allowed'"
                   >
                     <div 
                       v-if="!lastFramePreview"
-                      class="h-24 border-2 border-dashed border-white/20 hover:border-purple-500/50 rounded-xl flex flex-col items-center justify-center gap-2 transition-all bg-white/5 hover:bg-white/10"
+                      class="h-24 border-2 border-dashed rounded-xl flex flex-col items-center justify-center gap-2 transition-all"
+                      :class="selectedModel?.supports_last_frame 
+                        ? 'border-white/20 hover:border-purple-500/50 bg-white/5 hover:bg-white/10' 
+                        : 'border-white/10 bg-white/3 opacity-50'"
                     >
                       <svg class="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                       </svg>
-                      <span class="text-xs text-gray-400">上传尾帧（可选）</span>
+                      <span class="text-xs text-gray-400">
+                        {{ selectedModel?.supports_last_frame ? '上传尾帧（可选）' : '当前模型不支持尾帧' }}
+                      </span>
                     </div>
                     <div v-else class="relative h-24 rounded-xl overflow-hidden group">
                       <img :src="lastFramePreview" class="w-full h-full object-cover" />

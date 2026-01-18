@@ -766,6 +766,7 @@ def get_latest_code(session: Session = Depends(get_session)):
 @app.get("/api/models")
 def get_available_models():
     """获取可用的生成模型列表"""
+    # supports_last_frame: True = 支持首尾帧, False = 仅支持首帧
     models = [
         {
             "id": "hailuo_2_3",
@@ -774,8 +775,9 @@ def get_available_models():
             "description": "表现力全面升级，更稳定，更真实",
             "type": "image_to_video",
             "is_default": True,
-            "features": ["768P-1080P", "6s-10s"],
-            "badge": "NEW"
+            "features": ["768P-1080P", "6s-10s", "仅首帧"],
+            "badge": "NEW",
+            "supports_last_frame": False
         },
         {
             "id": "hailuo_2_3_fast",
@@ -784,8 +786,9 @@ def get_available_models():
             "description": "生成速度更快，超高性价比",
             "type": "image_to_video",
             "is_default": False,
-            "features": ["768P-1080P", "6s-10s"],
-            "badge": "NEW"
+            "features": ["768P-1080P", "6s-10s", "仅首帧"],
+            "badge": "NEW",
+            "supports_last_frame": False
         },
         {
             "id": "hailuo_2_0",
@@ -795,7 +798,8 @@ def get_available_models():
             "type": "image_to_video", 
             "is_default": False,
             "features": ["首尾帧", "仅尾帧", "512P-1080P", "6s-10s"],
-            "badge": "NEW"
+            "badge": "NEW",
+            "supports_last_frame": True
         },
         {
             "id": "beta_3_1",
@@ -805,7 +809,8 @@ def get_available_models():
             "type": "image_to_video", 
             "is_default": False,
             "features": ["音画同出", "首尾帧", "720P-1080P", "8s"],
-            "badge": "3.7折"
+            "badge": "3.7折",
+            "supports_last_frame": True
         },
         {
             "id": "beta_3_1_fast",
@@ -815,7 +820,8 @@ def get_available_models():
             "type": "image_to_video", 
             "is_default": False,
             "features": ["音画同出", "首尾帧", "720P-1080P", "8s"],
-            "badge": "5折"
+            "badge": "5折",
+            "supports_last_frame": True
         },
         {
             "id": "hailuo_1_0_director",
@@ -824,8 +830,9 @@ def get_available_models():
             "description": "像专业导演一样控制镜头运动",
             "type": "image_to_video", 
             "is_default": False,
-            "features": ["720P", "6s"],
-            "badge": None
+            "features": ["720P", "6s", "仅首帧"],
+            "badge": None,
+            "supports_last_frame": False
         },
         {
             "id": "hailuo_1_0_live",
@@ -834,8 +841,9 @@ def get_available_models():
             "description": "角色表现增强，稳定、流畅、生动",
             "type": "image_to_video", 
             "is_default": False,
-            "features": ["720P", "6s"],
-            "badge": None
+            "features": ["720P", "6s", "仅首帧"],
+            "badge": None,
+            "supports_last_frame": False
         },
         {
             "id": "hailuo_1_0",
@@ -844,8 +852,9 @@ def get_available_models():
             "description": "01系列的基础图生视频模型",
             "type": "image_to_video", 
             "is_default": False,
-            "features": ["720P", "6s"],
-            "badge": None
+            "features": ["720P", "6s", "仅首帧"],
+            "badge": None,
+            "supports_last_frame": False
         }
     ]
     
