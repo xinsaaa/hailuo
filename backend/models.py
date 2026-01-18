@@ -83,6 +83,24 @@ class SystemConfig(SQLModel, table=True):
     description: Optional[str] = None  # 配置描述
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
+
+class AIModel(SQLModel, table=True):
+    """AI 生成模型配置表"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    model_id: str = Field(index=True, unique=True)  # 模型标识符，如 hailuo_2_3
+    name: str  # 模型名称，如 Hailuo 2.3
+    display_name: str  # 显示名称，如 海螺 2.3
+    description: str  # 模型描述
+    model_type: str = Field(default="image_to_video")  # 模型类型
+    features: str = Field(default="[]")  # 功能列表 JSON
+    badge: Optional[str] = None  # 标签，如 NEW, 5折
+    supports_last_frame: bool = Field(default=False)  # 是否支持尾帧
+    is_default: bool = Field(default=False)  # 是否为默认模型
+    is_enabled: bool = Field(default=True)  # 是否启用
+    sort_order: int = Field(default=0)  # 排序顺序
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
 # 数据库连接（使用相对路径，支持跨环境部署）
 import os
 _current_dir = os.path.dirname(os.path.abspath(__file__))

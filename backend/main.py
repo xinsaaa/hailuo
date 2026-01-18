@@ -7,7 +7,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from sqlmodel import Session, select
 from pydantic import BaseModel
 from typing import Optional
-from backend.models import User, VideoOrder, Transaction, VerificationCode, engine
+from backend.models import User, VideoOrder, Transaction, VerificationCode, AIModel, engine
 import re
 from backend.auth import get_password_hash, verify_password, create_access_token, SECRET_KEY, ALGORITHM
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
@@ -86,6 +86,9 @@ def startup_event():
     create_db_and_tables()
     print("[MAIN] Database tables initialized.")
     
+    # 初始化默认模型数据
+    init_default_models()
+    
     # 自动启动自动化工作线程
     import os
     enable_auto_worker = os.getenv("ENABLE_AUTO_WORKER", "true").lower() == "true"
@@ -99,6 +102,121 @@ def startup_event():
             print(f"[MAIN] ❌ Failed to start automation worker: {str(e)[:100]}")
     else:
         print("[MAIN] Backend started. Automation worker disabled by config.")
+
+
+def init_default_models():
+    """初始化默认模型数据（仅在表为空时执行）"""
+    import json
+    with Session(engine) as session:
+        existing = session.exec(select(AIModel)).first()
+        if existing:
+            return  # 已有数据，跳过初始化
+        
+        default_models = [
+            {
+                "model_id": "hailuo_2_3",
+                "name": "Hailuo 2.3",
+                "display_name": "海螺 2.3",
+                "description": "表现力全面升级，更稳定，更真实",
+                "features": json.dumps(["768P-1080P", "6s-10s", "仅首帧"]),
+                "badge": "NEW",
+                "supports_last_frame": False,
+                "is_default": True,
+                "is_enabled": True,
+                "sort_order": 1
+            },
+            {
+                "model_id": "hailuo_2_3_fast",
+                "name": "Hailuo 2.3-Fast",
+                "display_name": "海螺 2.3-Fast",
+                "description": "生成速度更快，超高性价比",
+                "features": json.dumps(["768P-1080P", "6s-10s", "仅首帧"]),
+                "badge": "NEW",
+                "supports_last_frame": False,
+                "is_default": False,
+                "is_enabled": True,
+                "sort_order": 2
+            },
+            {
+                "model_id": "hailuo_2_0",
+                "name": "Hailuo 2.0",
+                "display_name": "海螺 2.0",
+                "description": "最佳效果、超清画质、精准响应",
+                "features": json.dumps(["首尾帧", "仅尾帧", "512P-1080P", "6s-10s"]),
+                "badge": "NEW",
+                "supports_last_frame": True,
+                "is_default": False,
+                "is_enabled": True,
+                "sort_order": 3
+            },
+            {
+                "model_id": "beta_3_1",
+                "name": "Beta 3.1",
+                "display_name": "Beta 3.1",
+                "description": "音画同步，高保真，精准控制",
+                "features": json.dumps(["音画同出", "首尾帧", "720P-1080P", "8s"]),
+                "badge": "3.7折",
+                "supports_last_frame": True,
+                "is_default": False,
+                "is_enabled": True,
+                "sort_order": 4
+            },
+            {
+                "model_id": "beta_3_1_fast",
+                "name": "Beta 3.1 Fast",
+                "display_name": "Beta 3.1 Fast",
+                "description": "音画同步，更高速，更高性价比",
+                "features": json.dumps(["音画同出", "首尾帧", "720P-1080P", "8s"]),
+                "badge": "5折",
+                "supports_last_frame": True,
+                "is_default": False,
+                "is_enabled": True,
+                "sort_order": 5
+            },
+            {
+                "model_id": "hailuo_1_0_director",
+                "name": "Hailuo 1.0-Director",
+                "display_name": "海螺 1.0-Director",
+                "description": "像专业导演一样控制镜头运动",
+                "features": json.dumps(["720P", "6s", "仅首帧"]),
+                "badge": None,
+                "supports_last_frame": False,
+                "is_default": False,
+                "is_enabled": True,
+                "sort_order": 6
+            },
+            {
+                "model_id": "hailuo_1_0_live",
+                "name": "Hailuo 1.0-Live",
+                "display_name": "海螺 1.0-Live",
+                "description": "角色表现增强，稳定、流畅、生动",
+                "features": json.dumps(["720P", "6s", "仅首帧"]),
+                "badge": None,
+                "supports_last_frame": False,
+                "is_default": False,
+                "is_enabled": True,
+                "sort_order": 7
+            },
+            {
+                "model_id": "hailuo_1_0",
+                "name": "Hailuo 1.0",
+                "display_name": "海螺 1.0",
+                "description": "01系列的基础图生视频模型",
+                "features": json.dumps(["720P", "6s", "仅首帧"]),
+                "badge": None,
+                "supports_last_frame": False,
+                "is_default": False,
+                "is_enabled": True,
+                "sort_order": 8
+            }
+        ]
+        
+        for model_data in default_models:
+            model = AIModel(**model_data)
+            session.add(model)
+        
+        session.commit()
+        print("[MAIN] ✅ Default AI models initialized.")
 
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
@@ -764,104 +882,40 @@ def get_latest_code(session: Session = Depends(get_session)):
 
 
 @app.get("/api/models")
-def get_available_models():
-    """获取可用的生成模型列表"""
-    # supports_last_frame: True = 支持首尾帧, False = 仅支持首帧
-    models = [
-        {
-            "id": "hailuo_2_3",
-            "name": "Hailuo 2.3", 
-            "display_name": "海螺 2.3",
-            "description": "表现力全面升级，更稳定，更真实",
-            "type": "image_to_video",
-            "is_default": True,
-            "features": ["768P-1080P", "6s-10s", "仅首帧"],
-            "badge": "NEW",
-            "supports_last_frame": False
-        },
-        {
-            "id": "hailuo_2_3_fast",
-            "name": "Hailuo 2.3-Fast",
-            "display_name": "海螺 2.3-Fast", 
-            "description": "生成速度更快，超高性价比",
-            "type": "image_to_video",
-            "is_default": False,
-            "features": ["768P-1080P", "6s-10s", "仅首帧"],
-            "badge": "NEW",
-            "supports_last_frame": False
-        },
-        {
-            "id": "hailuo_2_0",
-            "name": "Hailuo 2.0",
-            "display_name": "海螺 2.0",
-            "description": "最佳效果、超清画质、精准响应",
-            "type": "image_to_video", 
-            "is_default": False,
-            "features": ["首尾帧", "仅尾帧", "512P-1080P", "6s-10s"],
-            "badge": "NEW",
-            "supports_last_frame": True
-        },
-        {
-            "id": "beta_3_1",
-            "name": "Beta 3.1",
-            "display_name": "Beta 3.1",
-            "description": "音画同步，高保真，精准控制",
-            "type": "image_to_video", 
-            "is_default": False,
-            "features": ["音画同出", "首尾帧", "720P-1080P", "8s"],
-            "badge": "3.7折",
-            "supports_last_frame": True
-        },
-        {
-            "id": "beta_3_1_fast",
-            "name": "Beta 3.1 Fast",
-            "display_name": "Beta 3.1 Fast",
-            "description": "音画同步，更高速，更高性价比",
-            "type": "image_to_video", 
-            "is_default": False,
-            "features": ["音画同出", "首尾帧", "720P-1080P", "8s"],
-            "badge": "5折",
-            "supports_last_frame": True
-        },
-        {
-            "id": "hailuo_1_0_director",
-            "name": "Hailuo 1.0-Director",
-            "display_name": "海螺 1.0-Director",
-            "description": "像专业导演一样控制镜头运动",
-            "type": "image_to_video", 
-            "is_default": False,
-            "features": ["720P", "6s", "仅首帧"],
-            "badge": None,
-            "supports_last_frame": False
-        },
-        {
-            "id": "hailuo_1_0_live",
-            "name": "Hailuo 1.0-Live",
-            "display_name": "海螺 1.0-Live",
-            "description": "角色表现增强，稳定、流畅、生动",
-            "type": "image_to_video", 
-            "is_default": False,
-            "features": ["720P", "6s", "仅首帧"],
-            "badge": None,
-            "supports_last_frame": False
-        },
-        {
-            "id": "hailuo_1_0",
-            "name": "Hailuo 1.0",
-            "display_name": "海螺 1.0",
-            "description": "01系列的基础图生视频模型",
-            "type": "image_to_video", 
-            "is_default": False,
-            "features": ["720P", "6s", "仅首帧"],
-            "badge": None,
-            "supports_last_frame": False
-        }
-    ]
+def get_available_models(session: Session = Depends(get_session)):
+    """获取可用的生成模型列表（仅返回已启用的模型）"""
+    import json
+    
+    # 从数据库获取已启用的模型，按 sort_order 排序
+    models = session.exec(
+        select(AIModel)
+        .where(AIModel.is_enabled == True)
+        .order_by(AIModel.sort_order)
+    ).all()
+    
+    # 找到默认模型
+    default_model = next((m for m in models if m.is_default), None)
+    default_model_name = default_model.name if default_model else (models[0].name if models else "Hailuo 2.3")
+    
+    # 转换为前端需要的格式
+    result = []
+    for m in models:
+        result.append({
+            "id": m.model_id,
+            "name": m.name,
+            "display_name": m.display_name,
+            "description": m.description,
+            "type": m.model_type,
+            "is_default": m.is_default,
+            "features": json.loads(m.features) if m.features else [],
+            "badge": m.badge,
+            "supports_last_frame": m.supports_last_frame
+        })
     
     return {
-        "models": models,
-        "default_model": "Hailuo 2.3",
-        "total": len(models)
+        "models": result,
+        "default_model": default_model_name,
+        "total": len(result)
     }
 
 

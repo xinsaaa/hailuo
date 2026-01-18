@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from typing import Optional, List
 from datetime import datetime, timedelta
 
-from backend.models import User, VideoOrder, Transaction, engine
+from backend.models import User, VideoOrder, Transaction, AIModel, engine
 from backend.auth import get_password_hash, verify_password, create_access_token, SECRET_KEY, ALGORITHM
 from backend.security import (
     is_ip_banned, get_ban_remaining_seconds, get_fail_count,
@@ -601,3 +601,109 @@ def manual_cleanup(admin=Depends(get_admin_user)):
     except Exception as e:
         automation_logger.error(f"手动清理失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"清理失败: {str(e)}")
+
+
+# ============ 模型管理 API ============
+
+class ModelUpdateRequest(BaseModel):
+    is_enabled: Optional[bool] = None
+    is_default: Optional[bool] = None
+    sort_order: Optional[int] = None
+    badge: Optional[str] = None
+    description: Optional[str] = None
+
+
+class ModelOrderRequest(BaseModel):
+    model_orders: List[dict]  # [{"id": 1, "sort_order": 1}, ...]
+
+
+@router.get("/models")
+def get_all_models(admin=Depends(get_admin_user), session: Session = Depends(get_session)):
+    """获取所有模型（包括禁用的）"""
+    import json
+    
+    models = session.exec(
+        select(AIModel).order_by(AIModel.sort_order)
+    ).all()
+    
+    result = []
+    for m in models:
+        result.append({
+            "id": m.id,
+            "model_id": m.model_id,
+            "name": m.name,
+            "display_name": m.display_name,
+            "description": m.description,
+            "model_type": m.model_type,
+            "features": json.loads(m.features) if m.features else [],
+            "badge": m.badge,
+            "supports_last_frame": m.supports_last_frame,
+            "is_default": m.is_default,
+            "is_enabled": m.is_enabled,
+            "sort_order": m.sort_order,
+            "created_at": m.created_at.isoformat() if m.created_at else None,
+            "updated_at": m.updated_at.isoformat() if m.updated_at else None
+        })
+    
+    return {
+        "models": result,
+        "total": len(result)
+    }
+
+
+@router.put("/models/{model_id}")
+def update_model(
+    model_id: int,
+    data: ModelUpdateRequest,
+    admin=Depends(get_admin_user),
+    session: Session = Depends(get_session)
+):
+    """更新单个模型配置"""
+    model = session.get(AIModel, model_id)
+    if not model:
+        raise HTTPException(status_code=404, detail="模型不存在")
+    
+    # 如果设置为默认模型，先取消其他模型的默认状态
+    if data.is_default is True:
+        all_models = session.exec(select(AIModel)).all()
+        for m in all_models:
+            if m.id != model_id:
+                m.is_default = False
+        model.is_default = True
+    elif data.is_default is False:
+        model.is_default = False
+    
+    if data.is_enabled is not None:
+        model.is_enabled = data.is_enabled
+    
+    if data.sort_order is not None:
+        model.sort_order = data.sort_order
+    
+    if data.badge is not None:
+        model.badge = data.badge if data.badge else None
+    
+    if data.description is not None:
+        model.description = data.description
+    
+    model.updated_at = datetime.utcnow()
+    session.commit()
+    
+    return {"message": "模型更新成功", "model_id": model_id}
+
+
+@router.put("/models/batch/order")
+def update_models_order(
+    data: ModelOrderRequest,
+    admin=Depends(get_admin_user),
+    session: Session = Depends(get_session)
+):
+    """批量更新模型排序"""
+    for item in data.model_orders:
+        model = session.get(AIModel, item["id"])
+        if model:
+            model.sort_order = item["sort_order"]
+            model.updated_at = datetime.utcnow()
+    
+    session.commit()
+    return {"message": "排序更新成功"}
+

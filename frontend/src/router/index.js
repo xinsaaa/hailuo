@@ -8,6 +8,7 @@ import AdminDashboard from '../views/admin/AdminDashboard.vue'
 import AdminUsers from '../views/admin/AdminUsers.vue'
 import AdminOrders from '../views/admin/AdminOrders.vue'
 import AdminSecurity from '../views/admin/AdminSecurity.vue'
+import AdminModels from '../views/admin/AdminModels.vue'
 
 const routes = [
     {
@@ -63,6 +64,11 @@ const routes = [
                 path: 'security',
                 name: '安全中心',
                 component: AdminSecurity
+            },
+            {
+                path: 'models',
+                name: '模型管理',
+                component: AdminModels
             },
             {
                 path: '',

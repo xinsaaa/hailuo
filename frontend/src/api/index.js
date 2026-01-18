@@ -154,14 +154,14 @@ export const createOrder = async (prompt, model_name, firstFrameImage, lastFrame
     const formData = new FormData();
     formData.append('prompt', prompt);
     formData.append('model_name', model_name || "Hailuo 2.3");
-    
+
     if (firstFrameImage) {
         formData.append('first_frame_image', firstFrameImage);
     }
     if (lastFrameImage) {
         formData.append('last_frame_image', lastFrameImage);
     }
-    
+
     const { data } = await api.post('/orders/create', formData, {
         headers: {
             'Content-Type': 'multipart/form-data'
@@ -244,4 +244,22 @@ export const unbanIp = async (ip) => {
     return response.data
 }
 
+// ============ Admin Model Management API ============
+
+export const getAdminModels = async () => {
+    const response = await api.get('/admin/models')
+    return response.data
+}
+
+export const updateAdminModel = async (modelId, data) => {
+    const response = await api.put(`/admin/models/${modelId}`, data)
+    return response.data
+}
+
+export const updateModelsOrder = async (modelOrders) => {
+    const response = await api.put('/admin/models/batch/order', { model_orders: modelOrders })
+    return response.data
+}
+
 export default api
+
