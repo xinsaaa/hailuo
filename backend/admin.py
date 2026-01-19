@@ -751,6 +751,44 @@ def list_admin_tickets(
     return {"tickets": result, "total": total, "page": page, "limit": limit}
 
 
+@router.get("/tickets/{ticket_id}")
+def get_admin_ticket_detail(
+    ticket_id: int,
+    admin=Depends(get_admin_user),
+    session: Session = Depends(get_session)
+):
+    """管理员获取工单详情，包含对话消息列表"""
+    from backend.models import TicketMessage
+    
+    ticket = session.get(Ticket, ticket_id)
+    if not ticket:
+        raise HTTPException(status_code=404, detail="工单不存在")
+    
+    # 获取用户名
+    user = session.get(User, ticket.user_id)
+    
+    # 获取对话消息
+    messages = session.exec(
+        select(TicketMessage).where(TicketMessage.ticket_id == ticket_id).order_by(TicketMessage.created_at)
+    ).all()
+    
+    return {
+        "ticket": {
+            **ticket.model_dump(),
+            "username": user.username if user else "未知用户"
+        },
+        "messages": [
+            {
+                "id": m.id,
+                "sender_type": m.sender_type,
+                "content": m.content,
+                "created_at": m.created_at.isoformat()
+            }
+            for m in messages
+        ]
+    }
+
+
 @router.post("/tickets/{ticket_id}/reply")
 def reply_ticket(
     ticket_id: int,
@@ -758,12 +796,25 @@ def reply_ticket(
     admin=Depends(get_admin_user),
     session: Session = Depends(get_session)
 ):
-    """管理员回复工单"""
+    """管理员回复工单（追加消息到对话）"""
+    from backend.models import TicketMessage
+    
     ticket = session.get(Ticket, ticket_id)
     if not ticket:
         raise HTTPException(status_code=404, detail="工单不存在")
+    if ticket.status == "closed":
+        raise HTTPException(status_code=400, detail="工单已关闭，无法回复")
     
-    ticket.admin_reply = data.reply
+    # 创建消息
+    message = TicketMessage(
+        ticket_id=ticket_id,
+        sender_type="admin",
+        content=data.reply
+    )
+    session.add(message)
+    
+    # 更新工单状态（兼容旧字段，同时更新时间戳）
+    ticket.admin_reply = data.reply  # 兼容旧逻辑，保留最后一条回复
     ticket.status = "replied"
     ticket.replied_at = datetime.utcnow()
     ticket.updated_at = datetime.utcnow()

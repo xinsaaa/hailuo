@@ -71,11 +71,7 @@ api.interceptors.response.use(
 )
 
 // ============ Config API ============
-
-export const getPublicConfig = async () => {
-    const response = await api.get('/config')
-    return response.data
-}
+// Moved to end of file to match export order
 
 // ============ Security API ============
 
@@ -290,12 +286,27 @@ export const getTicketDetail = async (ticketId) => {
     return response.data
 }
 
+export const userReplyTicket = async (ticketId, reply) => {
+    const response = await api.post(`/tickets/${ticketId}/reply`, { reply })
+    return response.data
+}
+
+export const userCloseTicket = async (ticketId) => {
+    const response = await api.post(`/tickets/${ticketId}/close`)
+    return response.data
+}
+
 // ============ Admin Ticket API ============
 
 export const getAdminTickets = async (page = 1, limit = 20, status = '') => {
     const params = { page, limit }
     if (status) params.status = status
     const response = await api.get('/admin/tickets', { params })
+    return response.data
+}
+
+export const getAdminTicketDetail = async (ticketId) => {
+    const response = await api.get(`/admin/tickets/${ticketId}`)
     return response.data
 }
 
@@ -306,6 +317,11 @@ export const replyTicket = async (ticketId, reply) => {
 
 export const closeTicket = async (ticketId) => {
     const response = await api.post(`/admin/tickets/${ticketId}/close`)
+    return response.data
+}
+
+export const getPublicConfig = async () => {
+    const response = await api.get('/config/public')
     return response.data
 }
 

@@ -39,6 +39,12 @@ const routes = [
         component: () => import('../views/Tickets.vue'),
         meta: { requiresAuth: true }
     },
+    {
+        path: '/invite',
+        name: 'Invite',
+        component: () => import('../views/Invite.vue'),
+        meta: { requiresAuth: true }
+    },
 
     // Admin Routes
     {

@@ -266,13 +266,8 @@ const handleLogout = () => {
           <span class="text-white drop-shadow-md">大帝</span><span class="text-cyan-400 drop-shadow-md">AI</span>
         </div>
         <div class="flex items-center gap-6">
-          <router-link 
-            to="/tickets"
-            class="flex items-center gap-2 px-3 py-1.5 rounded-lg text-gray-300 hover:text-white hover:bg-white/10 transition-all border border-transparent hover:border-white/5 active:scale-95"
-          >
-            <svg class="w-5 h-5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 5.636l-3.536 3.536m0 5.656l3.536 3.536M9.172 9.172L5.636 5.636m3.536 9.192l-3.536 3.536M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-5 0a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
-            <span class="text-sm font-medium">工单</span>
-          </router-link>
+          <router-link to="/tickets" class="text-sm text-gray-400 hover:text-white transition-colors">工单</router-link>
+          <router-link to="/invite" class="text-sm text-gray-400 hover:text-white transition-colors">邀请</router-link>
 
           <div class="flex items-center gap-3 bg-black/40 p-1 pr-4 rounded-xl border border-white/10 backdrop-blur-sm shadow-inner">
              <button 
@@ -504,38 +499,7 @@ const handleLogout = () => {
             </div>
           </div>
           
-          <!-- 邀请奖励卡片 -->
-          <div class="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-r from-purple-900/20 to-blue-900/20 backdrop-blur-xl p-6 shadow-xl">
-             <div class="absolute -right-10 -top-10 w-40 h-40 bg-purple-500/20 rounded-full blur-3xl"></div>
-             
-             <div class="flex flex-col md:flex-row items-center justify-between gap-6 relative z-10">
-                <div class="flex-1">
-                   <h3 class="text-lg font-bold text-white mb-2 flex items-center gap-2">
-                     <span class="text-2xl">🎁</span>
-                     邀请好友，获取奖励
-                   </h3>
-                   <p class="text-gray-400 text-sm mb-4">每邀请一位好友注册，双方各得 <span class="text-cyan-400 font-bold">¥3.00</span> 余额奖励。</p>
-                   
-                   <div class="bg-black/30 border border-white/10 rounded-xl p-3 flex items-center gap-3 max-w-md">
-                      <div class="flex-1">
-                        <span class="text-xs text-gray-500 block">您的专属邀请码</span>
-                        <span class="text-lg font-mono font-bold text-white tracking-wider">{{ user?.invite_code || '加载中...' }}</span>
-                      </div>
-                      <button 
-                        @click="copyInviteCode"
-                        class="px-4 py-2 bg-white/10 hover:bg-white/20 text-white text-sm font-medium rounded-lg transition-colors border border-white/5 active:scale-95"
-                      >
-                        复制链接
-                      </button>
-                   </div>
-                </div>
-                
-                <div class="flex items-center gap-2 px-4 py-2 bg-green-500/10 border border-green-500/20 rounded-full">
-                   <svg class="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
-                   <span class="text-xs font-bold text-green-400">独享保隐私 · 安全加密</span>
-                </div>
-             </div>
-          </div>
+
           
           <!-- History -->
           <div>

@@ -143,10 +143,12 @@ onUnmounted(() => {
     <!-- Navbar -->
     <nav class="relative z-20 px-8 py-4 border-b border-white/10 bg-black/20 backdrop-blur-md">
       <div class="max-w-7xl mx-auto flex justify-between items-center">
-        <div class="text-2xl font-extrabold cursor-pointer flex items-center gap-2" @click="router.push('/')">
+        <div class="text-2xl font-extrabold cursor-pointer flex items-center gap-2" @click="router.push('/dashboard')">
           <span class="text-white drop-shadow-md">大帝</span><span class="text-cyan-400 drop-shadow-md">AI</span>
         </div>
         <div class="flex items-center gap-6">
+          <router-link to="/dashboard" class="text-sm text-gray-400 hover:text-white transition-colors">控制台</router-link>
+          <router-link to="/invite" class="text-sm text-gray-400 hover:text-white transition-colors">邀请</router-link>
           <div v-if="user" class="text-sm text-gray-300 bg-black/40 px-4 py-2 rounded-xl border border-white/10 backdrop-blur-sm shadow-inner">
             余额: <span class="font-bold text-white text-shadow-sm">¥{{ user.balance.toFixed(2) }}</span>
           </div>

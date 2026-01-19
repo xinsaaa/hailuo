@@ -113,12 +113,21 @@ class Ticket(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     user_id: int = Field(foreign_key="user.id", index=True)  # 提交用户
     title: str  # 工单标题
-    content: str  # 工单内容
+    content: str  # 工单初始内容（首条消息）
     status: str = Field(default="open", index=True)  # open, replied, closed
-    admin_reply: Optional[str] = None  # 管理员回复
-    replied_at: Optional[datetime] = None  # 回复时间
+    admin_reply: Optional[str] = None  # 兼容旧数据，新数据通过 TicketMessage 存储
+    replied_at: Optional[datetime] = None  # 兼容旧数据
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class TicketMessage(SQLModel, table=True):
+    """工单对话消息 - 支持多轮对话"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    ticket_id: int = Field(foreign_key="ticket.id", index=True)  # 关联工单
+    sender_type: str  # 'user' 或 'admin'
+    content: str  # 消息内容
+    created_at: datetime = Field(default_factory=datetime.utcnow)
 
 # 数据库连接（使用相对路径，支持跨环境部署）
 import os

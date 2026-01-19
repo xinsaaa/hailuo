@@ -1,7 +1,7 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, nextTick, computed } from 'vue'
 import { useRouter } from 'vue-router'
-import { getCurrentUser, getMyTickets, createTicket } from '../api'
+import { getCurrentUser, getMyTickets, createTicket, getTicketDetail, userReplyTicket, userCloseTicket } from '../api'
 
 const router = useRouter()
 const user = ref(null)
@@ -9,6 +9,14 @@ const tickets = ref([])
 const loading = ref(false)
 const showCreateModal = ref(false)
 const creating = ref(false)
+
+// 工单详情
+const showDetailModal = ref(false)
+const currentTicket = ref(null)
+const messages = ref([])
+const detailLoading = ref(false)
+const replyContent = ref('')
+const replying = ref(false)
 
 // 新工单表单
 const newTicket = ref({
@@ -63,6 +71,68 @@ const handleCreate = async () => {
   }
 }
 
+// 查看工单详情
+const openDetail = async (ticketId) => {
+  detailLoading.value = true
+  showDetailModal.value = true
+  try {
+    const data = await getTicketDetail(ticketId)
+    currentTicket.value = data.ticket
+    messages.value = data.messages || []
+    await nextTick()
+    scrollToBottom()
+  } catch (err) {
+    toast('加载详情失败', 'error')
+    showDetailModal.value = false
+  } finally {
+    detailLoading.value = false
+  }
+}
+
+// 滚动到底部
+const scrollToBottom = () => {
+  const container = document.getElementById('messages-container')
+  if (container) {
+    container.scrollTop = container.scrollHeight
+  }
+}
+
+// 用户回复
+const handleReply = async () => {
+  if (!replyContent.value.trim()) {
+    toast('请输入回复内容', 'error')
+    return
+  }
+  
+  replying.value = true
+  try {
+    await userReplyTicket(currentTicket.value.id, replyContent.value)
+    replyContent.value = ''
+    // 重新加载详情
+    await openDetail(currentTicket.value.id)
+    await loadData()
+    toast('回复成功', 'success')
+  } catch (err) {
+    toast(err.response?.data?.detail || '回复失败', 'error')
+  } finally {
+    replying.value = false
+  }
+}
+
+// 用户关闭工单
+const handleCloseTicket = async () => {
+  if (!confirm('确定要关闭此工单吗？关闭后将无法继续对话。')) return
+  
+  try {
+    await userCloseTicket(currentTicket.value.id)
+    toast('工单已关闭', 'success')
+    showDetailModal.value = false
+    await loadData()
+  } catch (err) {
+    toast(err.response?.data?.detail || '关闭失败', 'error')
+  }
+}
+
 // 状态样式映射
 const statusMap = {
   open: { text: '待处理', class: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' },
@@ -70,10 +140,7 @@ const statusMap = {
   closed: { text: '已关闭', class: 'bg-gray-500/20 text-gray-400 border-gray-500/30' }
 }
 
-const handleLogout = () => {
-  localStorage.removeItem('token')
-  router.push('/login')
-}
+const canReply = computed(() => currentTicket.value && currentTicket.value.status !== 'closed')
 
 onMounted(loadData)
 </script>
@@ -88,7 +155,7 @@ onMounted(loadData)
 
     <!-- Toast -->
     <Transition name="toast">
-      <div v-if="showToast" class="fixed top-6 left-1/2 transform -translate-x-1/2 z-50">
+      <div v-if="showToast" class="fixed top-6 left-1/2 transform -translate-x-1/2 z-[100]">
         <div :class="{
             'bg-red-500/80 text-white border-red-500/50 shadow-red-900/50': toastType === 'error',
             'bg-green-500/80 text-white border-green-500/50 shadow-green-900/50': toastType === 'success',
@@ -107,10 +174,8 @@ onMounted(loadData)
           <span class="text-xs px-2 py-0.5 rounded bg-white/10 text-gray-400 border border-white/5 ml-2">工单系统</span>
         </div>
         <div class="flex items-center gap-6">
-          <router-link to="/dashboard" class="flex items-center gap-2 text-sm text-gray-400 hover:text-white transition-colors group">
-            <svg class="w-4 h-4 group-hover:-translate-x-0.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"></path></svg>
-            返回控制台
-          </router-link>
+          <router-link to="/dashboard" class="text-sm text-gray-400 hover:text-white transition-colors">控制台</router-link>
+          <router-link to="/invite" class="text-sm text-gray-400 hover:text-white transition-colors">邀请</router-link>
           
           <div class="h-6 w-px bg-white/10"></div>
           
@@ -131,14 +196,13 @@ onMounted(loadData)
       <div class="flex justify-between items-end mb-8">
         <div>
           <h2 class="text-3xl font-bold text-white mb-2">我的工单</h2>
-          <p class="text-gray-400">查看历史记录或提交新问题</p>
+          <p class="text-gray-400">点击工单查看对话详情或继续回复</p>
         </div>
         <button 
           @click="showCreateModal = true"
-          class="group relative px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold rounded-xl hover:shadow-[0_0_20px_rgba(168,85,247,0.4)] transition-all active:scale-95 flex items-center gap-2 overflow-hidden"
+          class="px-4 py-2 bg-white/10 hover:bg-white/20 text-white text-sm font-bold rounded-lg border border-white/5 hover:border-white/10 transition-all flex items-center gap-2 active:scale-95"
         >
-          <div class="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
           <span>新建工单</span>
         </button>
       </div>
@@ -159,7 +223,8 @@ onMounted(loadData)
       
       <div v-else class="grid grid-cols-1 gap-4">
         <div v-for="ticket in tickets" :key="ticket.id"
-             class="group relative bg-[#1a1d24]/80 backdrop-blur-xl border border-white/10 rounded-2xl p-6 transition-all hover:border-white/20 hover:bg-[#1a1d24] hover:shadow-xl hover:-translate-y-1 overflow-hidden"
+             @click="openDetail(ticket.id)"
+             class="group relative bg-[#1a1d24]/80 backdrop-blur-xl border border-white/10 rounded-2xl p-6 transition-all hover:border-white/20 hover:bg-[#1a1d24] hover:shadow-xl cursor-pointer overflow-hidden"
         >
           <!-- Status Indicator Stripe -->
           <div class="absolute left-0 top-0 bottom-0 w-1" :class="{
@@ -168,34 +233,17 @@ onMounted(loadData)
             'bg-gray-600': ticket.status === 'closed'
           }"></div>
 
-          <div class="ml-2">
-            <div class="flex justify-between items-start mb-4">
-              <div>
-                <h3 class="text-lg font-bold text-white mb-1 group-hover:text-cyan-50 transition-colors">{{ ticket.title }}</h3>
-                <p class="text-xs text-gray-500 font-mono">{{ new Date(ticket.created_at).toLocaleString() }}</p>
-              </div>
+          <div class="ml-2 flex justify-between items-center">
+            <div>
+              <h3 class="text-lg font-bold text-white mb-1 group-hover:text-cyan-50 transition-colors">{{ ticket.title }}</h3>
+              <p class="text-xs text-gray-500 font-mono">{{ new Date(ticket.created_at).toLocaleString() }}</p>
+            </div>
+            <div class="flex items-center gap-3">
               <span :class="`px-3 py-1 rounded-lg text-xs font-bold border flex items-center gap-1.5 ${statusMap[ticket.status].class}`">
                 <span v-if="ticket.status === 'open'" class="w-1.5 h-1.5 rounded-full bg-current animate-pulse"></span>
                 {{ statusMap[ticket.status].text }}
               </span>
-            </div>
-            
-            <div class="bg-black/20 rounded-xl p-4 text-gray-300 text-sm leading-relaxed border border-white/5 mb-4">
-               {{ ticket.content }}
-            </div>
-            
-            <!-- Admin Reply Section -->
-            <div v-if="ticket.admin_reply" class="relative mt-4 pl-4 before:absolute before:left-0 before:top-2 before:bottom-2 before:w-0.5 before:bg-gradient-to-b before:from-green-500 before:to-transparent">
-              <div class="flex items-center gap-2 mb-2">
-                <div class="w-5 h-5 rounded bg-green-500/20 flex items-center justify-center">
-                  <svg class="w-3 h-3 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"></path></svg>
-                </div>
-                <span class="text-sm font-bold text-green-400">管理员回复</span>
-                <span class="text-xs text-gray-600" v-if="ticket.replied_at">{{ new Date(ticket.replied_at).toLocaleString() }}</span>
-              </div>
-              <p class="text-gray-300 text-sm leading-relaxed bg-green-500/5 p-3 rounded-lg border border-green-500/10">
-                {{ ticket.admin_reply }}
-              </p>
+              <svg class="w-5 h-5 text-gray-600 group-hover:text-cyan-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"></path></svg>
             </div>
           </div>
         </div>
@@ -254,6 +302,112 @@ onMounted(loadData)
             >
               {{ creating ? '提交中...' : '确认提交' }}
             </button>
+          </div>
+        </div>
+      </div>
+    </Transition>
+    
+    <!-- Detail Modal (Chat View) -->
+    <Transition name="modal">
+      <div v-if="showDetailModal" class="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <!-- Backdrop -->
+        <div class="absolute inset-0 bg-black/80 backdrop-blur-sm" @click="showDetailModal = false"></div>
+        
+        <!-- Modal Content -->
+        <div class="relative bg-[#151921] border border-white/10 rounded-2xl w-full max-w-2xl h-[80vh] shadow-2xl overflow-hidden flex flex-col">
+          <!-- Header -->
+          <div class="p-4 border-b border-white/10 bg-white/5 flex items-center justify-between shrink-0">
+            <div v-if="currentTicket">
+              <h3 class="text-lg font-bold text-white">{{ currentTicket.title }}</h3>
+              <p class="text-xs text-gray-500">{{ new Date(currentTicket.created_at).toLocaleString() }}</p>
+            </div>
+            <div class="flex items-center gap-3">
+              <span v-if="currentTicket" :class="`px-3 py-1 rounded-lg text-xs font-bold border ${statusMap[currentTicket.status].class}`">
+                {{ statusMap[currentTicket.status].text }}
+              </span>
+              <button v-if="canReply" @click="handleCloseTicket" class="text-xs text-gray-500 hover:text-red-400 transition-colors">关闭工单</button>
+              <button @click="showDetailModal = false" class="text-gray-500 hover:text-white transition-colors">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+              </button>
+            </div>
+          </div>
+          
+          <!-- Messages Area -->
+          <div id="messages-container" class="flex-grow overflow-y-auto p-4 space-y-4">
+            <div v-if="detailLoading" class="text-center text-gray-500 py-10">加载中...</div>
+            
+            <template v-else>
+              <!-- 初始消息（工单内容） -->
+              <div class="flex justify-end">
+                <div class="max-w-[80%] bg-cyan-600/20 text-white p-4 rounded-2xl rounded-br-md border border-cyan-500/20">
+                  <p class="text-sm leading-relaxed whitespace-pre-wrap">{{ currentTicket?.content }}</p>
+                  <p class="text-xs text-cyan-400/60 mt-2 text-right">{{ currentTicket ? new Date(currentTicket.created_at).toLocaleTimeString() : '' }}</p>
+                </div>
+              </div>
+              
+              <!-- 对话消息 -->
+              <div v-for="msg in messages" :key="msg.id" 
+                   :class="msg.sender_type === 'user' ? 'flex justify-end' : 'flex justify-start'">
+                <div :class="[
+                  'max-w-[80%] p-4 rounded-2xl border',
+                  msg.sender_type === 'user' 
+                    ? 'bg-cyan-600/20 text-white border-cyan-500/20 rounded-br-md' 
+                    : 'bg-green-600/20 text-white border-green-500/20 rounded-bl-md'
+                ]">
+                  <div v-if="msg.sender_type === 'admin'" class="flex items-center gap-2 mb-2">
+                    <div class="w-5 h-5 rounded-full bg-green-500/30 flex items-center justify-center">
+                      <svg class="w-3 h-3 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.121 17.804A13.937 13.937 0 0112 16c2.5 0 4.847.655 6.879 1.804M15 10a3 3 0 11-6 0 3 3 0 016 0zm6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    </div>
+                    <span class="text-xs font-bold text-green-400">管理员</span>
+                  </div>
+                  <p class="text-sm leading-relaxed whitespace-pre-wrap">{{ msg.content }}</p>
+                  <p :class="[
+                    'text-xs mt-2',
+                    msg.sender_type === 'user' ? 'text-cyan-400/60 text-right' : 'text-green-400/60'
+                  ]">{{ new Date(msg.created_at).toLocaleTimeString() }}</p>
+                </div>
+              </div>
+              
+              <!-- 兼容旧数据: 如果没有 messages 但有 admin_reply -->
+              <div v-if="messages.length === 0 && currentTicket?.admin_reply" class="flex justify-start">
+                <div class="max-w-[80%] bg-green-600/20 text-white p-4 rounded-2xl rounded-bl-md border border-green-500/20">
+                  <div class="flex items-center gap-2 mb-2">
+                    <div class="w-5 h-5 rounded-full bg-green-500/30 flex items-center justify-center">
+                      <svg class="w-3 h-3 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.121 17.804A13.937 13.937 0 0112 16c2.5 0 4.847.655 6.879 1.804M15 10a3 3 0 11-6 0 3 3 0 016 0zm6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                    </div>
+                    <span class="text-xs font-bold text-green-400">管理员</span>
+                  </div>
+                  <p class="text-sm leading-relaxed whitespace-pre-wrap">{{ currentTicket.admin_reply }}</p>
+                  <p class="text-xs text-green-400/60 mt-2">{{ currentTicket.replied_at ? new Date(currentTicket.replied_at).toLocaleTimeString() : '' }}</p>
+                </div>
+              </div>
+              
+              <!-- 工单已关闭提示 -->
+              <div v-if="currentTicket?.status === 'closed'" class="text-center text-gray-500 text-sm py-4">
+                --- 工单已关闭 ---
+              </div>
+            </template>
+          </div>
+          
+          <!-- Reply Input -->
+          <div v-if="canReply" class="p-4 border-t border-white/10 bg-black/20 shrink-0">
+            <div class="flex gap-3">
+              <textarea 
+                v-model="replyContent"
+                rows="2"
+                placeholder="输入您的回复..."
+                class="flex-grow px-4 py-3 bg-black/30 border border-white/10 rounded-xl text-white placeholder-gray-600 focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 focus:outline-none transition-all resize-none"
+                @keydown.ctrl.enter="handleReply"
+              ></textarea>
+              <button 
+                @click="handleReply"
+                :disabled="replying || !replyContent.trim()"
+                class="px-6 py-3 bg-gradient-to-r from-cyan-600 to-blue-600 text-white font-bold rounded-xl hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95 shrink-0"
+              >
+                {{ replying ? '发送中...' : '发送' }}
+              </button>
+            </div>
+            <p class="text-xs text-gray-600 mt-2">Ctrl + Enter 快速发送</p>
           </div>
         </div>
       </div>

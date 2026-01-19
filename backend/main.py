@@ -1001,19 +1001,123 @@ def get_user_tickets(
     return {"tickets": tickets}
 
 
+# ============ 系统配置 API (用户端) ============
+
+@app.get("/api/config/public")
+def get_public_config(
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session)
+):
+    """获取公开系统配置 (如视频价格、赠送比例)"""
+    from backend.models import SystemConfig
+    
+    # 定义需要返回给前端的配置项 key
+    public_keys = ["video_price", "bonus_rate"]
+    
+    configs = {}
+    for key in public_keys:
+        config = session.exec(select(SystemConfig).where(SystemConfig.key == key)).first()
+        if config:
+            configs[key] = float(config.value)
+        else:
+            # 默认值
+            defaults = {"video_price": 5.0, "bonus_rate": 0.1}
+            configs[key] = defaults.get(key, 0.0)
+            
+    return configs
+
+
 @app.get("/api/tickets/{ticket_id}")
 def get_ticket_detail(
     ticket_id: int,
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_session)
 ):
-    """获取工单详情"""
+    """获取工单详情，包含对话消息列表"""
+    from backend.models import TicketMessage
+    
     ticket = session.get(Ticket, ticket_id)
     if not ticket:
         raise HTTPException(status_code=404, detail="工单不存在")
     if ticket.user_id != current_user.id:
         raise HTTPException(status_code=403, detail="无权查看此工单")
-    return ticket
+    
+    # 获取对话消息
+    messages = session.exec(
+        select(TicketMessage).where(TicketMessage.ticket_id == ticket_id).order_by(TicketMessage.created_at)
+    ).all()
+    
+    return {
+        "ticket": ticket,
+        "messages": [
+            {
+                "id": m.id,
+                "sender_type": m.sender_type,
+                "content": m.content,
+                "created_at": m.created_at.isoformat()
+            }
+            for m in messages
+        ]
+    }
+
+
+@app.post("/api/tickets/{ticket_id}/reply")
+def user_reply_ticket(
+    ticket_id: int,
+    data: TicketReply,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session)
+):
+    """用户回复工单（追加消息）"""
+    from backend.models import TicketMessage
+    from datetime import datetime
+    
+    ticket = session.get(Ticket, ticket_id)
+    if not ticket:
+        raise HTTPException(status_code=404, detail="工单不存在")
+    if ticket.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="无权操作此工单")
+    if ticket.status == "closed":
+        raise HTTPException(status_code=400, detail="工单已关闭，无法回复")
+    
+    # 创建消息
+    message = TicketMessage(
+        ticket_id=ticket_id,
+        sender_type="user",
+        content=data.reply
+    )
+    session.add(message)
+    
+    # 更新工单状态和时间
+    ticket.status = "open"  # 用户回复后重置为等待回复状态
+    ticket.updated_at = datetime.utcnow()
+    session.add(ticket)
+    session.commit()
+    
+    return {"message": "回复成功"}
+
+
+@app.post("/api/tickets/{ticket_id}/close")
+def user_close_ticket(
+    ticket_id: int,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session)
+):
+    """用户关闭工单"""
+    from datetime import datetime
+    
+    ticket = session.get(Ticket, ticket_id)
+    if not ticket:
+        raise HTTPException(status_code=404, detail="工单不存在")
+    if ticket.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="无权操作此工单")
+    
+    ticket.status = "closed"
+    ticket.updated_at = datetime.utcnow()
+    session.add(ticket)
+    session.commit()
+    
+    return {"message": "工单已关闭"}
 
 
 # ============ 静态文件服务 ============

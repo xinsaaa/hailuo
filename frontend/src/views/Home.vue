@@ -2,10 +2,12 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '../stores/user'
+import { getPublicConfig } from '../api'
 
 const prompt = ref('')
 const router = useRouter()
 const userStore = useUserStore()
+const videoPrice = ref(5.0)
 
 const isLoggedIn = computed(() => !!userStore.token)
 const user = computed(() => userStore.user)
@@ -19,8 +21,20 @@ const handleMouseMove = (e) => {
   mouseY.value = e.clientY
 }
 
+const loadConfig = async () => {
+    try {
+        const config = await getPublicConfig()
+        if (config.video_price) {
+            videoPrice.value = config.video_price
+        }
+    } catch (err) {
+        console.error('获取配置失败', err)
+    }
+}
+
 onMounted(() => {
   window.addEventListener('mousemove', handleMouseMove)
+  loadConfig()
 })
 
 onUnmounted(() => {
@@ -44,6 +58,7 @@ const handleStart = () => {
       <div class="flex gap-4 items-center">
         <template v-if="isLoggedIn">
            <span class="text-gray-300 font-medium mr-2 text-shadow-sm">你好, <span class="text-cyan-400 font-bold">{{ user?.username || '创作者' }}</span></span>
+           <router-link to="/invite" class="text-gray-300 hover:text-white font-medium transition-colors hover:drop-shadow-md mr-4">邀请</router-link>
            <router-link to="/dashboard" class="px-6 py-2.5 bg-white/90 text-gray-900 rounded-full font-bold hover:bg-white transition-all duration-300 shadow-lg hover:shadow-cyan-500/20 backdrop-blur-sm">
              进入控制台
            </router-link>
@@ -84,7 +99,7 @@ const handleStart = () => {
                 HOT
               </div>
               <div class="text-xl font-bold text-white drop-shadow-sm tracking-wide">
-                ¥0.99
+                ¥{{ videoPrice }}
               </div>
             </div>
             
@@ -108,7 +123,7 @@ const handleStart = () => {
             <!-- 价格说明 -->
             <div class="text-center mb-6">
               <div class="text-sm font-medium text-gray-400">
-                单次生成仅需 <span class="text-white font-bold mx-1">0.99元</span>
+                单次生成仅需 <span class="text-white font-bold mx-1">{{ videoPrice }}元</span>
               </div>
             </div>
             
