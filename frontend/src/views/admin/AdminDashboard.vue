@@ -1,23 +1,27 @@
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
-import { getAdminStats, getAutomationStatus, startAutomation, getAutomationLogs } from '../../api'
+import { getAdminStats, getAutomationStatus, startAutomation, getAutomationLogs, getAllConfig, updateConfig } from '../../api'
 
 const stats = ref(null)
 const automation = ref(null)
 const logs = ref([])
+const configs = ref({})
 const loading = ref(true)
 const logsLoading = ref(false)
+const configLoading = ref(false)
 let logsInterval = null
 
 const loadData = async () => {
     loading.value = true
     try {
-        const [statsData, autoData] = await Promise.all([
+        const [statsData, autoData, configData] = await Promise.all([
             getAdminStats(),
-            getAutomationStatus()
+            getAutomationStatus(),
+            getAllConfig()
         ])
         stats.value = statsData
         automation.value = autoData
+        configs.value = configData.configs
     } catch (err) {
         console.error(err)
     } finally {
@@ -45,6 +49,26 @@ const handleStartAutomation = async () => {
     } catch (err) {
         alert('启动失败: ' + (err.response?.data?.detail || err.message))
     }
+}
+
+const handleUpdateConfig = async (key) => {
+  if (!configs.value[key]) return
+  
+  const value = parseFloat(configs.value[key].value)
+  if (isNaN(value)) {
+    alert('请输入有效的数字')
+    return
+  }
+  
+  configLoading.value = true
+  try {
+    await updateConfig(key, value)
+    alert('配置更新成功')
+  } catch (err) {
+    alert('更新失败: ' + (err.response?.data?.detail || err.message))
+  } finally {
+    configLoading.value = false
+  }
 }
 
 const getLogColor = (level) => {
@@ -78,7 +102,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div v-if="loading" class="text-white">加载中...</div>
+  <div v-if="loading" class="text-white text-center py-20">加载中...</div>
   <div v-else class="space-y-6">
     
     <!-- Automation Status -->
@@ -105,6 +129,89 @@ onUnmounted(() => {
             >
                 启动服务
             </button>
+        </div>
+    </div>
+
+    <!-- Stats Grid -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <!-- Users -->
+        <div class="bg-gray-800 p-6 rounded-2xl border border-gray-700/50 shadow-lg relative overflow-hidden">
+            <div class="absolute right-0 top-0 w-32 h-32 bg-blue-500/5 rounded-full blur-3xl -mr-10 -mt-10"></div>
+            <h4 class="text-gray-400 text-xs font-bold uppercase tracking-wider">总用户数</h4>
+            <div class="mt-4 flex items-end justify-between">
+                <div class="text-3xl font-bold text-white">{{ stats?.users.total }}</div>
+                <div class="text-blue-500/20 p-2 rounded-lg">
+                    <svg class="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+                </div>
+            </div>
+            <div class="mt-2 text-xs text-blue-400/80 font-medium bg-blue-500/10 px-2 py-1 rounded inline-block">邀请注册: {{ stats?.users.invited }}</div>
+        </div>
+
+        <!-- Orders -->
+        <div class="bg-gray-800 p-6 rounded-2xl border border-gray-700/50 shadow-lg relative overflow-hidden">
+             <div class="absolute right-0 top-0 w-32 h-32 bg-purple-500/5 rounded-full blur-3xl -mr-10 -mt-10"></div>
+            <h4 class="text-gray-400 text-xs font-bold uppercase tracking-wider">今日订单</h4>
+            <div class="mt-4 flex items-end justify-between">
+                <div>
+                     <div class="text-3xl font-bold text-white">{{ stats?.orders.today }}</div>
+                     <div class="text-xs text-gray-500 mt-1">历史总量: {{ stats?.orders.total }}</div>
+                </div>
+                <div class="text-purple-500/20 p-2 rounded-lg">
+                    <svg class="w-6 h-6 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+                </div>
+            </div>
+        </div>
+
+        <!-- Revenue -->
+        <div class="bg-gray-800 p-6 rounded-2xl border border-gray-700/50 shadow-lg relative overflow-hidden">
+            <div class="absolute right-0 top-0 w-32 h-32 bg-green-500/5 rounded-full blur-3xl -mr-10 -mt-10"></div>
+            <h4 class="text-gray-400 text-xs font-bold uppercase tracking-wider">今日充值</h4>
+            <div class="mt-4 flex items-end justify-between">
+                <div class="text-3xl font-bold text-green-400 font-mono">¥{{ stats?.revenue.today_recharge.toFixed(2) }}</div>
+                <div class="p-3 bg-green-500/20 text-green-400 rounded-lg">
+                   <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                </div>
+            </div>
+            <div class="mt-2 text-xs text-gray-500">总充值: ¥{{ stats?.revenue.total_recharge.toFixed(2) }}</div>
+        </div>
+        
+        <!-- Invite Bonus -->
+        <div class="bg-gray-800 p-6 rounded-2xl border border-gray-700/50 shadow-lg relative overflow-hidden">
+            <div class="absolute right-0 top-0 w-32 h-32 bg-orange-500/5 rounded-full blur-3xl -mr-10 -mt-10"></div>
+            <h4 class="text-gray-400 text-xs font-bold uppercase tracking-wider">已发邀请奖励</h4>
+            <div class="mt-4 flex items-end justify-between">
+                <div class="text-3xl font-bold text-orange-400 font-mono">¥{{ stats?.revenue.total_invite_bonus.toFixed(2) }}</div>
+                <div class="p-3 bg-orange-500/20 text-orange-400 rounded-lg">
+                   <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"></path></svg>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- System Config -->
+    <div class="bg-gray-800 rounded-2xl border border-gray-700/50 shadow-xl overflow-hidden">
+        <div class="px-6 py-4 border-b border-gray-700/50 bg-gray-900/50">
+            <h3 class="text-lg font-bold text-white">系统参数配置</h3>
+        </div>
+        <div class="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div v-for="(config, key) in configs" :key="key" class="bg-black/20 p-4 rounded-xl border border-white/5">
+                <label class="block text-sm text-gray-400 mb-2 h-10 overflow-hidden">{{ config.description }}</label>
+                <div class="flex gap-2">
+                    <input 
+                        v-model="config.value"
+                        type="number"
+                        step="0.01"
+                        class="flex-1 bg-gray-700/50 border border-gray-600 rounded-lg px-3 py-2 text-white focus:border-blue-500 focus:outline-none transition-all"
+                    >
+                    <button 
+                        @click="handleUpdateConfig(key)"
+                        :disabled="configLoading"
+                        class="px-3 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
+                    >
+                        保存
+                    </button>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -138,66 +245,5 @@ onUnmounted(() => {
             </div>
         </div>
     </div>
-
-    <!-- Stats Grid -->
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <!-- Users -->
-        <div class="bg-gray-800 p-6 rounded-2xl border border-gray-700/50 shadow-lg relative overflow-hidden">
-            <div class="absolute right-0 top-0 w-32 h-32 bg-blue-500/5 rounded-full blur-3xl -mr-10 -mt-10"></div>
-            <h4 class="text-gray-400 text-xs font-bold uppercase tracking-wider">总用户数</h4>
-            <div class="mt-4 flex items-end justify-between">
-                <div class="text-3xl font-bold text-white">{{ stats?.users.total }}</div>
-                <div class="text-blue-500/20 p-2 rounded-lg">
-                    <svg class="w-6 h-6 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
-                </div>
-            </div>
-        </div>
-
-        <!-- Orders Today -->
-        <div class="bg-gray-800 p-6 rounded-2xl border border-gray-700/50 shadow-lg relative overflow-hidden">
-             <div class="absolute right-0 top-0 w-32 h-32 bg-purple-500/5 rounded-full blur-3xl -mr-10 -mt-10"></div>
-            <h4 class="text-gray-400 text-xs font-bold uppercase tracking-wider">今日订单</h4>
-            <div class="mt-4 flex items-end justify-between">
-                <div>
-                     <div class="text-3xl font-bold text-white">{{ stats?.orders.today }}</div>
-                     <div class="text-xs text-gray-500 mt-1">历史总量: {{ stats?.orders.total }}</div>
-                </div>
-                <div class="text-purple-500/20 p-2 rounded-lg">
-                    <svg class="w-6 h-6 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
-                </div>
-            </div>
-        </div>
-
-         <!-- Pending Orders -->
-         <div class="bg-gray-800 p-6 rounded-2xl border border-gray-700/50 shadow-lg relative overflow-hidden">
-            <div class="absolute right-0 top-0 w-32 h-32 bg-yellow-500/5 rounded-full blur-3xl -mr-10 -mt-10"></div>
-            <h4 class="text-gray-400 text-xs font-bold uppercase tracking-wider">待处理队列</h4>
-            <div class="mt-4 flex items-end justify-between">
-                <div>
-                    <div class="text-3xl font-bold text-yellow-500">{{ stats?.orders.pending }}</div>
-                    <div class="text-xs text-gray-500 mt-1">已完成: {{ stats?.orders.completed }}</div>
-                </div>
-                <div class="text-yellow-500/20 p-2 rounded-lg">
-                   <svg class="w-6 h-6 text-yellow-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Revenue Grid -->
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div class="bg-gray-800 p-6 rounded-2xl border border-gray-700/50 shadow-lg">
-            <h4 class="text-gray-400 text-xs font-bold uppercase tracking-wider">今日充值</h4>
-            <div class="mt-4 text-3xl font-bold text-green-400 font-mono">¥ {{ stats?.revenue.today_recharge.toFixed(2) }}</div>
-        </div>
-        <div class="bg-gray-800 p-6 rounded-2xl border border-gray-700/50 shadow-lg">
-            <h4 class="text-gray-400 text-xs font-bold uppercase tracking-wider">资金总览 (充值 / 消耗)</h4>
-             <div class="mt-4 flex items-baseline gap-4 font-mono">
-                <span class="text-3xl font-bold text-white">¥ {{ stats?.revenue.total_recharge.toFixed(2) }}</span>
-                <span class="text-lg text-gray-500">/ ¥ {{ stats?.revenue.total_expense.toFixed(2) }}</span>
-            </div>
-        </div>
-    </div>
   </div>
 </template>
-

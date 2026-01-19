@@ -145,21 +145,16 @@ def get_stats(admin=Depends(get_admin_user), session: Session = Depends(get_sess
         select(func.sum(Transaction.amount)).where(Transaction.type == "expense")
     ).one() or 0
     
-    # 今日统计
-    today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-    today_orders = session.exec(
-        select(func.count(VideoOrder.id)).where(VideoOrder.created_at >= today)
-    ).one()
-    today_recharge = session.exec(
-        select(func.sum(Transaction.amount)).where(
-            Transaction.type == "recharge",
-            Transaction.created_at >= today
-        )
+    # 邀请统计
+    total_invited_users = session.exec(select(func.count(User.id)).where(User.invited_by.is_not(None))).one()
+    total_invite_bonus = session.exec(
+        select(func.sum(Transaction.amount)).where(Transaction.type == "invite_bonus")
     ).one() or 0
     
     return {
         "users": {
-            "total": total_users
+            "total": total_users,
+            "invited": total_invited_users
         },
         "orders": {
             "total": total_orders,
@@ -170,7 +165,8 @@ def get_stats(admin=Depends(get_admin_user), session: Session = Depends(get_sess
         "revenue": {
             "total_recharge": float(total_recharge),
             "total_expense": float(total_expense),
-            "today_recharge": float(today_recharge)
+            "today_recharge": float(today_recharge),
+            "total_invite_bonus": float(total_invite_bonus)
         }
     }
 
@@ -199,6 +195,8 @@ def list_users(
                 "id": u.id,
                 "username": u.username,
                 "balance": u.balance,
+                "invite_code": u.invite_code,
+                "invited_by": u.invited_by,
                 "created_at": u.created_at.isoformat() if u.created_at else None
             }
             for u in users

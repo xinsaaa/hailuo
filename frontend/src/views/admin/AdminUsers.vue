@@ -59,6 +59,8 @@ onMounted(() => loadUsers())
                     <th class="px-6 py-5">ID</th>
                     <th class="px-6 py-5">用户名</th>
                     <th class="px-6 py-5">余额 (¥)</th>
+                    <th class="px-6 py-5">邀请码</th>
+                    <th class="px-6 py-5">邀请人ID</th>
                     <th class="px-6 py-5">注册时间</th>
                     <th class="px-6 py-5 text-right">操作</th>
                 </tr>
@@ -73,6 +75,8 @@ onMounted(() => loadUsers())
                         {{ user.username }}
                     </td>
                     <td class="px-6 py-4 font-mono text-green-400 font-medium">{{ user.balance.toFixed(2) }}</td>
+                    <td class="px-6 py-4 font-mono text-gray-400">{{ user.invite_code || '-' }}</td>
+                    <td class="px-6 py-4 text-gray-400">{{ user.invited_by ? '#' + user.invited_by : '-' }}</td>
                     <td class="px-6 py-4 text-gray-500">{{ new Date(user.created_at).toLocaleString() }}</td>
                     <td class="px-6 py-4 text-right">
                         <button 

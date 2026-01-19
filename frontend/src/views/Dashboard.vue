@@ -266,6 +266,14 @@ const handleLogout = () => {
           <span class="text-white drop-shadow-md">大帝</span><span class="text-cyan-400 drop-shadow-md">AI</span>
         </div>
         <div class="flex items-center gap-6">
+          <router-link 
+            to="/tickets"
+            class="flex items-center gap-2 px-3 py-1.5 rounded-lg text-gray-300 hover:text-white hover:bg-white/10 transition-all border border-transparent hover:border-white/5 active:scale-95"
+          >
+            <svg class="w-5 h-5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 5.636l-3.536 3.536m0 5.656l3.536 3.536M9.172 9.172L5.636 5.636m3.536 9.192l-3.536 3.536M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-5 0a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
+            <span class="text-sm font-medium">工单</span>
+          </router-link>
+
           <div class="flex items-center gap-3 bg-black/40 p-1 pr-4 rounded-xl border border-white/10 backdrop-blur-sm shadow-inner">
              <button 
                @click="router.push('/recharge')"
@@ -273,12 +281,6 @@ const handleLogout = () => {
              >
                充值
              </button>
-             <router-link 
-               to="/tickets"
-               class="text-sm text-gray-300 hover:text-white transition-colors"
-             >
-               工单
-             </router-link>
              <span class="text-sm text-gray-300">余额: <span class="font-bold text-white text-shadow-sm">¥{{ formattedBalance }}</span></span>
           </div>
           <button @click="handleLogout" class="text-sm text-gray-300 hover:text-white transition-colors hover:drop-shadow-sm">退出</button>

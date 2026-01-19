@@ -21,7 +21,7 @@ from backend.models import VerificationCode, VideoOrder, engine
 # ============ 常量配置 ============
 import os
 HAILUO_URL = "https://hailuoai.com/create/image-to-video"
-PHONE_NUMBER = os.getenv("HAILUO_PHONE", "15781806380")
+PHONE_NUMBER = os.getenv("HAILUO_PHONE", "17366935232")
 MAX_CONCURRENT_TASKS = 2  # 海螺 AI 允许的最大并发任务数
 POLL_INTERVAL = 5  # 轮询间隔（秒）
 

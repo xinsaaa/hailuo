@@ -309,5 +309,15 @@ export const closeTicket = async (ticketId) => {
     return response.data
 }
 
+export const getAllConfig = async () => {
+    const response = await api.get('/admin/config')
+    return response.data
+}
+
+export const updateConfig = async (key, value) => {
+    const response = await api.patch('/admin/config', { key, value })
+    return response.data
+}
+
 export default api
 
