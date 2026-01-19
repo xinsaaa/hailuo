@@ -33,6 +33,12 @@ const routes = [
         component: () => import('../views/Recharge.vue'),
         meta: { requiresAuth: true }
     },
+    {
+        path: '/tickets',
+        name: 'Tickets',
+        component: () => import('../views/Tickets.vue'),
+        meta: { requiresAuth: true }
+    },
 
     // Admin Routes
     {
@@ -59,6 +65,11 @@ const routes = [
                 path: 'orders',
                 name: '订单管理',
                 component: AdminOrders
+            },
+            {
+                path: 'tickets',
+                name: '工单管理',
+                component: () => import('../views/admin/AdminTickets.vue')
             },
             {
                 path: 'security',

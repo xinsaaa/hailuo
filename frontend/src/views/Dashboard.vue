@@ -263,6 +263,12 @@ const handleLogout = () => {
              >
                充值
              </button>
+             <router-link 
+               to="/tickets"
+               class="text-sm text-gray-300 hover:text-white transition-colors"
+             >
+               工单
+             </router-link>
              <span class="text-sm text-gray-300">余额: <span class="font-bold text-white text-shadow-sm">¥{{ formattedBalance }}</span></span>
           </div>
           <button @click="handleLogout" class="text-sm text-gray-300 hover:text-white transition-colors hover:drop-shadow-sm">退出</button>

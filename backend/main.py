@@ -7,9 +7,9 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from sqlmodel import Session, select
 from pydantic import BaseModel
 from typing import Optional
-from backend.models import User, VideoOrder, Transaction, VerificationCode, AIModel, engine
+from backend.models import User, VideoOrder, Transaction, VerificationCode, AIModel, Ticket, engine
 import re
-from backend.auth import get_password_hash, verify_password, create_access_token, SECRET_KEY, ALGORITHM
+from backend.auth import get_password_hash, verify_password, create_access_token, SECRET_KEY, ALGORITHM, generate_invite_code
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import JWTError, jwt
 from backend.automation import run_hailuo_task, start_automation_worker
@@ -268,6 +268,10 @@ class UserCreateWithCaptcha(BaseModel):
     captcha_nonce: str
     captcha_proof: str
     captcha_position: float
+    # 设备指纹（防止同一设备多次注册）
+    device_fingerprint: Optional[str] = None
+    # 邀请码（可选）
+    invite_code: Optional[str] = None
 
 
 class LoginWithCaptcha(BaseModel):
@@ -388,12 +392,50 @@ def register(user: UserCreateWithCaptcha, request: Request, session: Session = D
     if db_user:
         raise HTTPException(status_code=400, detail="用户名已存在")
     
-    # 创建用户
+    # 检查设备指纹是否已注册过（防止恶意注册）
+    if user.device_fingerprint:
+        existing_fingerprint = session.exec(
+            select(User).where(User.device_fingerprint == user.device_fingerprint)
+        ).first()
+        if existing_fingerprint:
+            raise HTTPException(status_code=400, detail="该设备已注册过账号，每个设备只能注册一个账号")
+    
+    # 处理邀请码（如果有）
+    inviter = None
+    if user.invite_code:
+        inviter = session.exec(
+            select(User).where(User.invite_code == user.invite_code)
+        ).first()
+        # 邀请码无效不报错，只是不给奖励
+    
+    # 生成新用户的邀请码
+    new_invite_code = generate_invite_code()
+    # 确保邀请码唯一
+    while session.exec(select(User).where(User.invite_code == new_invite_code)).first():
+        new_invite_code = generate_invite_code()
+    
+    # 创建用户（默认余额 ¥3 在模型中已设置）
     hashed_password = get_password_hash(user.password)
-    new_user = User(username=user.username, hashed_password=hashed_password)
+    new_user = User(
+        username=user.username, 
+        hashed_password=hashed_password,
+        invite_code=new_invite_code,
+        device_fingerprint=user.device_fingerprint,
+        invited_by=inviter.id if inviter else None
+    )
     session.add(new_user)
     session.commit()
     session.refresh(new_user)
+    
+    # 如果有邀请人，给双方发放 ¥3 奖励
+    if inviter:
+        # 奖励邀请人
+        inviter.balance += 3.0
+        session.add(inviter)
+        # 奖励被邀请人（额外加 ¥3，总共 ¥6）
+        new_user.balance += 3.0
+        session.add(new_user)
+        session.commit()
     
     record_success(client_ip)
     access_token = create_access_token(data={"sub": new_user.username})
@@ -917,6 +959,61 @@ def get_available_models(session: Session = Depends(get_session)):
         "default_model": default_model_name,
         "total": len(result)
     }
+
+
+# ============ 工单系统 API ============
+
+class TicketCreate(BaseModel):
+    title: str
+    content: str
+
+class TicketReply(BaseModel):
+    reply: str
+
+
+@app.post("/api/tickets/create")
+def create_ticket(
+    ticket: TicketCreate,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session)
+):
+    """用户创建工单"""
+    new_ticket = Ticket(
+        user_id=current_user.id,
+        title=ticket.title,
+        content=ticket.content
+    )
+    session.add(new_ticket)
+    session.commit()
+    session.refresh(new_ticket)
+    return {"message": "工单已提交", "ticket_id": new_ticket.id}
+
+
+@app.get("/api/tickets")
+def get_user_tickets(
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session)
+):
+    """获取当前用户的工单列表"""
+    tickets = session.exec(
+        select(Ticket).where(Ticket.user_id == current_user.id).order_by(Ticket.created_at.desc())
+    ).all()
+    return {"tickets": tickets}
+
+
+@app.get("/api/tickets/{ticket_id}")
+def get_ticket_detail(
+    ticket_id: int,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session)
+):
+    """获取工单详情"""
+    ticket = session.get(Ticket, ticket_id)
+    if not ticket:
+        raise HTTPException(status_code=404, detail="工单不存在")
+    if ticket.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="无权查看此工单")
+    return ticket
 
 
 # ============ 静态文件服务 ============

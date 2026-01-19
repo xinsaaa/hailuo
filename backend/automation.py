@@ -404,6 +404,9 @@ def login_to_hailuo(page: Page) -> bool:
             )
             automation_logger.success("🎉 登录验证成功！")
             
+            # 关闭可能出现的广告弹窗
+            dismiss_popup(page)
+            
             # 保存登录状态
             automation_logger.info("💾 保存登录状态以便下次使用...")
             save_login_state(page)
@@ -416,6 +419,25 @@ def login_to_hailuo(page: Page) -> bool:
     except Exception as e:
         automation_logger.error(f"💥 登录流程异常: {str(e)[:200]}")
         return False
+
+
+def dismiss_popup(page: Page):
+    """关闭页面上可能出现的广告弹窗"""
+    try:
+        automation_logger.info("🔍 检查是否有弹窗需要关闭...")
+        
+        # 检查是否有 ant-modal 弹窗
+        close_btn = page.locator("button.ant-modal-close")
+        if close_btn.is_visible(timeout=3000):
+            automation_logger.info("🚫 发现广告弹窗，正在关闭...")
+            close_btn.click(force=True, timeout=3000)
+            page.wait_for_timeout(500)
+            automation_logger.success("✅ 广告弹窗已关闭")
+        else:
+            automation_logger.info("✅ 无弹窗需要关闭")
+    except Exception as e:
+        # 静默处理，弹窗关闭失败不影响主流程
+        automation_logger.info(f"ℹ️ 弹窗检测完成: {str(e)[:50]}")
 
 
 # ============ 视频生成流程 ============
@@ -432,6 +454,9 @@ def submit_video_task(page: Page, order_id: int, prompt: str, first_frame_path: 
         
         automation_logger.info(f"🖼️  首帧图片: {first_frame_path}")
         automation_logger.info(f"🖼️  尾帧图片: {last_frame_path if last_frame_path else '无'}")
+        
+        # 先关闭可能存在的弹窗，确保页面可操作
+        dismiss_popup(page)
         
         # 步骤1: 上传首帧图片
         automation_logger.info("📤 开始上传首帧图片...")
@@ -468,50 +493,30 @@ def submit_video_task(page: Page, order_id: int, prompt: str, first_frame_path: 
             prompt_with_id = add_tracking_id(prompt, order_id)
             automation_logger.info(f"📝 最终提示词: {prompt_with_id[:100]}...")
             
-            # 查找文本输入框（使用精确的选择器）
+            # 查找Slate编辑器输入框
             automation_logger.info("🎯 定位视频描述输入框...")
             try:
-                # 使用你提供的精确选择器
-                text_input = None
-                selectors = [
-                    "#video-create-textarea",  # 最精确的ID选择器
-                    "#video-create-input [contenteditable='true']",  # 容器内的可编辑区域
-                    "div[role='textbox'][contenteditable='true']",  # 角色为textbox的可编辑区域
-                    "[data-slate-editor='true']",  # Slate编辑器
-                    ".description_wrap [contenteditable='true']"  # 描述区域内的可编辑元素
-                ]
+                # 使用精确选择器定位 Slate 编辑器
+                text_input = page.locator("#video-create-textarea")
                 
-                for selector in selectors:
-                    try:
-                        text_input = page.locator(selector).first
-                        if text_input.is_visible():
-                            automation_logger.success(f"✅ 找到文本输入框: {selector}")
-                            break
-                    except:
-                        continue
-                
-                if text_input and text_input.is_visible():
+                # 使用 force 和短超时，避免长时间等待
+                if text_input.is_visible(timeout=5000):
+                    automation_logger.success("✅ 找到文本输入框")
                     automation_logger.info("👆 点击输入框...")
-                    text_input.click()
-                    automation_logger.info("📝 填写提示词...")
+                    text_input.click(force=True, timeout=5000)
+                    page.wait_for_timeout(500)
                     
-                    # 对于contenteditable元素，可能需要特殊处理
-                    try:
-                        # 先清空内容
-                        page.keyboard.press("Control+A")
-                        page.keyboard.press("Delete")
-                        # 然后输入内容
-                        page.keyboard.type(prompt_with_id)
-                        automation_logger.success("✅ 提示词填写完成")
-                    except:
-                        # 回退到fill方法
-                        text_input.fill(prompt_with_id)
-                        automation_logger.success("✅ 提示词填写完成(回退方法)")
+                    automation_logger.info("📝 填写提示词...")
+                    # Slate 编辑器需要用键盘输入
+                    page.keyboard.press("Control+A")
+                    page.keyboard.press("Delete")
+                    page.keyboard.type(prompt_with_id, delay=10)  # 加一点延迟确保稳定
+                    automation_logger.success("✅ 提示词填写完成")
                 else:
-                    automation_logger.warn("⚠️  未找到文本输入框，跳过提示词填写")
+                    automation_logger.warn("⚠️ 未找到文本输入框，跳过提示词填写")
                     
             except Exception as e:
-                automation_logger.warn(f"⚠️  填写提示词失败: {str(e)[:100]}")
+                automation_logger.warn(f"⚠️ 填写提示词失败: {str(e)[:100]}")
         
         # 步骤4: 选择用户指定的模型
         automation_logger.info(f"🎛️  开始选择用户指定的模型: {model_name}")
@@ -767,114 +772,47 @@ def select_generation_model(page: Page, model_name: str = "Hailuo 2.3") -> bool:
         # 根据用户提供的HTML结构，精确定位模型选择下拉框
         automation_logger.info("🔍 查找模型选择下拉框...")
         
-        # 基于用户提供的精确HTML结构构建选择器
-        dropdown_selectors = [
-            # 精确的结构选择器
-            'div.flex.h-full.w-full.items-center.overflow-hidden:has(img[alt*="AI Video model"]):has(div.text-hl_text_00:has-text("Hailuo"))',
-            
-            # 更具体的选择器
-            'div:has(> div.bg-hl_bg_05 img[alt*="AI Video model"]) div.text-hl_text_00:has-text("Hailuo")',
-            
-            # 基于图片的选择器
-            'img[alt="AI Video model Image by Hailuo AI Video Generator"]',
-            
-            # 基于包含结构的选择器
-            'div:has(img[src*="hailuoai.com"]):has(div:has-text("Hailuo"))',
-            
-            # 基于类名组合的选择器  
-            'div.flex.items-center:has(div.bg-hl_bg_05):has(div.text-hl_text_00)',
-            
-            # 更宽泛的备用选择器
-            '*:has(img[alt*="AI Video model"])',
-            '*:has(div.text-hl_text_00:has-text("Hailuo"))'
-        ]
+        # 使用用户提供的精确选择器：data-tour="model-selection-guide"
+        automation_logger.info("🔍 查找模型选择下拉框...")
         
         dropdown_element = None
         
-        for i, selector in enumerate(dropdown_selectors):
-            try:
-                automation_logger.info(f"  尝试选择器 {i+1}: {selector[:80]}...")
-                elements = page.locator(selector).all()
-                
-                for element in elements:
-                    if element.is_visible():
-                        # 检查元素内容是否包含Hailuo模型名称
-                        text_content = element.text_content() or ""
-                        if "hailuo" in text_content.lower():
-                            dropdown_element = element
-                            automation_logger.success(f"✅ 找到模型选择下拉框: {text_content[:50]}")
-                            break
-                
-                if dropdown_element:
-                    break
-                    
-            except Exception as e:
-                automation_logger.warn(f"  选择器 {i+1} 失败: {str(e)[:50]}")
-                continue
+        try:
+            # 优先使用 data-tour 属性定位（最精确）
+            dropdown = page.locator("div[data-tour='model-selection-guide']")
+            if dropdown.is_visible(timeout=5000):
+                dropdown_element = dropdown
+                automation_logger.success("✅ 找到模型选择器 (data-tour)")
+        except:
+            pass
         
-        # 如果没找到精确的，尝试查找父容器
+        # 备选策略：查找包含 Hailuo 文本的下拉框
         if not dropdown_element:
-            automation_logger.info("🔍 尝试查找包含模型信息的父容器...")
+            automation_logger.info("🔍 尝试备选策略...")
             try:
-                # 查找包含Hailuo文本的可点击父元素
-                parent_selectors = [
-                    'div:has(div:has-text("Hailuo 1.0-Live"))',
-                    'div:has(div:has-text("Hailuo 1.0-Director"))', 
-                    'div:has(div:has-text("Hailuo 2.3"))',
-                    '*:has(div.text-hl_text_00)',
-                    'div.flex:has-text("Hailuo")'
-                ]
-                
-                for selector in parent_selectors:
-                    try:
-                        elements = page.locator(selector).all()
-                        for element in elements:
-                            if element.is_visible():
-                                text = element.text_content() or ""
-                                if "hailuo" in text.lower() and len(text.strip()) < 100:
-                                    dropdown_element = element
-                                    automation_logger.success(f"✅ 找到父容器: {text[:50]}")
-                                    break
-                        if dropdown_element:
-                            break
-                    except:
-                        continue
-                        
-            except Exception as e:
-                automation_logger.warn(f"查找父容器失败: {str(e)[:50]}")
-        
-        if not dropdown_element:
-            automation_logger.error("❌ 未找到模型选择下拉框")
-            
-            # 调试信息：截图并列出所有包含Hailuo的元素
-            try:
-                page.screenshot(path="debug_no_dropdown.png")
-                automation_logger.info("📸 保存调试截图: debug_no_dropdown.png")
-                
-                # 列出页面上所有包含Hailuo的元素
-                automation_logger.info("🔍 页面上所有包含Hailuo的元素:")
-                all_hailuo = page.locator("*:has-text('Hailuo')").all()
-                for i, elem in enumerate(all_hailuo[:10]):
-                    try:
-                        text = elem.text_content() or ""
-                        if text.strip():
-                            automation_logger.info(f"  {i+1}: {text[:100]}")
-                    except:
-                        continue
+                hailuo_texts = page.locator("text=Hailuo").all()
+                for text_elem in hailuo_texts:
+                    if text_elem.is_visible():
+                        parent = text_elem.locator("..").locator("..")  # 向上两级找到容器
+                        dropdown_element = parent
+                        automation_logger.success("✅ 找到模型选择器 (Hailuo文本)")
+                        break
             except:
                 pass
             
-            return False
-        
-        # 点击找到的下拉框元素
-        automation_logger.info("👆 点击模型选择下拉框...")
-        try:
-            dropdown_element.click()
-            page.wait_for_timeout(2000)  # 等待下拉菜单加载
-            automation_logger.success("✅ 已点击下拉框，等待选项加载...")
-            
-        except Exception as e:
-            automation_logger.error(f"❌ 点击下拉框失败: {str(e)[:100]}")
+        if dropdown_element:
+            # 点击找到的下拉框元素
+            automation_logger.info("👆 点击模型选择下拉框...")
+            try:
+                # 强制点击，忽略遮挡
+                dropdown_element.click(force=True, timeout=5000)
+                page.wait_for_timeout(2000)  # 等待下拉菜单加载
+                automation_logger.success("✅ 已点击下拉框，等待选项加载...")
+            except Exception as e:
+                automation_logger.error(f"❌ 点击下拉框失败: {str(e)[:100]}")
+                return False
+        else:
+            automation_logger.error("❌ 未找到模型选择下拉框")
             return False
         
         # 检查是否出现了模型选择弹框/下拉菜单
@@ -1674,6 +1612,14 @@ def automation_worker():
                         
                         if submitted_count > 0:
                             automation_logger.success(f"🎉 本轮提交了{submitted_count}个新任务")
+                            # 提交完订单后刷新页面，防止页面状态残留导致下次上传失败
+                            automation_logger.info("🔄 刷新页面以重置状态...")
+                            try:
+                                _page.reload(timeout=20000)
+                                _page.wait_for_timeout(3000)
+                                automation_logger.success("✅ 页面已刷新")
+                            except Exception as e:
+                                automation_logger.warn(f"⚠️ 刷新页面失败: {e}")
                     else:
                         automation_logger.info(f"⏸️  所有任务槽位已满 ({len(_generating_orders)}/{MAX_CONCURRENT_TASKS})")
                     

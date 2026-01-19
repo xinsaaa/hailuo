@@ -5,6 +5,8 @@ import { getAdminModels, updateAdminModel } from '../../api'
 const models = ref([])
 const loading = ref(false)
 const updating = ref(null) // 正在更新的模型 ID
+const editingPrice = ref(null) // 正在编辑价格的模型 ID
+const tempPrice = ref('') // 临时价格输入
 
 // 加载模型列表
 const loadModels = async () => {
@@ -47,6 +49,39 @@ const setDefault = async (model) => {
   }
 }
 
+// 开始编辑价格
+const startEditPrice = (model) => {
+  editingPrice.value = model.id
+  tempPrice.value = model.price?.toString() || '0.99'
+}
+
+// 取消编辑价格
+const cancelEditPrice = () => {
+  editingPrice.value = null
+  tempPrice.value = ''
+}
+
+// 保存价格
+const savePrice = async (model) => {
+  const newPrice = parseFloat(tempPrice.value)
+  if (isNaN(newPrice) || newPrice < 0) {
+    alert('请输入有效的价格')
+    return
+  }
+  
+  updating.value = model.id
+  try {
+    await updateAdminModel(model.id, { price: newPrice })
+    model.price = newPrice
+    editingPrice.value = null
+    tempPrice.value = ''
+  } catch (err) {
+    alert('更新价格失败: ' + (err.response?.data?.detail || err.message))
+  } finally {
+    updating.value = null
+  }
+}
+
 onMounted(() => {
   loadModels()
 })
@@ -75,6 +110,7 @@ onMounted(() => {
             <tr>
               <th scope="col" class="px-6 py-4 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">排序</th>
               <th scope="col" class="px-6 py-4 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">模型信息</th>
+              <th scope="col" class="px-6 py-4 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">价格</th>
               <th scope="col" class="px-6 py-4 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">功能特性</th>
               <th scope="col" class="px-6 py-4 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">上传支持</th>
               <th scope="col" class="px-6 py-4 text-left text-xs font-semibold text-gray-400 uppercase tracking-wider">状态</th>
@@ -83,7 +119,7 @@ onMounted(() => {
           </thead>
           <tbody class="divide-y divide-gray-700/50">
             <tr v-if="loading">
-              <td colspan="6" class="px-6 py-20 text-center">
+              <td colspan="7" class="px-6 py-20 text-center">
                 <div class="flex flex-col items-center justify-center text-gray-500">
                   <svg class="animate-spin h-8 w-8 text-blue-500 mb-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                     <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
@@ -94,11 +130,11 @@ onMounted(() => {
               </td>
             </tr>
             <tr v-else-if="models.length === 0">
-              <td colspan="6" class="px-6 py-20 text-center text-gray-500">
+              <td colspan="7" class="px-6 py-20 text-center text-gray-500">
                 暂无模型数据
               </td>
             </tr>
-            <tr v-for="model in models" :key="model.id" class="hover:bg-gray-700/30 transition-colors duration-150">
+            <tr v-for="model in models" :key="model.id" class="group hover:bg-gray-700/30 transition-colors duration-150">
               <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-400 font-mono">
                 #{{ model.sort_order }}
               </td>
@@ -119,6 +155,32 @@ onMounted(() => {
                 </div>
                 <div class="text-xs text-gray-400 mt-1 max-w-xs truncate" :title="model.description">
                   {{ model.description }}
+                </div>
+              </td>
+              <!-- 价格编辑 -->
+              <td class="px-6 py-4 whitespace-nowrap">
+                <div v-if="editingPrice === model.id" class="flex items-center gap-2">
+                  <input 
+                    v-model="tempPrice"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    class="w-20 px-2 py-1 text-sm bg-gray-700 border border-gray-600 rounded text-white focus:border-blue-500 focus:outline-none"
+                    @keyup.enter="savePrice(model)"
+                    @keyup.esc="cancelEditPrice"
+                  />
+                  <button @click="savePrice(model)" class="text-green-400 hover:text-green-300" title="保存">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                  </button>
+                  <button @click="cancelEditPrice" class="text-red-400 hover:text-red-300" title="取消">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                  </button>
+                </div>
+                <div v-else class="flex items-center gap-2">
+                  <span class="text-sm font-bold text-emerald-400">¥{{ model.price?.toFixed(2) || '0.99' }}</span>
+                  <button @click="startEditPrice(model)" class="text-gray-400 hover:text-white opacity-0 group-hover:opacity-100 transition-opacity" title="编辑价格">
+                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                  </button>
                 </div>
               </td>
               <td class="px-6 py-4">

@@ -91,8 +91,8 @@ export const getSecurityStatus = async () => {
 
 // ============ Auth API ============
 
-export const register = async (username, password, captchaData, position) => {
-    const response = await api.post('/register', {
+export const register = async (username, password, captchaData, position, deviceFingerprint = null, inviteCode = null) => {
+    const payload = {
         username,
         password,
         captcha_challenge: captchaData.challenge,
@@ -101,7 +101,19 @@ export const register = async (username, password, captchaData, position) => {
         captcha_nonce: captchaData.nonce,
         captcha_proof: captchaData.proof,
         captcha_position: position
-    })
+    }
+
+    // 添加设备指纹（防止同设备多次注册）
+    if (deviceFingerprint) {
+        payload.device_fingerprint = deviceFingerprint
+    }
+
+    // 添加邀请码（如果有）
+    if (inviteCode) {
+        payload.invite_code = inviteCode
+    }
+
+    const response = await api.post('/register', payload)
     return response.data
 }
 
@@ -258,6 +270,42 @@ export const updateAdminModel = async (modelId, data) => {
 
 export const updateModelsOrder = async (modelOrders) => {
     const response = await api.put('/admin/models/batch/order', { model_orders: modelOrders })
+    return response.data
+}
+
+// ============ Ticket API (User) ============
+
+export const createTicket = async (title, content) => {
+    const response = await api.post('/tickets/create', { title, content })
+    return response.data
+}
+
+export const getMyTickets = async () => {
+    const response = await api.get('/tickets')
+    return response.data
+}
+
+export const getTicketDetail = async (ticketId) => {
+    const response = await api.get(`/tickets/${ticketId}`)
+    return response.data
+}
+
+// ============ Admin Ticket API ============
+
+export const getAdminTickets = async (page = 1, limit = 20, status = '') => {
+    const params = { page, limit }
+    if (status) params.status = status
+    const response = await api.get('/admin/tickets', { params })
+    return response.data
+}
+
+export const replyTicket = async (ticketId, reply) => {
+    const response = await api.post(`/admin/tickets/${ticketId}/reply`, { reply })
+    return response.data
+}
+
+export const closeTicket = async (ticketId) => {
+    const response = await api.post(`/admin/tickets/${ticketId}/close`)
     return response.data
 }
 

@@ -6,10 +6,15 @@ class User(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     username: str = Field(index=True, unique=True)
     hashed_password: str
-    balance: float = Field(default=0.0)
+    balance: float = Field(default=3.0)  # 新用户默认送 ¥3
     created_at: datetime = Field(default_factory=datetime.utcnow)
     is_active: bool = Field(default=True)
     is_superuser: bool = Field(default=False)
+    # 邀请系统
+    invite_code: Optional[str] = Field(default=None, index=True, unique=True)  # 用户的邀请码
+    invited_by: Optional[int] = Field(default=None)  # 邀请人 ID
+    # 设备指纹（防止恶意多号注册）
+    device_fingerprint: Optional[str] = Field(default=None, index=True)  # 设备指纹
 
 class VideoOrder(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -91,6 +96,7 @@ class AIModel(SQLModel, table=True):
     name: str  # 模型名称，如 Hailuo 2.3
     display_name: str  # 显示名称，如 海螺 2.3
     description: str  # 模型描述
+    price: float = Field(default=0.99)  # 模型价格（元/次）
     model_type: str = Field(default="image_to_video")  # 模型类型
     features: str = Field(default="[]")  # 功能列表 JSON
     badge: Optional[str] = None  # 标签，如 NEW, 5折
@@ -98,6 +104,19 @@ class AIModel(SQLModel, table=True):
     is_default: bool = Field(default=False)  # 是否为默认模型
     is_enabled: bool = Field(default=True)  # 是否启用
     sort_order: int = Field(default=0)  # 排序顺序
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
+
+
+class Ticket(SQLModel, table=True):
+    """工单系统 - 客户提交问题，管理员回复"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="user.id", index=True)  # 提交用户
+    title: str  # 工单标题
+    content: str  # 工单内容
+    status: str = Field(default="open", index=True)  # open, replied, closed
+    admin_reply: Optional[str] = None  # 管理员回复
+    replied_at: Optional[datetime] = None  # 回复时间
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 

@@ -25,6 +25,36 @@ const needCaptcha = ref(false)
 const mouseX = ref(0)
 const mouseY = ref(0)
 
+// 邀请码（从 URL 参数获取）
+const inviteCode = ref('')
+
+// 生成设备指纹（简单实现，用于防止同设备多次注册）
+const generateFingerprint = () => {
+  const canvas = document.createElement('canvas')
+  const ctx = canvas.getContext('2d')
+  ctx.textBaseline = 'top'
+  ctx.font = '14px Arial'
+  ctx.fillText('fingerprint', 0, 0)
+  
+  const data = [
+    navigator.userAgent,
+    navigator.language,
+    screen.width + 'x' + screen.height,
+    screen.colorDepth,
+    new Date().getTimezoneOffset(),
+    canvas.toDataURL()
+  ].join('|')
+  
+  // 简单哈希
+  let hash = 0
+  for (let i = 0; i < data.length; i++) {
+    const char = data.charCodeAt(i)
+    hash = ((hash << 5) - hash) + char
+    hash = hash & hash
+  }
+  return Math.abs(hash).toString(16)
+}
+
 const handleMouseMove = (e) => {
   mouseX.value = e.clientX
   mouseY.value = e.clientY
@@ -83,6 +113,15 @@ const maxInitRetries = 2
 
 onMounted(async () => {
   window.addEventListener('mousemove', handleMouseMove)
+  
+  // 从 URL 提取邀请码（如 ?invite=ABC123）
+  const urlParams = new URLSearchParams(window.location.search)
+  const urlInviteCode = urlParams.get('invite')
+  if (urlInviteCode) {
+    inviteCode.value = urlInviteCode
+    isLoginMode.value = false // 有邀请码自动切换到注册模式
+    console.log('[Login] 检测到邀请码:', urlInviteCode)
+  }
   
   // 首次加载等待后端服务就绪
   await new Promise(resolve => setTimeout(resolve, 1500))
@@ -178,12 +217,14 @@ const handleSubmit = async () => {
         needCaptcha.value ? captchaPosition.value : null
       )
     } else {
-      // 注册（必须带验证码）
+      // 注册（必须带验证码，包含设备指纹和邀请码）
       result = await register(
         username.value, 
         password.value,
         captchaData.value,
-        captchaPosition.value
+        captchaPosition.value,
+        generateFingerprint(),  // 设备指纹
+        inviteCode.value || null  // 邀请码
       )
     }
     userStore.login(null, result.access_token)

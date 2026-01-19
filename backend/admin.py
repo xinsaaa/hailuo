@@ -707,3 +707,90 @@ def update_models_order(
     session.commit()
     return {"message": "排序更新成功"}
 
+
+# ============ 工单管理 ============
+from backend.models import Ticket
+
+
+class TicketReplyData(BaseModel):
+    reply: str
+
+
+@router.get("/tickets")
+def list_admin_tickets(
+    status: Optional[str] = None,
+    page: int = 1,
+    limit: int = 20,
+    admin=Depends(get_admin_user),
+    session: Session = Depends(get_session)
+):
+    """管理员获取所有工单列表"""
+    from sqlmodel import desc
+    query = select(Ticket)
+    if status:
+        query = query.where(Ticket.status == status)
+    query = query.order_by(desc(Ticket.created_at))
+    
+    # 分页
+    offset = (page - 1) * limit
+    tickets = session.exec(query.offset(offset).limit(limit)).all()
+    
+    # 获取总数
+    total_query = select(func.count()).select_from(Ticket)
+    if status:
+        total_query = total_query.where(Ticket.status == status)
+    total = session.exec(total_query).one()
+    
+    # 附加用户名
+    result = []
+    for t in tickets:
+        user = session.get(User, t.user_id)
+        result.append({
+            **t.model_dump(),
+            "username": user.username if user else "未知用户"
+        })
+    
+    return {"tickets": result, "total": total, "page": page, "limit": limit}
+
+
+@router.post("/tickets/{ticket_id}/reply")
+def reply_ticket(
+    ticket_id: int,
+    data: TicketReplyData,
+    admin=Depends(get_admin_user),
+    session: Session = Depends(get_session)
+):
+    """管理员回复工单"""
+    ticket = session.get(Ticket, ticket_id)
+    if not ticket:
+        raise HTTPException(status_code=404, detail="工单不存在")
+    
+    ticket.admin_reply = data.reply
+    ticket.status = "replied"
+    ticket.replied_at = datetime.utcnow()
+    ticket.updated_at = datetime.utcnow()
+    session.add(ticket)
+    session.commit()
+    
+    return {"message": "回复成功"}
+
+
+@router.post("/tickets/{ticket_id}/close")
+def close_ticket(
+    ticket_id: int,
+    admin=Depends(get_admin_user),
+    session: Session = Depends(get_session)
+):
+    """管理员关闭工单"""
+    ticket = session.get(Ticket, ticket_id)
+    if not ticket:
+        raise HTTPException(status_code=404, detail="工单不存在")
+    
+    ticket.status = "closed"
+    ticket.updated_at = datetime.utcnow()
+    session.add(ticket)
+    session.commit()
+    
+    return {"message": "工单已关闭"}
+
+
