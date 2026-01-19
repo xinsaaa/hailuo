@@ -7,7 +7,7 @@ import { getPublicConfig } from '../api'
 const prompt = ref('')
 const router = useRouter()
 const userStore = useUserStore()
-const videoPrice = ref(5.0)
+const videoPrice = ref(0.99)
 
 const isLoggedIn = computed(() => !!userStore.token)
 const user = computed(() => userStore.user)

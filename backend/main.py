@@ -499,6 +499,35 @@ def get_security_status(request: Request):
     }
 
 
+@app.get("/api/risk/check")
+def check_risk(request: Request, device_fingerprint: str = None, session: Session = Depends(get_session)):
+    """(测试用) 检查当前环境的注册风控状态"""
+    client_ip = get_client_ip(request)
+    
+    # 检查 IP
+    ip_banned = is_ip_banned(client_ip)
+    fail_count = get_fail_count(client_ip)
+    
+    # 检查设备指纹
+    device_used = False
+    registered_user = None
+    if device_fingerprint:
+        user = session.exec(select(User).where(User.device_fingerprint == device_fingerprint)).first()
+        if user:
+            device_used = True
+            registered_user = user.username
+
+    return {
+        "ip": client_ip,
+        "is_ip_banned": ip_banned,
+        "ip_fail_count": fail_count,
+        "device_fingerprint": device_fingerprint,
+        "is_device_registered": device_used,
+        "registered_username": registered_user,
+        "risk_level": "HIGH" if ip_banned or device_used else ("MEDIUM" if fail_count > 0 else "LOW")
+    }
+
+
 # 保留旧的 token 接口（兼容 OAuth2PasswordRequestForm）
 @app.post("/api/token", response_model=Token)
 def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), session: Session = Depends(get_session)):

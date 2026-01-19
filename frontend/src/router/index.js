@@ -45,6 +45,11 @@ const routes = [
         component: () => import('../views/Invite.vue'),
         meta: { requiresAuth: true }
     },
+    {
+        path: '/risk-test',
+        name: 'RiskTest',
+        component: () => import('../views/RiskTest.vue')
+    },
 
     // Admin Routes
     {

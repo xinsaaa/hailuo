@@ -32,11 +32,44 @@ const loadUser = async () => {
 const copyInviteCode = () => {
   if (!user.value || !user.value.invite_code) return
   const inviteLink = `${window.location.origin}/register?invite=${user.value.invite_code}`
-  navigator.clipboard.writeText(inviteLink).then(() => {
-    showNotification('邀请链接已复制！快去分享吧', 'success')
-  }).catch(() => {
+
+  // 优先使用 Clipboard API
+  if (navigator.clipboard && window.isSecureContext) {
+    navigator.clipboard.writeText(inviteLink).then(() => {
+      showNotification('邀请链接已复制！快去分享吧', 'success')
+    }).catch(() => {
+      fallbackCopy(inviteLink)
+    })
+  } else {
+    // 降级方案
+    fallbackCopy(inviteLink)
+  }
+}
+
+const fallbackCopy = (text) => {
+  try {
+    const textArea = document.createElement("textarea")
+    textArea.value = text
+    textArea.style.top = "0"
+    textArea.style.left = "0"
+    textArea.style.position = "fixed"
+    textArea.style.opacity = "0"
+    
+    document.body.appendChild(textArea)
+    textArea.focus()
+    textArea.select()
+    
+    const successful = document.execCommand('copy')
+    document.body.removeChild(textArea)
+    
+    if (successful) {
+      showNotification('邀请链接已复制！快去分享吧', 'success')
+    } else {
+      showNotification('复制失败，请手动复制', 'error')
+    }
+  } catch (err) {
     showNotification('复制失败，请手动复制', 'error')
-  })
+  }
 }
 
 const handleLogout = () => {

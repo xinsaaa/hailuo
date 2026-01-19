@@ -85,6 +85,11 @@ export const getSecurityStatus = async () => {
     return response.data
 }
 
+export const checkRisk = async (fingerprint) => {
+    const response = await api.get('/risk/check', { params: { device_fingerprint: fingerprint } })
+    return response.data
+}
+
 // ============ Auth API ============
 
 export const register = async (username, password, captchaData, position, deviceFingerprint = null, inviteCode = null) => {
