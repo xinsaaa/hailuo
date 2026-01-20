@@ -392,12 +392,21 @@ def register(user: UserCreateWithCaptcha, request: Request, session: Session = D
     if db_user:
         raise HTTPException(status_code=400, detail="用户名已存在")
     
-    # 检查设备指纹是否已注册过（防止恶意注册）
+    # 风控检查：同 IP 只能注册一个账号
+    existing_ip = session.exec(
+        select(User).where(User.register_ip == client_ip)
+    ).first()
+    if existing_ip:
+        record_fail(client_ip)
+        raise HTTPException(status_code=400, detail="当前网络环境已注册过账号，请勿重复注册")
+    
+    # 风控检查：同设备只能注册一个账号
     if user.device_fingerprint:
         existing_fingerprint = session.exec(
             select(User).where(User.device_fingerprint == user.device_fingerprint)
         ).first()
         if existing_fingerprint:
+            record_fail(client_ip)
             raise HTTPException(status_code=400, detail="该设备已注册过账号，每个设备只能注册一个账号")
     
     # 处理邀请码（如果有）
@@ -421,6 +430,7 @@ def register(user: UserCreateWithCaptcha, request: Request, session: Session = D
         hashed_password=hashed_password,
         invite_code=new_invite_code,
         device_fingerprint=user.device_fingerprint,
+        register_ip=client_ip,  # 记录注册 IP
         invited_by=inviter.id if inviter else None
     )
     session.add(new_user)
@@ -504,28 +514,47 @@ def check_risk(request: Request, device_fingerprint: str = None, session: Sessio
     """(测试用) 检查当前环境的注册风控状态"""
     client_ip = get_client_ip(request)
     
-    # 检查 IP
+    # 检查 IP 是否被封禁
     ip_banned = is_ip_banned(client_ip)
     fail_count = get_fail_count(client_ip)
     
-    # 检查设备指纹
-    device_used = False
-    registered_user = None
+    # 检查 IP 是否已注册过账号
+    ip_registered = False
+    ip_registered_user = None
+    ip_user = session.exec(select(User).where(User.register_ip == client_ip)).first()
+    if ip_user:
+        ip_registered = True
+        ip_registered_user = ip_user.username
+    
+    # 检查设备指纹是否已注册
+    device_registered = False
+    device_registered_user = None
     if device_fingerprint:
-        user = session.exec(select(User).where(User.device_fingerprint == device_fingerprint)).first()
-        if user:
-            device_used = True
-            registered_user = user.username
+        device_user = session.exec(select(User).where(User.device_fingerprint == device_fingerprint)).first()
+        if device_user:
+            device_registered = True
+            device_registered_user = device_user.username
+
+    # 判断风险等级
+    if ip_banned or ip_registered or device_registered:
+        risk_level = "HIGH"
+    elif fail_count > 0:
+        risk_level = "MEDIUM"
+    else:
+        risk_level = "LOW"
 
     return {
         "ip": client_ip,
         "is_ip_banned": ip_banned,
         "ip_fail_count": fail_count,
+        "is_ip_registered": ip_registered,
+        "ip_registered_username": ip_registered_user,
         "device_fingerprint": device_fingerprint,
-        "is_device_registered": device_used,
-        "registered_username": registered_user,
-        "risk_level": "HIGH" if ip_banned or device_used else ("MEDIUM" if fail_count > 0 else "LOW")
+        "is_device_registered": device_registered,
+        "registered_username": device_registered_user,
+        "risk_level": risk_level
     }
+
 
 
 # 保留旧的 token 接口（兼容 OAuth2PasswordRequestForm）

@@ -6,30 +6,68 @@ const loading = ref(true)
 const riskData = ref(null)
 const error = ref(null)
 
-// 复制自 Login.vue 的指纹生成逻辑
+// 生成增强版设备指纹（与 Login.vue 保持一致）
 const generateFingerprint = () => {
+  // Canvas 指纹
   const canvas = document.createElement('canvas')
+  canvas.width = 200
+  canvas.height = 50
   const ctx = canvas.getContext('2d')
   ctx.textBaseline = 'top'
   ctx.font = '14px Arial'
-  ctx.fillText('fingerprint', 0, 0)
+  ctx.fillStyle = '#f60'
+  ctx.fillRect(125, 1, 62, 20)
+  ctx.fillStyle = '#069'
+  ctx.fillText('fingerprint', 2, 15)
+  ctx.fillStyle = 'rgba(102, 204, 0, 0.7)'
+  ctx.fillText('fingerprint', 4, 17)
+  const canvasData = canvas.toDataURL()
   
+  // WebGL 指纹
+  let webglVendor = ''
+  let webglRenderer = ''
+  try {
+    const glCanvas = document.createElement('canvas')
+    const gl = glCanvas.getContext('webgl') || glCanvas.getContext('experimental-webgl')
+    if (gl) {
+      const debugInfo = gl.getExtension('WEBGL_debug_renderer_info')
+      if (debugInfo) {
+        webglVendor = gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL) || ''
+        webglRenderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) || ''
+      }
+    }
+  } catch (e) { /* ignore */ }
+  
+  // 收集各种浏览器特征
   const data = [
     navigator.userAgent,
     navigator.language,
+    navigator.languages?.join(',') || '',
     screen.width + 'x' + screen.height,
     screen.colorDepth,
+    screen.pixelDepth,
     new Date().getTimezoneOffset(),
-    canvas.toDataURL()
+    Intl.DateTimeFormat().resolvedOptions().timeZone,
+    navigator.hardwareConcurrency || 0,
+    navigator.deviceMemory || 0,
+    navigator.maxTouchPoints || 0,
+    !!window.sessionStorage,
+    !!window.localStorage,
+    !!window.indexedDB,
+    webglVendor,
+    webglRenderer,
+    canvasData
   ].join('|')
   
-  let hash = 0
+  // 使用更好的哈希算法
+  let hash1 = 0, hash2 = 0
   for (let i = 0; i < data.length; i++) {
     const char = data.charCodeAt(i)
-    hash = ((hash << 5) - hash) + char
-    hash = hash & hash
+    hash1 = ((hash1 << 5) - hash1) + char
+    hash1 = hash1 & hash1
+    hash2 = ((hash2 << 7) + hash2) ^ char
   }
-  return Math.abs(hash).toString(16)
+  return Math.abs(hash1).toString(16) + Math.abs(hash2).toString(16)
 }
 
 const fingerprintInfo = ref({
@@ -110,6 +148,16 @@ onMounted(loadRiskData)
                         <div class="flex justify-between border-b border-green-500/10 pb-1">
                             <span class="text-gray-500">IS_BANNED</span>
                             <span :class="riskData.is_ip_banned ? 'text-red-500 font-bold' : 'text-green-500'">{{ riskData.is_ip_banned ? 'YES' : 'NO' }}</span>
+                        </div>
+                        <div class="flex justify-between border-b border-green-500/10 pb-1">
+                            <span class="text-gray-500">IP_REGISTERED</span>
+                            <span :class="riskData.is_ip_registered ? 'text-red-500 font-bold' : 'text-green-500'">
+                                {{ riskData.is_ip_registered ? 'YES (USED)' : 'NO (CLEAN)' }}
+                            </span>
+                        </div>
+                        <div v-if="riskData.is_ip_registered" class="flex justify-between border-b border-green-500/10 pb-1">
+                            <span class="text-gray-500">IP_LINKED_USER</span>
+                            <span class="text-red-400">{{ riskData.ip_registered_username }}</span>
                         </div>
                         <div class="flex justify-between border-b border-green-500/10 pb-1">
                             <span class="text-gray-500">FAIL_COUNT</span>

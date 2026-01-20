@@ -28,31 +28,68 @@ const mouseY = ref(0)
 // 邀请码（从 URL 参数获取）
 const inviteCode = ref('')
 
-// 生成设备指纹（简单实现，用于防止同设备多次注册）
+// 生成增强版设备指纹（收集更多特征用于风控）
 const generateFingerprint = () => {
+  // Canvas 指纹
   const canvas = document.createElement('canvas')
+  canvas.width = 200
+  canvas.height = 50
   const ctx = canvas.getContext('2d')
   ctx.textBaseline = 'top'
   ctx.font = '14px Arial'
-  ctx.fillText('fingerprint', 0, 0)
+  ctx.fillStyle = '#f60'
+  ctx.fillRect(125, 1, 62, 20)
+  ctx.fillStyle = '#069'
+  ctx.fillText('fingerprint', 2, 15)
+  ctx.fillStyle = 'rgba(102, 204, 0, 0.7)'
+  ctx.fillText('fingerprint', 4, 17)
+  const canvasData = canvas.toDataURL()
   
+  // WebGL 指纹
+  let webglVendor = ''
+  let webglRenderer = ''
+  try {
+    const glCanvas = document.createElement('canvas')
+    const gl = glCanvas.getContext('webgl') || glCanvas.getContext('experimental-webgl')
+    if (gl) {
+      const debugInfo = gl.getExtension('WEBGL_debug_renderer_info')
+      if (debugInfo) {
+        webglVendor = gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL) || ''
+        webglRenderer = gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) || ''
+      }
+    }
+  } catch (e) { /* ignore */ }
+  
+  // 收集各种浏览器特征
   const data = [
     navigator.userAgent,
     navigator.language,
+    navigator.languages?.join(',') || '',
     screen.width + 'x' + screen.height,
     screen.colorDepth,
+    screen.pixelDepth,
     new Date().getTimezoneOffset(),
-    canvas.toDataURL()
+    Intl.DateTimeFormat().resolvedOptions().timeZone,
+    navigator.hardwareConcurrency || 0,  // CPU 核心数
+    navigator.deviceMemory || 0,  // 设备内存
+    navigator.maxTouchPoints || 0,  // 触控点数
+    !!window.sessionStorage,
+    !!window.localStorage,
+    !!window.indexedDB,
+    webglVendor,
+    webglRenderer,
+    canvasData
   ].join('|')
   
-  // 简单哈希
-  let hash = 0
+  // 使用更好的哈希算法
+  let hash1 = 0, hash2 = 0
   for (let i = 0; i < data.length; i++) {
     const char = data.charCodeAt(i)
-    hash = ((hash << 5) - hash) + char
-    hash = hash & hash
+    hash1 = ((hash1 << 5) - hash1) + char
+    hash1 = hash1 & hash1
+    hash2 = ((hash2 << 7) + hash2) ^ char
   }
-  return Math.abs(hash).toString(16)
+  return Math.abs(hash1).toString(16) + Math.abs(hash2).toString(16)
 }
 
 const handleMouseMove = (e) => {

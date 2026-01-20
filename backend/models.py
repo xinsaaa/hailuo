@@ -13,8 +13,9 @@ class User(SQLModel, table=True):
     # 邀请系统
     invite_code: Optional[str] = Field(default=None, index=True, unique=True)  # 用户的邀请码
     invited_by: Optional[int] = Field(default=None)  # 邀请人 ID
-    # 设备指纹（防止恶意多号注册）
+    # 风控字段
     device_fingerprint: Optional[str] = Field(default=None, index=True)  # 设备指纹
+    register_ip: Optional[str] = Field(default=None, index=True)  # 注册时的 IP 地址
 
 class VideoOrder(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
