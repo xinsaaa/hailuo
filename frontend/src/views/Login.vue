@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { login, register, getCaptcha, getSecurityStatus } from '../api'
+import { login, register, getCaptcha, getSecurityStatus, sendEmailCode } from '../api'
 import { useUserStore } from '../stores/user'
 import SliderCaptcha from '../components/SliderCaptcha.vue'
 
@@ -12,6 +12,11 @@ const isLoginMode = ref(true)
 const username = ref('')
 const password = ref('')
 const confirmPassword = ref('')
+const email = ref('')
+const emailCode = ref('')
+const emailCodeSent = ref(false)
+const emailCodeLoading = ref(false)
+const emailCodeCountdown = ref(0)
 const loading = ref(false)
 
 // 验证码相关（5参数加密）
@@ -219,6 +224,42 @@ const showAlert = (message, type = 'error') => {
   setTimeout(() => { showModal.value = false }, 3000)
 }
 
+// 发送邮箱验证码
+const handleSendEmailCode = async () => {
+  if (!email.value) {
+    showAlert('请先输入邮箱地址')
+    return
+  }
+  
+  // 验证邮箱格式
+  const emailRegex = /^[\w\.-]+@[\w\.-]+\.\w+$/
+  if (!emailRegex.test(email.value)) {
+    showAlert('请输入正确的邮箱格式')
+    return
+  }
+  
+  emailCodeLoading.value = true
+  try {
+    await sendEmailCode(email.value, 'register')
+    emailCodeSent.value = true
+    showAlert('验证码已发送，请查收邮件', 'success')
+    
+    // 开始倒计时 60 秒
+    emailCodeCountdown.value = 60
+    const timer = setInterval(() => {
+      emailCodeCountdown.value--
+      if (emailCodeCountdown.value <= 0) {
+        clearInterval(timer)
+        emailCodeSent.value = false
+      }
+    }, 1000)
+  } catch (err) {
+    showAlert(err.response?.data?.detail || '发送失败，请稍后重试')
+  } finally {
+    emailCodeLoading.value = false
+  }
+}
+
 // 是否显示验证码
 const showCaptchaComponent = computed(() => {
   return !isLoginMode.value || needCaptcha.value
@@ -254,9 +295,16 @@ const handleSubmit = async () => {
         needCaptcha.value ? captchaPosition.value : null
       )
     } else {
-      // 注册（必须带验证码，包含设备指纹和邀请码）
+      // 注册：验证邮箱和邮箱验证码
+      if (!email.value || !emailCode.value) {
+        showAlert('请填写邮箱并获取验证码')
+        loading.value = false
+        return
+      }
       result = await register(
-        username.value, 
+        username.value,
+        email.value,
+        emailCode.value,
         password.value,
         captchaData.value,
         captchaPosition.value,
@@ -346,6 +394,38 @@ const handleSubmit = async () => {
             />
           </div>
           
+          <!-- 邮箱（注册时必填） -->
+          <div v-if="!isLoginMode">
+            <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">邮箱</label>
+            <input 
+              v-model="email"
+              type="email" 
+              placeholder="请输入邮箱地址" 
+              class="w-full px-4 py-3.5 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-500 outline-none focus:border-cyan-500/50 focus:ring-2 focus:ring-cyan-500/20 transition-all"
+            />
+          </div>
+          
+          <!-- 邮箱验证码 -->
+          <div v-if="!isLoginMode">
+            <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">邮箱验证码</label>
+            <div class="flex gap-3">
+              <input 
+                v-model="emailCode"
+                type="text" 
+                placeholder="请输入验证码" 
+                class="flex-1 px-4 py-3.5 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-500 outline-none focus:border-cyan-500/50 focus:ring-2 focus:ring-cyan-500/20 transition-all"
+              />
+              <button 
+                type="button"
+                @click="handleSendEmailCode"
+                :disabled="emailCodeLoading || emailCodeCountdown > 0"
+                class="px-4 py-3 rounded-xl bg-cyan-600/80 text-white text-sm font-medium hover:bg-cyan-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+              >
+                {{ emailCodeCountdown > 0 ? `${emailCodeCountdown}s` : (emailCodeLoading ? '发送中...' : '获取验证码') }}
+              </button>
+            </div>
+          </div>
+          
           <!-- 滑块验证码（后端加密参数，前端解密后使用） -->
           <div v-if="showCaptchaComponent && captchaData" class="pt-2">
             <SliderCaptcha 
@@ -383,6 +463,13 @@ const handleSubmit = async () => {
             已有账号? 
             <button type="button" @click="toggleMode" class="text-cyan-400 font-medium hover:text-cyan-300 transition-all">直接登录</button>
           </template>
+        </div>
+        
+        <!-- Forgot Password Link (login mode only) -->
+        <div v-if="isLoginMode" class="mt-3 text-center">
+          <router-link to="/forgot-password" class="text-sm text-gray-500 hover:text-cyan-400 transition-colors">
+            忘记密码?
+          </router-link>
         </div>
         
         <!-- Back to Home -->

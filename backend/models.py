@@ -5,6 +5,7 @@ from sqlmodel import Field, SQLModel, create_engine
 class User(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     username: str = Field(index=True, unique=True)
+    email: Optional[str] = Field(default=None, index=True, unique=True)  # 邮箱（唯一）
     hashed_password: str
     balance: float = Field(default=3.0)  # 新用户默认送 ¥3
     created_at: datetime = Field(default_factory=datetime.utcnow)
@@ -48,7 +49,15 @@ class VerificationCode(SQLModel, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
-# ============ 安全相关模型 ============
+class EmailVerifyCode(SQLModel, table=True):
+    """邮箱验证码"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    email: str = Field(index=True)  # 目标邮箱
+    code: str  # 6位验证码
+    purpose: str = Field(default="register")  # register, reset_password
+    is_used: bool = Field(default=False)
+    expires_at: datetime  # 过期时间
+    created_at: datetime = Field(default_factory=datetime.utcnow)# ============ 安全相关模型 ============
 
 class IPBan(SQLModel, table=True):
     """IP 封禁记录"""

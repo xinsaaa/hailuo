@@ -260,6 +260,8 @@ class UserCreate(BaseModel):
 
 class UserCreateWithCaptcha(BaseModel):
     username: str
+    email: str  # 邮箱（必填）
+    email_code: str  # 邮箱验证码
     password: str
     # 验证码5参数
     captcha_challenge: str
@@ -371,6 +373,75 @@ def get_captcha():
     return challenge
 
 
+# ============ 邮箱验证 API ============
+from backend.email_service import send_verification_code, verify_email_code
+
+
+class SendEmailCodeRequest(BaseModel):
+    email: str
+    purpose: str = "register"  # register 或 reset_password
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: str
+    email_code: str
+    new_password: str
+
+
+@app.post("/api/send-email-code")
+def send_email_code_api(data: SendEmailCodeRequest, request: Request, session: Session = Depends(get_session)):
+    """发送邮箱验证码"""
+    client_ip = get_client_ip(request)
+    
+    # 频率限制检查
+    if not check_rate_limit(client_ip):
+        raise HTTPException(status_code=429, detail="请求过于频繁，请稍后再试")
+    
+    # 验证邮箱格式
+    import re
+    if not re.match(r'^[\w\.-]+@[\w\.-]+\.\w+$', data.email):
+        raise HTTPException(status_code=400, detail="邮箱格式不正确")
+    
+    # 如果是注册，检查邮箱是否已被使用
+    if data.purpose == "register":
+        existing_email = session.exec(select(User).where(User.email == data.email)).first()
+        if existing_email:
+            raise HTTPException(status_code=400, detail="该邮箱已被注册")
+    
+    # 如果是重置密码，检查邮箱是否存在
+    if data.purpose == "reset_password":
+        user = session.exec(select(User).where(User.email == data.email)).first()
+        if not user:
+            raise HTTPException(status_code=400, detail="该邮箱未注册")
+    
+    # 发送验证码
+    success, result = send_verification_code(data.email, data.purpose)
+    if not success:
+        raise HTTPException(status_code=500, detail=result)
+    
+    return {"message": "验证码已发送，请查收邮件"}
+
+
+@app.post("/api/forgot-password")
+def forgot_password_api(data: ForgotPasswordRequest, session: Session = Depends(get_session)):
+    """找回密码（重置密码）"""
+    # 验证邮箱验证码
+    valid, msg = verify_email_code(data.email, data.email_code, "reset_password")
+    if not valid:
+        raise HTTPException(status_code=400, detail=msg)
+    
+    # 查找用户
+    user = session.exec(select(User).where(User.email == data.email)).first()
+    if not user:
+        raise HTTPException(status_code=400, detail="用户不存在")
+    
+    # 更新密码
+    user.hashed_password = get_password_hash(data.new_password)
+    session.add(user)
+    session.commit()
+    
+    return {"message": "密码重置成功，请使用新密码登录"}
+
 @app.post("/api/register", response_model=Token)
 def register(user: UserCreateWithCaptcha, request: Request, session: Session = Depends(get_session)):
     client_ip = get_client_ip(request)
@@ -387,10 +458,20 @@ def register(user: UserCreateWithCaptcha, request: Request, session: Session = D
         record_fail(client_ip)
         raise HTTPException(status_code=400, detail="验证码验证失败")
     
+    # 验证邮箱验证码
+    valid, msg = verify_email_code(user.email, user.email_code, "register")
+    if not valid:
+        raise HTTPException(status_code=400, detail=msg)
+    
     # 检查用户名是否存在
     db_user = session.exec(select(User).where(User.username == user.username)).first()
     if db_user:
         raise HTTPException(status_code=400, detail="用户名已存在")
+    
+    # 检查邮箱是否已被使用
+    existing_email = session.exec(select(User).where(User.email == user.email)).first()
+    if existing_email:
+        raise HTTPException(status_code=400, detail="该邮箱已被注册")
     
     # 风控检查：同 IP 只能注册一个账号
     existing_ip = session.exec(
@@ -426,7 +507,8 @@ def register(user: UserCreateWithCaptcha, request: Request, session: Session = D
     # 创建用户（默认余额 ¥3 在模型中已设置）
     hashed_password = get_password_hash(user.password)
     new_user = User(
-        username=user.username, 
+        username=user.username,
+        email=user.email,  # 存储邮箱
         hashed_password=hashed_password,
         invite_code=new_invite_code,
         device_fingerprint=user.device_fingerprint,

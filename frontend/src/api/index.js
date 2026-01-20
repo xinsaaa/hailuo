@@ -90,11 +90,25 @@ export const checkRisk = async (fingerprint) => {
     return response.data
 }
 
+// ============ Email API ============
+
+export const sendEmailCode = async (email, purpose = 'register') => {
+    const response = await api.post('/send-email-code', { email, purpose })
+    return response.data
+}
+
+export const forgotPassword = async (email, emailCode, newPassword) => {
+    const response = await api.post('/forgot-password', { email, email_code: emailCode, new_password: newPassword })
+    return response.data
+}
+
 // ============ Auth API ============
 
-export const register = async (username, password, captchaData, position, deviceFingerprint = null, inviteCode = null) => {
+export const register = async (username, email, emailCode, password, captchaData, position, deviceFingerprint = null, inviteCode = null) => {
     const payload = {
         username,
+        email,
+        email_code: emailCode,
         password,
         captcha_challenge: captchaData.challenge,
         captcha_puzzle: captchaData.puzzle,
