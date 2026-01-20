@@ -31,7 +31,7 @@ const loadUser = async () => {
 
 const copyInviteCode = () => {
   if (!user.value || !user.value.invite_code) return
-  const inviteLink = `${window.location.origin}/register?invite=${user.value.invite_code}`
+  const inviteLink = `${window.location.origin}/login?invite=${user.value.invite_code}`
 
   // 优先使用 Clipboard API
   if (navigator.clipboard && window.isSecureContext) {

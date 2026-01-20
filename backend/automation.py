@@ -22,7 +22,7 @@ from backend.models import VerificationCode, VideoOrder, engine
 import os
 HAILUO_URL = "https://hailuoai.com/create/image-to-video"
 PHONE_NUMBER = os.getenv("HAILUO_PHONE", "17366935232")
-MAX_CONCURRENT_TASKS = 2  # 海螺 AI 允许的最大并发任务数
+MAX_CONCURRENT_TASKS = 10  # 最大并发任务数
 POLL_INTERVAL = 5  # 轮询间隔（秒）
 
 # ============ 日志收集系统 ============
@@ -107,7 +107,7 @@ automation_logger = AutomationLogger()
 _browser: Optional[Browser] = None
 _page: Optional[Page] = None
 _context: Optional[BrowserContext] = None
-_order_queue: queue.Queue = queue.Queue(maxsize=10)
+_order_queue: queue.Queue = queue.Queue()  # 无大小限制
 _is_logged_in = False
 
 # 去重集合：已处理的分享链接
@@ -365,6 +365,19 @@ def login_to_hailuo(page: Page) -> bool:
         phone_input = page.locator("input#phone")
         phone_input.fill(PHONE_NUMBER)
         automation_logger.success("✅ 手机号填写完成")
+        
+        # 点击获取验证码之前，先标记所有旧验证码为已使用
+        automation_logger.info("🧹 清理数据库中的旧验证码...")
+        with Session(engine) as session:
+            old_codes = session.exec(
+                select(VerificationCode).where(VerificationCode.is_used == False)
+            ).all()
+            for code in old_codes:
+                code.is_used = True
+                session.add(code)
+            if old_codes:
+                session.commit()
+                automation_logger.success(f"✅ 已标记 {len(old_codes)} 个旧验证码为已使用")
         
         # 点击获取验证码
         automation_logger.info("📨 请求短信验证码...")
