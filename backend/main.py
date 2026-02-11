@@ -436,6 +436,11 @@ def get_public_config(session: Session = Depends(get_session)):
         }
     }
 
+@app.get("/api/config/public")
+def get_public_config_legacy(session: Session = Depends(get_session)):
+    """获取公共配置（兼容性路由）"""
+    return get_public_config(session)
+
 @app.post("/api/validate-username")
 def validate_username_api(data: dict):
     """验证用户名格式"""
