@@ -132,8 +132,9 @@ const loadData = async () => {
       // 根据系列过滤模型
       let filteredModels = modelsData.models
       if (modelSeries.value === '2.3') {
-        // 只显示2.3系列模型
+        // 只显示2.3系列模型（包含2.0、2.3等）
         filteredModels = modelsData.models.filter(model => 
+          model.model_id.includes('2_0') || 
           model.model_id.includes('2_3') || 
           model.model_id.includes('2.3') ||
           model.model_id.includes('hailuo_1_0') // 1.0系列归到2.3
@@ -143,7 +144,8 @@ const loadData = async () => {
         filteredModels = modelsData.models.filter(model => 
           model.model_id.includes('3_1') || 
           model.model_id.includes('3.1') ||
-          model.model_id.includes('beta_3_1')
+          model.model_id.includes('beta_3_1') ||
+          model.model_id.includes('hailuo_3_1')
         )
       }
       

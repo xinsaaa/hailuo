@@ -176,16 +176,40 @@ def init_default_models():
                 "sort_order": 3
             },
             {
+                "model_id": "hailuo_3_1",
+                "name": "Hailuo 3.1",
+                "display_name": "海螺 3.1",
+                "description": "最新版本，极致画质，智能优化",
+                "features": json.dumps(["1080P", "首尾帧", "10s", "智能优化"]),
+                "badge": "HOT",
+                "supports_last_frame": True,
+                "is_default": False,
+                "is_enabled": True,
+                "sort_order": 4
+            },
+            {
+                "model_id": "hailuo_3_1_pro",
+                "name": "Hailuo 3.1-Pro",
+                "display_name": "海螺 3.1-Pro",
+                "description": "专业版本，极致细节，完美画质",
+                "features": json.dumps(["4K", "首尾帧", "15s", "专业调色"]),
+                "badge": "PRO",
+                "supports_last_frame": True,
+                "is_default": False,
+                "is_enabled": True,
+                "sort_order": 5
+            },
+            {
                 "model_id": "beta_3_1",
                 "name": "Beta 3.1",
                 "display_name": "Beta 3.1",
                 "description": "音画同步，高保真，精准控制",
                 "features": json.dumps(["音画同出", "首尾帧", "720P-1080P", "8s"]),
-                "badge": "3.7折",
+                "badge": "BETA",
                 "supports_last_frame": True,
                 "is_default": False,
                 "is_enabled": True,
-                "sort_order": 4
+                "sort_order": 6
             },
             {
                 "model_id": "beta_3_1_fast",
@@ -261,34 +285,29 @@ def get_client_ip(request: Request) -> str:
 
 # 用户名验证规则
 def validate_username(username: str) -> tuple[bool, str]:
-    """验证用户名是否符合规范"""
+    """验证用户名是否符合规范（放宽限制）"""
     
     # 长度检查
-    if len(username) < 4:
-        return False, "用户名至少需要4个字符"
+    if len(username) < 3:
+        return False, "用户名至少需要3个字符"
     if len(username) > 20:
         return False, "用户名不能超过20个字符"
     
-    # 字符检查 - 只允许字母、数字、下划线
-    if not re.match(r'^[a-zA-Z][a-zA-Z0-9_]*$', username):
-        return False, "用户名必须以字母开头，只能包含字母、数字和下划线"
+    # 字符检查 - 允许字母、数字、下划线、中文
+    if not re.match(r'^[a-zA-Z0-9_\u4e00-\u9fa5]+$', username):
+        return False, "用户名只能包含字母、数字、下划线或中文"
     
-    # 必须包含字母
-    if not re.search(r'[a-zA-Z]', username):
-        return False, "用户名必须包含至少一个字母"
+    # 不能全部是数字
+    if username.isdigit():
+        return False, "用户名不能全部是数字"
     
-    # 敏感词检查
-    forbidden_words = [
-        'admin', 'administrator', 'root', 'system', 'test',
-        'user', 'guest', 'null', 'undefined', 'bot', 'api',
-        'service', 'support', 'help', 'info', 'mail', 'email',
-        'fuck', 'shit', 'damn', 'bitch', 'ass', 'sex'
-    ]
+    # 简化的敏感词检查（只检查明显的系统词汇）
+    forbidden_words = ['admin', 'administrator', 'root', 'system']
     
     username_lower = username.lower()
     for word in forbidden_words:
-        if word in username_lower:
-            return False, f"用户名包含敏感词，请重新输入"
+        if word == username_lower:  # 完全匹配才禁止
+            return False, f"用户名不能使用系统保留词"
     
     # 连续字符检查
     if re.search(r'(.)\1{2,}', username):
@@ -429,10 +448,10 @@ def get_public_config(session: Session = Depends(get_session)):
         "min_recharge": get_config_value(session, "min_recharge", 0.01),
         "max_recharge": get_config_value(session, "max_recharge", 10000),
         "username_rules": {
-            "min_length": 4,
+            "min_length": 3,
             "max_length": 20,
-            "pattern": "必须以字母开头，可包含字母、数字和下划线",
-            "forbidden": "不能使用敏感词或连续相同字符"
+            "pattern": "支持中文、字母、数字、下划线",
+            "forbidden": "不能全是数字或使用系统保留词"
         }
     }
 
