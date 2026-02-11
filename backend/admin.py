@@ -619,6 +619,7 @@ class ModelUpdateRequest(BaseModel):
     sort_order: Optional[int] = None
     badge: Optional[str] = None
     description: Optional[str] = None
+    price: Optional[float] = None  # 添加价格字段
 
 
 class ModelOrderRequest(BaseModel):
@@ -693,10 +694,16 @@ def update_model(
     if data.description is not None:
         model.description = data.description
     
+    # 添加价格更新逻辑
+    if data.price is not None:
+        if data.price < 0:
+            raise HTTPException(status_code=400, detail="价格不能为负数")
+        model.price = data.price
+    
     model.updated_at = datetime.utcnow()
     session.commit()
     
-    return {"message": "模型更新成功", "model_id": model_id}
+    return {"message": "模型更新成功", "model_id": model_id, "new_price": model.price}
 
 
 @router.put("/models/batch/order")
