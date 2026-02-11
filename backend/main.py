@@ -1154,7 +1154,8 @@ def get_available_models(session: Session = Depends(get_session)):
             "is_default": m.is_default,
             "features": json.loads(m.features) if m.features else [],
             "badge": m.badge,
-            "supports_last_frame": m.supports_last_frame
+            "supports_last_frame": m.supports_last_frame,
+            "price": m.price or 0.99  # 添加价格字段
         })
     
     return {
@@ -1206,28 +1207,6 @@ def get_user_tickets(
 
 # ============ 系统配置 API (用户端) ============
 
-@app.get("/api/config/public")
-def get_public_config(
-    current_user: User = Depends(get_current_user),
-    session: Session = Depends(get_session)
-):
-    """获取公开系统配置 (如视频价格、赠送比例)"""
-    from backend.models import SystemConfig
-    
-    # 定义需要返回给前端的配置项 key
-    public_keys = ["video_price", "bonus_rate"]
-    
-    configs = {}
-    for key in public_keys:
-        config = session.exec(select(SystemConfig).where(SystemConfig.key == key)).first()
-        if config:
-            configs[key] = float(config.value)
-        else:
-            # 默认值
-            defaults = {"video_price": 5.0, "bonus_rate": 0.1}
-            configs[key] = defaults.get(key, 0.0)
-            
-    return configs
 
 
 @app.get("/api/tickets/{ticket_id}")

@@ -340,7 +340,7 @@ export const closeTicket = async (ticketId) => {
 }
 
 export const getPublicConfig = async () => {
-    const response = await api.get('/config/public')
+    const response = await api.get('/config')
     return response.data
 }
 

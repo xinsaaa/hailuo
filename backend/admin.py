@@ -520,7 +520,6 @@ import json
 
 # 默认配置定义
 DEFAULT_CONFIG = {
-    "video_price": {"value": 0.99, "description": "单个视频生成价格（元）"},
     "bonus_rate": {"value": 0.2, "description": "充值赠送比例（满10元生效）"},
     "bonus_min_amount": {"value": 10, "description": "享受赠送的最低充值金额（元）"},
     "min_recharge": {"value": 0.01, "description": "最低充值金额（元）"},
