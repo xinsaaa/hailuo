@@ -5,8 +5,8 @@ import os
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlmodel import Session, select, func
 from pydantic import BaseModel
+from datetime import datetime, timezone, timedelta
 from typing import Optional, List
-from datetime import datetime, timedelta
 
 from backend.models import User, VideoOrder, Transaction, AIModel, engine
 from backend.auth import get_password_hash, verify_password, create_access_token, SECRET_KEY, ALGORITHM
@@ -16,6 +16,20 @@ from backend.security import (
 )
 from backend.automation import start_automation_worker, _browser, _page
 from jose import JWTError, jwt
+
+# 中国时区 UTC+8
+CHINA_TZ = timezone(timedelta(hours=8))
+
+def utc_to_china_time(utc_dt):
+    """将UTC时间转换为中国时间"""
+    if utc_dt is None:
+        return None
+    # 如果是naive datetime，假设它是UTC时间
+    if utc_dt.tzinfo is None:
+        utc_dt = utc_dt.replace(tzinfo=timezone.utc)
+    # 转换为中国时间
+    china_time = utc_dt.astimezone(CHINA_TZ)
+    return china_time.strftime('%Y/%m/%d %H:%M:%S')
 
 # ============ 配置（从环境变量读取）============
 ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
@@ -208,7 +222,7 @@ def list_users(
                 "balance": u.balance,
                 "invite_code": u.invite_code,
                 "invited_by": u.invited_by,
-                "created_at": u.created_at.isoformat() if u.created_at else None
+                "created_at": utc_to_china_time(u.created_at)
             }
             for u in users
         ],
@@ -240,14 +254,14 @@ def get_user(user_id: int, admin=Depends(get_admin_user), session: Session = Dep
             "id": user.id,
             "username": user.username,
             "balance": user.balance,
-            "created_at": user.created_at.isoformat() if user.created_at else None
+            "created_at": utc_to_china_time(user.created_at)
         },
         "recent_orders": [
             {
                 "id": o.id,
                 "prompt": o.prompt[:50] + "..." if len(o.prompt) > 50 else o.prompt,
                 "status": o.status,
-                "created_at": o.created_at.isoformat() if o.created_at else None
+                "created_at": utc_to_china_time(o.created_at)
             }
             for o in orders
         ],
@@ -257,7 +271,7 @@ def get_user(user_id: int, admin=Depends(get_admin_user), session: Session = Dep
                 "type": t.type,
                 "amount": t.amount,
                 "bonus": t.bonus,
-                "created_at": t.created_at.isoformat() if t.created_at else None
+                "created_at": utc_to_china_time(t.created_at)
             }
             for t in transactions
         ]
@@ -330,7 +344,7 @@ def list_orders(
                 "status": o.status,
                 "video_url": o.video_url,
                 "cost": o.cost,
-                "created_at": o.created_at.isoformat() if o.created_at else None
+                "created_at": utc_to_china_time(o.created_at)
             }
             for o in orders
         ],
@@ -357,7 +371,7 @@ def get_order(order_id: int, admin=Depends(get_admin_user), session: Session = D
             "status": order.status,
             "video_url": order.video_url,
             "cost": order.cost,
-            "created_at": order.created_at.isoformat() if order.created_at else None
+            "created_at": utc_to_china_time(order.created_at)
         },
         "user": {
             "id": user.id if user else None,
@@ -651,8 +665,8 @@ def get_all_models(admin=Depends(get_admin_user), session: Session = Depends(get
             "is_enabled": m.is_enabled,
             "sort_order": m.sort_order,
             "price": m.price or 0.99,  # 添加价格字段
-            "created_at": m.created_at.isoformat() if m.created_at else None,
-            "updated_at": m.updated_at.isoformat() if m.updated_at else None
+            "created_at": utc_to_china_time(m.created_at),
+            "updated_at": utc_to_china_time(m.updated_at)
         })
     
     return {
@@ -800,7 +814,7 @@ def get_admin_ticket_detail(
                 "id": m.id,
                 "sender_type": m.sender_type,
                 "content": m.content,
-                "created_at": m.created_at.isoformat()
+                "created_at": utc_to_china_time(m.created_at)
             }
             for m in messages
         ]
