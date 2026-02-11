@@ -13,8 +13,8 @@ from backend.models import EmailVerifyCode, engine
 # ============ SMTP 配置（从环境变量读取）============
 SMTP_HOST = os.getenv("SMTP_HOST", "smtp.qq.com")
 SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
-SMTP_USER = os.getenv("SMTP_USER", "")  # QQ 邮箱地址
-SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")  # QQ 邮箱授权码（不是登录密码）
+SMTP_USER = os.getenv("SMTP_USER", "758045020@qq.com")  # QQ 邮箱地址
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "tidczqaqsegpbdda")  # QQ 邮箱授权码
 SMTP_SENDER_NAME = os.getenv("SMTP_SENDER_NAME", "大帝AI")
 
 # 验证码有效期（分钟）

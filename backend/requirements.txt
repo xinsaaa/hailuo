@@ -11,3 +11,5 @@ python-jose[cryptography]
 bcrypt
 requests
 starlette
+loguru
+hypothesis

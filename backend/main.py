@@ -1,9 +1,11 @@
 from fastapi import FastAPI, Depends, HTTPException, status, BackgroundTasks, Request, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.exceptions import RequestValidationError
 from starlette.responses import FileResponse
 from starlette.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.exceptions import HTTPException as StarletteHTTPException
 from sqlmodel import Session, select
 from pydantic import BaseModel
 from typing import Optional
@@ -19,8 +21,27 @@ from backend.security import (
     get_ban_remaining_seconds, get_fail_count
 )
 from backend.admin import router as admin_router
+from backend.email_service import send_verification_code, verify_email_code
+
+# 导入日志和异常处理
+from backend.logger import app_logger
+from backend.middleware.request_id import RequestIDMiddleware
+from backend.middleware.logging import LoggingMiddleware
+from backend.middleware.exception_handler import (
+    app_exception_handler,
+    validation_exception_handler,
+    http_exception_handler,
+    global_exception_handler
+)
+from backend.exceptions import AppException
 
 app = FastAPI(title="AI Video Generator API")
+
+# 注册异常处理器
+app.add_exception_handler(AppException, app_exception_handler)
+app.add_exception_handler(RequestValidationError, validation_exception_handler)
+app.add_exception_handler(StarletteHTTPException, http_exception_handler)
+app.add_exception_handler(Exception, global_exception_handler)
 
 # 注册管理员路由
 app.include_router(admin_router)
@@ -74,6 +95,11 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["*"]
 )
+
+# 添加日志和请求追踪中间件
+app.add_middleware(LoggingMiddleware)
+app.add_middleware(RequestIDMiddleware)
+
 # 添加其他中间件
 app.add_middleware(RateLimitMiddleware)
 
@@ -84,7 +110,7 @@ def startup_event():
     # 确保数据库表存在
     from backend.models import create_db_and_tables
     create_db_and_tables()
-    print("[MAIN] Database tables initialized.")
+    app_logger.info("Database tables initialized")
     
     # 初始化默认模型数据
     init_default_models()
@@ -94,14 +120,14 @@ def startup_event():
     enable_auto_worker = os.getenv("ENABLE_AUTO_WORKER", "true").lower() == "true"
     
     if enable_auto_worker:
-        print("[MAIN] 🚀 Auto-starting automation worker...")
+        app_logger.info("Auto-starting automation worker...")
         try:
             start_automation_worker()
-            print("[MAIN] ✅ Automation worker started successfully!")
+            app_logger.info("Automation worker started successfully")
         except Exception as e:
-            print(f"[MAIN] ❌ Failed to start automation worker: {str(e)[:100]}")
+            app_logger.error("Failed to start automation worker", exc_info=e)
     else:
-        print("[MAIN] Backend started. Automation worker disabled by config.")
+        app_logger.info("Backend started. Automation worker disabled by config")
 
 
 def init_default_models():
@@ -216,7 +242,7 @@ def init_default_models():
             session.add(model)
         
         session.commit()
-        print("[MAIN] ✅ Default AI models initialized.")
+        app_logger.info("Default AI models initialized")
 
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
@@ -334,6 +360,10 @@ class Token(BaseModel):
 
 class RechargeRequest(BaseModel):
     amount: float
+
+class EmailCodeRequest(BaseModel):
+    email: str
+    purpose: str = "register"  # register 或 reset_password
 
 
 class OrderRequest(BaseModel):
@@ -594,6 +624,18 @@ def register(user: UserCreateWithCaptcha, request: Request, session: Session = D
         session.commit()
     
     record_success(client_ip)
+    
+    # 记录审计日志
+    app_logger.audit(
+        "user.register",
+        user_id=new_user.id,
+        username=new_user.username,
+        email=new_user.email,
+        register_ip=client_ip,
+        invited_by=inviter.id if inviter else None,
+        device_fingerprint=user.device_fingerprint
+    )
+    
     access_token = create_access_token(data={"sub": new_user.username})
     return {"access_token": access_token, "token_type": "bearer"}
 
@@ -602,7 +644,7 @@ def register(user: UserCreateWithCaptcha, request: Request, session: Session = D
 def login(data: LoginWithCaptcha, request: Request, session: Session = Depends(get_session)):
     try:
         client_ip = get_client_ip(request)
-        print(f"[LOGIN] IP: {client_ip}, Username: {data.username}")
+        app_logger.info("Login attempt", username=data.username, client_ip=client_ip)
         
         # 简化验证码逻辑，暂时跳过
         # fail_count = get_fail_count(client_ip)
@@ -614,32 +656,30 @@ def login(data: LoginWithCaptcha, request: Request, session: Session = Depends(g
         # 检查是否为管理员登录
         try:
             from backend.admin import ADMIN_USERNAME, ADMIN_PASSWORD_HASH
-            print(f"[LOGIN] Admin username: {ADMIN_USERNAME}")
             if data.username == ADMIN_USERNAME:
                 if not verify_password(data.password, ADMIN_PASSWORD_HASH):
-                    print("[LOGIN] Admin password incorrect")
+                    app_logger.warning("Admin login failed - incorrect password", client_ip=client_ip)
                     # record_fail(client_ip)
                     raise HTTPException(status_code=401, detail="用户名或密码错误")
                 
-                print("[LOGIN] Admin login successful")
+                app_logger.audit("admin.login", username=data.username, login_ip=client_ip)
                 # record_success(client_ip)
                 access_token = create_access_token(data={"sub": data.username, "is_admin": True})
                 return {"access_token": access_token, "token_type": "bearer", "is_admin": True}
         except Exception as e:
-            print(f"[LOGIN] Admin check error: {str(e)}")
+            app_logger.error("Admin login check error", exc_info=e)
         
         # 验证普通用户名密码
-        print("[LOGIN] Checking regular user")
         user = session.exec(select(User).where(User.username == data.username)).first()
         if not user:
-            print(f"[LOGIN] User not found: {data.username}")
+            app_logger.warning("Login failed - user not found", username=data.username, client_ip=client_ip)
             raise HTTPException(status_code=401, detail="用户名或密码错误")
             
         if not verify_password(data.password, user.hashed_password):
-            print("[LOGIN] Password incorrect")
+            app_logger.warning("Login failed - incorrect password", username=data.username, client_ip=client_ip)
             raise HTTPException(status_code=401, detail="用户名或密码错误")
         
-        print(f"[LOGIN] User login successful: {user.username}")
+        app_logger.audit("user.login", user_id=user.id, username=user.username, login_ip=client_ip)
         # record_success(client_ip)
         # 安全获取管理员状态，防止数据库字段不存在
         is_admin = getattr(user, 'is_superuser', False)
@@ -653,6 +693,29 @@ def login(data: LoginWithCaptcha, request: Request, session: Session = Depends(g
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"登录失败: {str(e)}")
+
+
+@app.post("/api/email/send-code")
+def send_email_verification_code(data: EmailCodeRequest, request: Request):
+    """发送邮箱验证码"""
+    client_ip = get_client_ip(request)
+    
+    # 简单的邮箱格式验证
+    import re
+    if not re.match(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$', data.email):
+        raise HTTPException(status_code=400, detail="邮箱格式不正确")
+    
+    try:
+        success, result = send_verification_code(data.email, data.purpose)
+        if success:
+            app_logger.info("Email verification code sent", email=data.email, purpose=data.purpose, client_ip=client_ip)
+            return {"message": "验证码已发送", "expires_in_minutes": 5}
+        else:
+            app_logger.error("Failed to send email verification code", email=data.email, error=result)
+            raise HTTPException(status_code=500, detail=result)
+    except Exception as e:
+        app_logger.error("Email service error", exc_info=e)
+        raise HTTPException(status_code=500, detail="邮件服务异常，请稍后重试")
 
 
 @app.get("/api/security/status")
