@@ -15,7 +15,7 @@ SMTP_HOST = os.getenv("SMTP_HOST", "smtp.qq.com")
 SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
 SMTP_USER = os.getenv("SMTP_USER", "758045020@qq.com")  # QQ 邮箱地址
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "tidczqaqsegpbdda")  # QQ 邮箱授权码
-SMTP_SENDER_NAME = os.getenv("SMTP_SENDER_NAME", "大帝AI")
+SMTP_SENDER_NAME = os.getenv("SMTP_SENDER_NAME", "DadiAI")
 
 # 验证码有效期（分钟）
 CODE_EXPIRE_MINUTES = 5
@@ -40,7 +40,8 @@ def send_email(to_email: str, subject: str, html_content: str) -> bool:
         print(f"[EMAIL] 发送账号: {SMTP_USER}")
         
         msg = MIMEMultipart('alternative')
-        msg['From'] = f"{SMTP_SENDER_NAME} <{SMTP_USER}>"
+        # 修复From头部格式，使用纯英文避免编码问题
+        msg['From'] = SMTP_USER  # 直接使用邮箱地址，最简单可靠
         msg['To'] = to_email
         msg['Subject'] = subject
         
