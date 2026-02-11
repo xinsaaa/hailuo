@@ -149,7 +149,8 @@ def init_default_models():
                 "supports_last_frame": False,
                 "is_default": True,
                 "is_enabled": True,
-                "sort_order": 1
+                "sort_order": 1,
+                "price": 0.99
             },
             {
                 "model_id": "hailuo_2_3_fast",
@@ -161,7 +162,8 @@ def init_default_models():
                 "supports_last_frame": False,
                 "is_default": False,
                 "is_enabled": True,
-                "sort_order": 2
+                "sort_order": 2,
+                "price": 0.79
             },
             {
                 "model_id": "hailuo_2_0",
@@ -173,7 +175,8 @@ def init_default_models():
                 "supports_last_frame": True,
                 "is_default": False,
                 "is_enabled": True,
-                "sort_order": 3
+                "sort_order": 3,
+                "price": 1.19
             },
             {
                 "model_id": "hailuo_3_1",
@@ -185,7 +188,8 @@ def init_default_models():
                 "supports_last_frame": True,
                 "is_default": False,
                 "is_enabled": True,
-                "sort_order": 4
+                "sort_order": 4,
+                "price": 1.59
             },
             {
                 "model_id": "hailuo_3_1_pro",
@@ -197,7 +201,8 @@ def init_default_models():
                 "supports_last_frame": True,
                 "is_default": False,
                 "is_enabled": True,
-                "sort_order": 5
+                "sort_order": 5,
+                "price": 2.99
             },
             {
                 "model_id": "beta_3_1",
@@ -209,7 +214,8 @@ def init_default_models():
                 "supports_last_frame": True,
                 "is_default": False,
                 "is_enabled": True,
-                "sort_order": 6
+                "sort_order": 6,
+                "price": 0.69
             },
             {
                 "model_id": "beta_3_1_fast",
@@ -221,7 +227,8 @@ def init_default_models():
                 "supports_last_frame": True,
                 "is_default": False,
                 "is_enabled": True,
-                "sort_order": 5
+                "sort_order": 7,
+                "price": 0.35
             },
             {
                 "model_id": "hailuo_1_0_director",

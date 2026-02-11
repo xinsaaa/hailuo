@@ -129,6 +129,9 @@ const loadData = async () => {
       config.value = configData
     }
     if (modelsData && modelsData.models) {
+      console.log('🔍 [DEBUG] 所有模型:', modelsData.models.map(m => m.model_id))
+      console.log('🔍 [DEBUG] 当前系列:', modelSeries.value)
+      
       // 根据系列过滤模型
       let filteredModels = modelsData.models
       if (modelSeries.value === '2.3') {
@@ -136,24 +139,27 @@ const loadData = async () => {
         filteredModels = modelsData.models.filter(model => 
           model.model_id.includes('2_0') || 
           model.model_id.includes('2_3') || 
-          model.model_id.includes('2.3') ||
           model.model_id.includes('hailuo_1_0') // 1.0系列归到2.3
         )
+        console.log('🔍 [DEBUG] 2.3系列过滤结果:', filteredModels.map(m => m.model_id))
       } else if (modelSeries.value === '3.1') {
         // 只显示3.1系列模型
         filteredModels = modelsData.models.filter(model => 
           model.model_id.includes('3_1') || 
-          model.model_id.includes('3.1') ||
-          model.model_id.includes('beta_3_1') ||
-          model.model_id.includes('hailuo_3_1')
+          model.model_id.includes('beta_3_1')
         )
+        console.log('🔍 [DEBUG] 3.1系列过滤结果:', filteredModels.map(m => m.model_id))
+      } else {
+        console.log('🔍 [DEBUG] 显示所有模型')
       }
       
       availableModels.value = filteredModels
+      console.log('🔍 [DEBUG] 最终可用模型:', availableModels.value.map(m => `${m.model_id} - ¥${m.price}`))
       
       // 设置默认选中模型
       if (filteredModels.length > 0) {
         selectedModel.value = filteredModels.find(m => m.is_default) || filteredModels[0]
+        console.log('🔍 [DEBUG] 选中模型:', selectedModel.value?.model_id, '价格:', selectedModel.value?.price)
       }
     }
   } catch (err) {
@@ -574,7 +580,7 @@ const handleLogout = () => {
                 <div class="flex items-center gap-6">
                   <div class="text-right">
                      <span class="text-xs text-gray-500 block">本次消耗</span>
-                     <span class="text-lg font-bold text-white leading-none">¥{{ config.video_price }}</span>
+                     <span class="text-lg font-bold text-white leading-none">¥{{ selectedModel?.price ? selectedModel.price.toFixed(2) : '0.99' }}</span>
                   </div>
                   <button 
                     @click="handleCreateOrder"
