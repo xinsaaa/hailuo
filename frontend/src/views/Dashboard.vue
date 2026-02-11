@@ -81,9 +81,24 @@ const handleClickOutside = (event) => {
 
 // 监听路由参数变化
 watch(() => route.query.series, (newSeries) => {
+  console.log('🔄 [WATCH] 系列变化:', newSeries)
   modelSeries.value = newSeries || 'all'
   loadData() // 重新加载数据以应用新的过滤
 })
+
+// 监听可用模型变化，自动选择合适的模型
+watch(() => availableModels.value, (newModels) => {
+  console.log('🔄 [WATCH] 可用模型变化:', newModels.length, '个模型')
+  if (newModels.length > 0) {
+    // 如果当前选中的模型不在新的模型列表中，重新选择
+    const currentModelInList = newModels.find(m => m.id === selectedModel.value?.id)
+    if (!currentModelInList) {
+      // 选择默认模型或第一个模型
+      selectedModel.value = newModels.find(m => m.is_default) || newModels[0]
+      console.log('🔄 [WATCH] 自动切换模型:', selectedModel.value?.id, '价格:', selectedModel.value?.price)
+    }
+  }
+}, { deep: true })
 
 onMounted(() => {
   window.addEventListener('mousemove', handleMouseMove)
@@ -131,6 +146,7 @@ const loadData = async () => {
     if (modelsData && modelsData.models) {
       console.log('🔍 [DEBUG] 所有模型:', modelsData.models.map(m => `${m.id} - ¥${m.price}`))
       console.log('🔍 [DEBUG] 当前系列:', modelSeries.value)
+      console.log('🔍 [DEBUG] 模型总数:', modelsData.models.length)
       
       // 根据系列过滤模型
       let filteredModels = modelsData.models
@@ -141,20 +157,23 @@ const loadData = async () => {
           model.id.includes('2_3') || 
           model.id.includes('hailuo_1_0') // 1.0系列归到2.3
         )
-        console.log('🔍 [DEBUG] 2.3系列过滤结果:', filteredModels.map(m => `${m.id} - ¥${m.price}`))
+        console.log('🔍 [DEBUG] 2.3系列过滤结果:', filteredModels.length, '个模型')
+        console.log('🔍 [DEBUG] 2.3系列模型列表:', filteredModels.map(m => `${m.id} - ¥${m.price}`))
       } else if (modelSeries.value === '3.1') {
-        // 只显示3.1系列模型
+        // 只显示3.1系列模型（包括beta_3_1）
         filteredModels = modelsData.models.filter(model => 
           model.id.includes('3_1') || 
-          model.id.includes('beta_3_1')
+          model.id.includes('beta_3')  // 修改：包含所有beta_3开头的模型
         )
-        console.log('🔍 [DEBUG] 3.1系列过滤结果:', filteredModels.map(m => `${m.id} - ¥${m.price}`))
+        console.log('🔍 [DEBUG] 3.1系列过滤结果:', filteredModels.length, '个模型')
+        console.log('🔍 [DEBUG] 3.1系列模型列表:', filteredModels.map(m => `${m.id} - ¥${m.price}`))
       } else {
-        console.log('🔍 [DEBUG] 显示所有模型')
+        console.log('🔍 [DEBUG] 显示所有模型:', filteredModels.length, '个')
       }
       
       availableModels.value = filteredModels
-      console.log('🔍 [DEBUG] 最终可用模型:', availableModels.value.map(m => `${m.id} - ¥${m.price}`))
+      console.log('🔍 [DEBUG] 最终可用模型数量:', availableModels.value.length)
+      console.log('🔍 [DEBUG] 最终可用模型列表:', availableModels.value.map(m => `${m.id} - ¥${m.price}`))
       
       // 设置默认选中模型
       if (filteredModels.length > 0) {
@@ -166,7 +185,12 @@ const loadData = async () => {
         } else {
           console.log('✅ [DEBUG] 保持当前模型:', selectedModel.value?.id, '价格:', selectedModel.value?.price)
         }
+      } else {
+        console.warn('⚠️ [DEBUG] 过滤后没有可用模型！')
+        selectedModel.value = null
       }
+    } else {
+      console.error('❌ [DEBUG] 没有收到模型数据！')
     }
   } catch (err) {
     if (err.response?.status === 401) {
