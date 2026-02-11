@@ -220,7 +220,7 @@ const handleModelSeriesGenerate = (series) => {
             
             <!-- 生成按钮 -->
             <div>
-              <button @click="handleModelSeriesGenerate('3.1')" class="w-full py-3.5 bg-gradient-to-r from-purple-600 to-pink-600 text-white hover:from-purple-500 hover:to-pink-500 rounded-xl font-bold text-sm transition-all duration-300 shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-95">
+              <button @click="handleModelSeriesGenerate('3.1')" class="w-full py-3.5 bg-white text-black hover:bg-gray-50 rounded-xl font-bold text-sm transition-all duration-300 shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-95">
                 使用3.1系列生成
               </button>
             </div>
@@ -389,19 +389,8 @@ const handleModelSeriesGenerate = (series) => {
         
       </div>
 
-      <!-- 底部优惠信息 -->
-      <div class="mt-8 flex flex-wrap justify-center gap-4">
-        <!-- 充值赠送信息 -->
-        <div 
-          v-for="(bonus, index) in bonusInfo.slice(0, 2)" 
-          :key="index"
-          class="px-6 py-3 rounded-2xl bg-white/5 border border-white/10 text-sm font-medium text-gray-300 flex items-center gap-2 hover:bg-white/10 hover:border-cyan-500/30 transition-all cursor-default backdrop-blur-sm"
-        >
-          <span class="w-3 h-3 rounded-full bg-gradient-to-r" :class="bonus.color"></span>
-          充值 ¥{{ bonus.charge }} 送 ¥{{ bonus.bonus.toFixed(bonus.bonus >= 1 ? 0 : 1) }}
-        </div>
-        
-        <!-- 服务特色 -->
+      <!-- 服务特色 -->
+      <div class="mt-8 flex justify-center">
         <div class="px-6 py-3 rounded-2xl bg-white/5 border border-white/10 text-sm font-medium text-gray-300 flex items-center gap-2 hover:bg-white/10 hover:border-green-500/30 transition-all cursor-default backdrop-blur-sm">
           <span class="w-3 h-3 rounded-full bg-gradient-to-r from-green-400 to-emerald-500"></span>
           秒级响应 · 极速生成
