@@ -650,6 +650,7 @@ def get_all_models(admin=Depends(get_admin_user), session: Session = Depends(get
             "is_default": m.is_default,
             "is_enabled": m.is_enabled,
             "sort_order": m.sort_order,
+            "price": m.price or 0.99,  # 添加价格字段
             "created_at": m.created_at.isoformat() if m.created_at else None,
             "updated_at": m.updated_at.isoformat() if m.updated_at else None
         })

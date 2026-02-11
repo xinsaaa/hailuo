@@ -72,9 +72,12 @@ const savePrice = async (model) => {
   updating.value = model.id
   try {
     await updateAdminModel(model.id, { price: newPrice })
+    // 更新本地状态
     model.price = newPrice
     editingPrice.value = null
     tempPrice.value = ''
+    // 重新加载数据确保同步
+    await loadModels()
   } catch (err) {
     alert('更新价格失败: ' + (err.response?.data?.detail || err.message))
   } finally {
