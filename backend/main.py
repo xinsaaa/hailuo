@@ -131,12 +131,9 @@ def startup_event():
 
 
 def init_default_models():
-    """初始化默认模型数据（仅在表为空时执行）"""
+    """初始化默认模型数据（只创建缺失的模型，保护已有价格设置）"""
     import json
     with Session(engine) as session:
-        existing = session.exec(select(AIModel)).first()
-        if existing:
-            return  # 已有数据，跳过初始化
         
         default_models = [
             {
@@ -271,12 +268,28 @@ def init_default_models():
             }
         ]
         
+        # 只创建数据库中不存在的模型，保护已有的价格设置
+        created_count = 0
         for model_data in default_models:
-            model = AIModel(**model_data)
-            session.add(model)
+            existing_model = session.exec(
+                select(AIModel).where(AIModel.model_id == model_data["model_id"])
+            ).first()
+            
+            if not existing_model:
+                # 模型不存在，创建新模型
+                model = AIModel(**model_data)
+                session.add(model)
+                created_count += 1
+                app_logger.info(f"Created new model: {model_data['model_id']} with price ¥{model_data['price']}")
+            else:
+                # 模型已存在，保持现有数据（特别是价格）
+                app_logger.info(f"Model already exists: {existing_model.model_id}, keeping existing price ¥{existing_model.price}")
         
         session.commit()
-        app_logger.info("Default AI models initialized")
+        if created_count > 0:
+            app_logger.info(f"Default AI models initialized: {created_count} new models created")
+        else:
+            app_logger.info("All models already exist, no changes made")
 
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
