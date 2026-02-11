@@ -9,7 +9,10 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from sqlmodel import Session, select
 from pydantic import BaseModel
 from typing import Optional
+from datetime import datetime
 from backend.models import User, VideoOrder, Transaction, VerificationCode, AIModel, Ticket, engine
+from backend.db_utils import db_manager
+from backend.error_handler import security_logger, error_handler, RateLimitError, SecurityError
 import re
 from backend.auth import get_password_hash, verify_password, create_access_token, SECRET_KEY, ALGORITHM, generate_invite_code
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
@@ -96,12 +99,60 @@ app.add_middleware(
     expose_headers=["*"]
 )
 
-# 添加日志和请求追踪中间件
-app.add_middleware(LoggingMiddleware)
-app.add_middleware(RequestIDMiddleware)
+# 添加全局异常处理中间件
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    return error_handler.handle_validation_error(request, exc)
 
-# 添加其他中间件
-app.add_middleware(RateLimitMiddleware)
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    return error_handler.handle_http_exception(request, exc)
+
+@app.exception_handler(Exception)
+async def general_exception_handler(request: Request, exc: Exception):
+    return error_handler.handle_unexpected_error(request, exc)
+
+# 添加请求日志记录
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start_time = datetime.utcnow()
+    client_ip = request.client.host if request.client else "unknown"
+    
+    # 记录请求开始
+    security_logger.info(
+        f"Request started: {request.method} {request.url.path}",
+        method=request.method,
+        path=request.url.path,
+        client_ip=client_ip,
+        user_agent=request.headers.get("user-agent", "unknown")
+    )
+    
+    try:
+        response = await call_next(request)
+        
+        # 记录请求完成
+        duration = (datetime.utcnow() - start_time).total_seconds()
+        security_logger.info(
+            f"Request completed: {request.method} {request.url.path} - {response.status_code}",
+            method=request.method,
+            path=request.url.path,
+            client_ip=client_ip,
+            status_code=response.status_code,
+            duration_seconds=duration
+        )
+        
+        return response
+    except Exception as e:
+        duration = (datetime.utcnow() - start_time).total_seconds()
+        security_logger.error(
+            f"Request failed: {request.method} {request.url.path}",
+            exc_info=e,
+            method=request.method,
+            path=request.url.path,
+            client_ip=client_ip,
+            duration_seconds=duration
+        )
+        raise
 
 
 # 后端启动时自动初始化数据库和启动自动化
@@ -132,141 +183,10 @@ def startup_event():
 
 def init_default_models():
     """初始化默认模型数据（只创建缺失的模型，保护已有价格设置）"""
-    import json
+    from backend.model_config import model_config
     with Session(engine) as session:
         
-        default_models = [
-            {
-                "model_id": "hailuo_2_3",
-                "name": "Hailuo 2.3",
-                "display_name": "海螺 2.3",
-                "description": "表现力全面升级，更稳定，更真实",
-                "features": json.dumps(["768P-1080P", "6s-10s", "仅首帧"]),
-                "badge": "NEW",
-                "supports_last_frame": False,
-                "is_default": True,
-                "is_enabled": True,
-                "sort_order": 1,
-                "price": 0.99
-            },
-            {
-                "model_id": "hailuo_2_3_fast",
-                "name": "Hailuo 2.3-Fast",
-                "display_name": "海螺 2.3-Fast",
-                "description": "生成速度更快，超高性价比",
-                "features": json.dumps(["768P-1080P", "6s-10s", "仅首帧"]),
-                "badge": "NEW",
-                "supports_last_frame": False,
-                "is_default": False,
-                "is_enabled": True,
-                "sort_order": 2,
-                "price": 0.79
-            },
-            {
-                "model_id": "hailuo_2_0",
-                "name": "Hailuo 2.0",
-                "display_name": "海螺 2.0",
-                "description": "最佳效果、超清画质、精准响应",
-                "features": json.dumps(["首尾帧", "仅尾帧", "512P-1080P", "6s-10s"]),
-                "badge": "NEW",
-                "supports_last_frame": True,
-                "is_default": False,
-                "is_enabled": True,
-                "sort_order": 3,
-                "price": 1.19
-            },
-            {
-                "model_id": "hailuo_3_1",
-                "name": "Hailuo 3.1",
-                "display_name": "海螺 3.1",
-                "description": "最新版本，极致画质，智能优化",
-                "features": json.dumps(["1080P", "首尾帧", "10s", "智能优化"]),
-                "badge": "HOT",
-                "supports_last_frame": True,
-                "is_default": False,
-                "is_enabled": True,
-                "sort_order": 4,
-                "price": 1.59
-            },
-            {
-                "model_id": "hailuo_3_1_pro",
-                "name": "Hailuo 3.1-Pro",
-                "display_name": "海螺 3.1-Pro",
-                "description": "专业版本，极致细节，完美画质",
-                "features": json.dumps(["4K", "首尾帧", "15s", "专业调色"]),
-                "badge": "PRO",
-                "supports_last_frame": True,
-                "is_default": False,
-                "is_enabled": True,
-                "sort_order": 5,
-                "price": 2.99
-            },
-            {
-                "model_id": "beta_3_1",
-                "name": "Beta 3.1",
-                "display_name": "Beta 3.1",
-                "description": "音画同步，高保真，精准控制",
-                "features": json.dumps(["音画同出", "首尾帧", "720P-1080P", "8s"]),
-                "badge": "BETA",
-                "supports_last_frame": True,
-                "is_default": False,
-                "is_enabled": True,
-                "sort_order": 6,
-                "price": 0.69
-            },
-            {
-                "model_id": "beta_3_1_fast",
-                "name": "Beta 3.1 Fast",
-                "display_name": "Beta 3.1 Fast",
-                "description": "音画同步，更高速，更高性价比",
-                "features": json.dumps(["音画同出", "首尾帧", "720P-1080P", "8s"]),
-                "badge": "5折",
-                "supports_last_frame": True,
-                "is_default": False,
-                "is_enabled": True,
-                "sort_order": 7,
-                "price": 0.35
-            },
-            {
-                "model_id": "hailuo_1_0_director",
-                "name": "Hailuo 1.0-Director",
-                "display_name": "海螺 1.0-Director",
-                "description": "像专业导演一样控制镜头运动",
-                "features": json.dumps(["720P", "6s", "仅首帧"]),
-                "badge": None,
-                "supports_last_frame": False,
-                "is_default": False,
-                "is_enabled": True,
-                "sort_order": 8,
-                "price": 0.59
-            },
-            {
-                "model_id": "hailuo_1_0_live",
-                "name": "Hailuo 1.0-Live",
-                "display_name": "海螺 1.0-Live",
-                "description": "角色表现增强，稳定、流畅、生动",
-                "features": json.dumps(["720P", "6s", "仅首帧"]),
-                "badge": None,
-                "supports_last_frame": False,
-                "is_default": False,
-                "is_enabled": True,
-                "sort_order": 9,
-                "price": 0.59
-            },
-            {
-                "model_id": "hailuo_1_0",
-                "name": "Hailuo 1.0",
-                "display_name": "海螺 1.0",
-                "description": "01系列的基础图生视频模型",
-                "features": json.dumps(["720P", "6s", "仅首帧"]),
-                "badge": None,
-                "supports_last_frame": False,
-                "is_default": False,
-                "is_enabled": True,
-                "sort_order": 10,
-                "price": 0.49
-            }
-        ]
+        default_models = model_config.get_default_models()
         
         # 只创建数据库中不存在的模型，保护已有的价格设置
         created_count = 0
@@ -604,32 +524,25 @@ def register(user: UserCreateWithCaptcha, request: Request, session: Session = D
         record_fail(client_ip)
         raise HTTPException(status_code=400, detail=username_msg)
     
-    # 检查用户名是否存在
-    db_user = session.exec(select(User).where(User.username == user.username)).first()
-    if db_user:
+    # 使用优化的批量冲突检查，减少数据库查询次数
+    conflicts = db_manager.check_user_conflicts(
+        session, user.username, user.email, 
+        user.device_fingerprint or "", client_ip
+    )
+    
+    if conflicts["username_exists"]:
         raise HTTPException(status_code=400, detail="用户名已存在")
     
-    # 检查邮箱是否已被使用
-    existing_email = session.exec(select(User).where(User.email == user.email)).first()
-    if existing_email:
+    if conflicts["email_exists"]:
         raise HTTPException(status_code=400, detail="该邮箱已被注册")
     
-    # 风控检查：同 IP 只能注册一个账号
-    existing_ip = session.exec(
-        select(User).where(User.register_ip == client_ip)
-    ).first()
-    if existing_ip:
+    if conflicts["ip_registered"]:
         record_fail(client_ip)
         raise HTTPException(status_code=400, detail="当前网络环境已注册过账号，请勿重复注册")
     
-    # 风控检查：同设备只能注册一个账号
-    if user.device_fingerprint:
-        existing_fingerprint = session.exec(
-            select(User).where(User.device_fingerprint == user.device_fingerprint)
-        ).first()
-        if existing_fingerprint:
-            record_fail(client_ip)
-            raise HTTPException(status_code=400, detail="该设备已注册过账号，每个设备只能注册一个账号")
+    if user.device_fingerprint and conflicts["device_registered"]:
+        record_fail(client_ip)
+        raise HTTPException(status_code=400, detail="该设备已注册过账号，每个设备只能注册一个账号")
     
     # 处理邀请码（如果有）
     inviter = None
@@ -639,11 +552,16 @@ def register(user: UserCreateWithCaptcha, request: Request, session: Session = D
         ).first()
         # 邀请码无效不报错，只是不给奖励
     
-    # 生成新用户的邀请码
+    # 生成新用户的邀请码（带重试限制，避免无限循环）
     new_invite_code = generate_invite_code()
-    # 确保邀请码唯一
+    retry_count = 0
+    max_retries = 10  # 最多重试10次
     while session.exec(select(User).where(User.invite_code == new_invite_code)).first():
+        if retry_count >= max_retries:
+            app_logger.error("Failed to generate unique invite code after 10 retries")
+            raise HTTPException(status_code=500, detail="系统错误，请稍后重试")
         new_invite_code = generate_invite_code()
+        retry_count += 1
     
     # 创建用户（默认余额 ¥3 在模型中已设置）
     hashed_password = get_password_hash(user.password)

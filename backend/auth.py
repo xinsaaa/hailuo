@@ -2,11 +2,14 @@ from datetime import datetime, timedelta
 from typing import Optional
 import bcrypt
 from jose import jwt
+import os
+import secrets
 
-# Secret key for JWT (Should be env var in production)
-SECRET_KEY = "supersecretkeyshouldbechanged"
+# 从环境变量读取JWT配置，使用强随机默认值
+SECRET_KEY = os.getenv("SECRET_KEY", secrets.token_urlsafe(64))
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 30 * 24 * 60 # 1 month
+# 缩短Token过期时间至24小时，提高安全性
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("TOKEN_EXPIRE_HOURS", "24")) * 60
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """验证密码是否正确"""

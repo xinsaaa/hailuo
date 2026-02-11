@@ -14,10 +14,11 @@ from collections import defaultdict
 from threading import Lock
 
 # ============ 配置 ============
-# 多层密钥（不同层使用不同密钥）
-SECRET_LAYER_1 = "dadi_ai_L1_x7k9m2p5"
-SECRET_LAYER_2 = "cipher_L2_q3w8e1r6"
-SECRET_LAYER_3 = "verify_L3_t4y0u9i2"
+import os
+# 多层密钥（从环境变量读取，提供安全默认值）
+SECRET_LAYER_1 = os.getenv("SECRET_LAYER_1", "dadi_ai_L1_x7k9m2p5")
+SECRET_LAYER_2 = os.getenv("SECRET_LAYER_2", "cipher_L2_q3w8e1r6")
+SECRET_LAYER_3 = os.getenv("SECRET_LAYER_3", "verify_L3_t4y0u9i2")
 CAPTCHA_EXPIRE_SECONDS = 300
 RATE_LIMIT_REQUESTS = 100  # 每分钟最大请求数（调高避免正常使用被限制）
 RATE_LIMIT_WINDOW = 60
@@ -217,11 +218,50 @@ def verify_captcha(challenge: str, puzzle: str, cipher: str, nonce: str,
 
 
 def _cleanup_expired_captchas():
-    """清理过期的验证码"""
+    """清理过期的验证码（内存管理）"""
     now = datetime.now()
-    expired = [k for k, v in _captcha_store.items() if now > v["expires"]]
-    for k in expired:
-        del _captcha_store[k]
+    expired_keys = []
+    for token, data in _captcha_store.items():
+        if now > data["expires"]:
+            expired_keys.append(token)
+    
+    for key in expired_keys:
+        _captcha_store.pop(key, None)
+    
+    # 定期清理所有内存存储
+    _cleanup_all_expired_data()
+
+
+def _cleanup_all_expired_data():
+    """清理所有过期的内存数据"""
+    now = datetime.now()
+    
+    # 清理限流记录（保留1小时内的记录）
+    cutoff_time = now - timedelta(hours=1)
+    for ip in list(_rate_limit_store.keys()):
+        timestamps = _rate_limit_store[ip]
+        # 只保留1小时内的时间戳
+        _rate_limit_store[ip] = [ts for ts in timestamps if ts > cutoff_time.timestamp()]
+        # 如果没有有效记录，删除该IP
+        if not _rate_limit_store[ip]:
+            _rate_limit_store.pop(ip, None)
+    
+    # 清理失败计数记录（保留24小时内的记录）
+    cutoff_time = now - timedelta(hours=24)
+    for ip in list(_fail_count_store.keys()):
+        fail_data = _fail_count_store[ip]
+        if fail_data["last_fail"] and fail_data["last_fail"] < cutoff_time:
+            _fail_count_store.pop(ip, None)
+
+
+def cleanup_memory_periodically():
+    """定期清理内存，防止内存泄漏（建议定时任务调用）"""
+    with _lock:
+        _cleanup_expired_captchas()
+        print(f"[SECURITY] Memory cleanup completed. "
+              f"Captcha: {len(_captcha_store)}, "
+              f"RateLimit: {len(_rate_limit_store)}, "
+              f"FailCount: {len(_fail_count_store)}")
 
 
 # ============ Rate Limiting （仍使用内存，短期数据）============

@@ -3,6 +3,8 @@
 """
 import os
 import random
+import hashlib
+import hmac
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -13,17 +15,46 @@ from backend.models import EmailVerifyCode, engine
 # ============ SMTP 配置（从环境变量读取）============
 SMTP_HOST = os.getenv("SMTP_HOST", "smtp.qq.com")
 SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
-SMTP_USER = os.getenv("SMTP_USER", "758045020@qq.com")  # QQ 邮箱地址
-SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "tidczqaqsegpbdda")  # QQ 邮箱授权码
+SMTP_USER = os.getenv("SMTP_USER", "your-email@qq.com")  # 必须设置环境变量
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "your-authorization-code")  # 必须设置环境变量
 SMTP_SENDER_NAME = os.getenv("SMTP_SENDER_NAME", "DadiAI")
 
 # 验证码有效期（分钟）
 CODE_EXPIRE_MINUTES = 5
 
+# 验证码加密密钥（从环境变量获取）
+VERIFY_CODE_SECRET = os.getenv("SECRET_LAYER_1", "default_verify_secret_key")
+
 
 def generate_code(length: int = 6) -> str:
     """生成随机数字验证码"""
     return ''.join([str(random.randint(0, 9)) for _ in range(length)])
+
+
+def encrypt_verification_code(code: str, email: str) -> str:
+    """加密验证码，防止数据库泄露直接暴露验证码"""
+    # 使用HMAC-SHA256加密
+    message = f"{code}:{email}:{datetime.utcnow().isoformat()}"
+    signature = hmac.new(
+        VERIFY_CODE_SECRET.encode(), 
+        message.encode(), 
+        hashlib.sha256
+    ).hexdigest()
+    return signature[:32]  # 取前32位作为加密后的验证码
+
+
+def verify_encrypted_code(plain_code: str, email: str, encrypted_code: str, created_at: datetime) -> bool:
+    """验证加密的验证码"""
+    # 重新计算预期的加密值
+    message = f"{plain_code}:{email}:{created_at.isoformat()}"
+    expected_signature = hmac.new(
+        VERIFY_CODE_SECRET.encode(),
+        message.encode(),
+        hashlib.sha256
+    ).hexdigest()[:32]
+    
+    # 使用安全的比较方法
+    return hmac.compare_digest(encrypted_code, expected_signature)
 
 
 def send_email(to_email: str, subject: str, html_content: str) -> bool:
@@ -105,10 +136,11 @@ def send_verification_code(email: str, purpose: str = "register") -> tuple[bool,
             old.is_used = True
             session.add(old)
         
-        # 创建新验证码
+        # 创建新验证码（加密存储）
+        encrypted_code = encrypt_verification_code(code, email)
         new_code = EmailVerifyCode(
             email=email,
-            code=code,
+            code=encrypted_code,  # 存储加密后的验证码
             purpose=purpose,
             expires_at=expires_at
         )
@@ -151,28 +183,34 @@ def send_verification_code(email: str, purpose: str = "register") -> tuple[bool,
 
 def verify_email_code(email: str, code: str, purpose: str = "register") -> tuple[bool, str]:
     """
-    验证邮箱验证码
+    验证邮箱验证码（支持加密存储的验证码）
     返回: (是否有效, 消息)
     """
     with Session(engine) as session:
-        record = session.exec(
+        # 获取该邮箱未使用的验证码记录
+        records = session.exec(
             select(EmailVerifyCode).where(
                 EmailVerifyCode.email == email,
-                EmailVerifyCode.code == code,
                 EmailVerifyCode.purpose == purpose,
                 EmailVerifyCode.is_used == False
-            )
-        ).first()
+            ).order_by(EmailVerifyCode.created_at.desc())
+        ).all()
         
-        if not record:
+        if not records:
             return (False, "验证码无效或已使用")
         
-        if datetime.utcnow() > record.expires_at:
-            return (False, "验证码已过期，请重新获取")
+        # 检查每个记录（因为现在是加密存储的）
+        for record in records:
+            # 检查是否过期
+            if datetime.utcnow() > record.expires_at:
+                continue
+            
+            # 验证加密的验证码
+            if verify_encrypted_code(code, email, record.code, record.created_at):
+                # 验证成功，标记为已使用
+                record.is_used = True
+                session.add(record)
+                session.commit()
+                return (True, "验证成功")
         
-        # 标记为已使用
-        record.is_used = True
-        session.add(record)
-        session.commit()
-        
-        return (True, "验证成功")
+        return (False, "验证码无效或已过期")
