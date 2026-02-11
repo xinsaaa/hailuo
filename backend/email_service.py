@@ -30,9 +30,15 @@ def send_email(to_email: str, subject: str, html_content: str) -> bool:
     """发送邮件"""
     if not SMTP_USER or not SMTP_PASSWORD:
         print("[EMAIL] SMTP 未配置，跳过发送")
+        print(f"[EMAIL] SMTP_USER: {SMTP_USER}")
+        print(f"[EMAIL] SMTP_PASSWORD: {'*' * len(SMTP_PASSWORD) if SMTP_PASSWORD else 'None'}")
         return False
     
     try:
+        print(f"[EMAIL] 开始发送邮件到 {to_email}")
+        print(f"[EMAIL] SMTP配置: {SMTP_HOST}:{SMTP_PORT}")
+        print(f"[EMAIL] 发送账号: {SMTP_USER}")
+        
         msg = MIMEMultipart('alternative')
         msg['From'] = f"{SMTP_SENDER_NAME} <{SMTP_USER}>"
         msg['To'] = to_email
@@ -42,17 +48,37 @@ def send_email(to_email: str, subject: str, html_content: str) -> bool:
         html_part = MIMEText(html_content, 'html', 'utf-8')
         msg.attach(html_part)
         
+        print("[EMAIL] 正在连接SMTP服务器...")
+        
         # 连接 SMTP 服务器并发送
         with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
+            print("[EMAIL] SMTP连接成功，启用TLS...")
+            server.set_debuglevel(1)  # 启用调试输出
             server.starttls()  # 启用 TLS
+            print("[EMAIL] 正在登录...")
             server.login(SMTP_USER, SMTP_PASSWORD)
+            print("[EMAIL] 登录成功，发送邮件...")
             server.sendmail(SMTP_USER, to_email, msg.as_string())
         
         print(f"[EMAIL] ✅ 邮件已发送至 {to_email}")
         return True
         
+    except smtplib.SMTPAuthenticationError as e:
+        print(f"[EMAIL] ❌ 认证失败: {str(e)}")
+        print("[EMAIL] 请检查邮箱账号和授权码是否正确")
+        return False
+    except smtplib.SMTPConnectError as e:
+        print(f"[EMAIL] ❌ 连接失败: {str(e)}")
+        print("[EMAIL] 请检查网络连接和SMTP服务器设置")
+        return False
+    except smtplib.SMTPException as e:
+        print(f"[EMAIL] ❌ SMTP错误: {str(e)}")
+        return False
     except Exception as e:
         print(f"[EMAIL] ❌ 发送失败: {str(e)}")
+        print(f"[EMAIL] 错误类型: {type(e).__name__}")
+        import traceback
+        traceback.print_exc()
         return False
 
 
