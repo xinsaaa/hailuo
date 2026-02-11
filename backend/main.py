@@ -233,6 +233,44 @@ def get_client_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
+# 用户名验证规则
+def validate_username(username: str) -> tuple[bool, str]:
+    """验证用户名是否符合规范"""
+    
+    # 长度检查
+    if len(username) < 4:
+        return False, "用户名至少需要4个字符"
+    if len(username) > 20:
+        return False, "用户名不能超过20个字符"
+    
+    # 字符检查 - 只允许字母、数字、下划线
+    if not re.match(r'^[a-zA-Z][a-zA-Z0-9_]*$', username):
+        return False, "用户名必须以字母开头，只能包含字母、数字和下划线"
+    
+    # 必须包含字母
+    if not re.search(r'[a-zA-Z]', username):
+        return False, "用户名必须包含至少一个字母"
+    
+    # 敏感词检查
+    forbidden_words = [
+        'admin', 'administrator', 'root', 'system', 'test',
+        'user', 'guest', 'null', 'undefined', 'bot', 'api',
+        'service', 'support', 'help', 'info', 'mail', 'email',
+        'fuck', 'shit', 'damn', 'bitch', 'ass', 'sex'
+    ]
+    
+    username_lower = username.lower()
+    for word in forbidden_words:
+        if word in username_lower:
+            return False, f"用户名包含敏感词，请重新输入"
+    
+    # 连续字符检查
+    if re.search(r'(.)\1{2,}', username):
+        return False, "用户名不能包含3个以上连续相同字符"
+    
+    return True, "用户名格式正确"
+
+
 async def get_current_user(token: str = Depends(oauth2_scheme), session: Session = Depends(get_session)):
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -314,7 +352,6 @@ import json
 
 # 默认配置
 DEFAULT_CONFIG = {
-    "video_price": {"value": 0.99, "description": "单个视频生成价格（元）"},
     "bonus_rate": {"value": 0.2, "description": "充值赠送比例（满10元生效）"},
     "bonus_min_amount": {"value": 10, "description": "享受赠送的最低充值金额（元）"},
     "min_recharge": {"value": 0.01, "description": "最低充值金额（元）"},
@@ -356,11 +393,31 @@ def set_config_value(session: Session, key: str, value, description: str = None)
 def get_public_config(session: Session = Depends(get_session)):
     """获取公共配置（前端使用）"""
     return {
-        "video_price": get_config_value(session, "video_price", 0.99),
         "bonus_rate": get_config_value(session, "bonus_rate", 0.2),
         "bonus_min_amount": get_config_value(session, "bonus_min_amount", 10),
         "min_recharge": get_config_value(session, "min_recharge", 0.01),
         "max_recharge": get_config_value(session, "max_recharge", 10000),
+        "username_rules": {
+            "min_length": 4,
+            "max_length": 20,
+            "pattern": "必须以字母开头，可包含字母、数字和下划线",
+            "forbidden": "不能使用敏感词或连续相同字符"
+        }
+    }
+
+@app.post("/api/validate-username")
+def validate_username_api(data: dict):
+    """验证用户名格式"""
+    username = data.get("username", "")
+    is_valid, message = validate_username(username)
+    return {
+        "valid": is_valid,
+        "message": message,
+        "suggestions": [
+            "以字母开头，如：john123",
+            "包含字母和数字，如：user2024",
+            "避免使用admin、test等敏感词"
+        ] if not is_valid else []
     }
 
 
@@ -462,6 +519,12 @@ def register(user: UserCreateWithCaptcha, request: Request, session: Session = D
     valid, msg = verify_email_code(user.email, user.email_code, "register")
     if not valid:
         raise HTTPException(status_code=400, detail=msg)
+    
+    # 验证用户名格式
+    username_valid, username_msg = validate_username(user.username)
+    if not username_valid:
+        record_fail(client_ip)
+        raise HTTPException(status_code=400, detail=username_msg)
     
     # 检查用户名是否存在
     db_user = session.exec(select(User).where(User.username == user.username)).first()

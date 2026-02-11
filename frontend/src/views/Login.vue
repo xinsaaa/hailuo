@@ -28,6 +28,53 @@ const needCaptcha = ref(false)
 
 // 鼠标跟随效果
 const mouseX = ref(0)
+
+// 用户名验证
+const usernameError = ref('')
+const validateUsername = (username) => {
+  if (!username) {
+    return '请输入用户名'
+  }
+  
+  // 长度检查
+  if (username.length < 4) {
+    return '用户名至少需要4个字符'
+  }
+  if (username.length > 20) {
+    return '用户名不能超过20个字符'
+  }
+  
+  // 字符检查 - 只允许字母、数字、下划线，必须以字母开头
+  if (!/^[a-zA-Z][a-zA-Z0-9_]*$/.test(username)) {
+    return '用户名必须以字母开头，只能包含字母、数字和下划线'
+  }
+  
+  // 必须包含字母
+  if (!/[a-zA-Z]/.test(username)) {
+    return '用户名必须包含至少一个字母'
+  }
+  
+  // 敏感词检查
+  const forbiddenWords = [
+    'admin', 'administrator', 'root', 'system', 'test',
+    'user', 'guest', 'null', 'undefined', 'bot', 'api',
+    'service', 'support', 'help', 'info', 'mail', 'email'
+  ]
+  
+  const usernameLower = username.toLowerCase()
+  for (const word of forbiddenWords) {
+    if (usernameLower.includes(word)) {
+      return '用户名包含敏感词，请重新输入'
+    }
+  }
+  
+  // 连续字符检查
+  if (/(.)\1{2,}/.test(username)) {
+    return '用户名不能包含3个以上连续相同字符'
+  }
+  
+  return ''
+}
 const mouseY = ref(0)
 
 // 邀请码（从 URL 参数获取）
@@ -265,10 +312,28 @@ const showCaptchaComponent = computed(() => {
   return !isLoginMode.value || needCaptcha.value
 })
 
+// 监听用户名变化，实时验证
+watch(username, (newValue) => {
+  if (!isLoginMode.value && newValue) {
+    usernameError.value = validateUsername(newValue)
+  } else {
+    usernameError.value = ''
+  }
+})
+
 const handleSubmit = async () => {
   if (!username.value || !password.value) {
     showAlert('请填写用户名和密码')
     return
+  }
+  
+  // 注册时验证用户名格式
+  if (!isLoginMode.value) {
+    const usernameValidationError = validateUsername(username.value)
+    if (usernameValidationError) {
+      showAlert(usernameValidationError)
+      return
+    }
   }
   
   if (!isLoginMode.value && password.value !== confirmPassword.value) {
@@ -369,9 +434,29 @@ const handleSubmit = async () => {
               v-model="username"
               type="text" 
               placeholder="请输入用户名" 
-              class="w-full px-4 py-3.5 rounded-xl bg-black/20 border border-white/10 text-white placeholder-gray-500 outline-none focus:border-cyan-500/50 focus:ring-2 focus:ring-cyan-500/20 transition-all shadow-inner backdrop-blur-sm"
+              :class="[
+                'w-full px-4 py-3.5 rounded-xl bg-black/20 border text-white placeholder-gray-500 outline-none transition-all shadow-inner backdrop-blur-sm',
+                !isLoginMode && usernameError 
+                  ? 'border-red-500/50 focus:border-red-500/70 focus:ring-2 focus:ring-red-500/20' 
+                  : 'border-white/10 focus:border-cyan-500/50 focus:ring-2 focus:ring-cyan-500/20'
+              ]"
               @keyup.enter="handleSubmit"
             />
+            <!-- 用户名错误提示 -->
+            <div v-if="!isLoginMode && usernameError" class="mt-2 text-red-400 text-xs flex items-center gap-1">
+              <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd" />
+              </svg>
+              {{ usernameError }}
+            </div>
+            
+            <!-- 用户名格式说明 -->
+            <div v-if="!isLoginMode && !usernameError && username" class="mt-2 text-green-400 text-xs flex items-center gap-1">
+              <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                <path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd" />
+              </svg>
+              用户名格式正确
+            </div>
           </div>
           <div>
             <label class="block text-xs font-medium text-gray-400 uppercase tracking-wider mb-2">密码</label>

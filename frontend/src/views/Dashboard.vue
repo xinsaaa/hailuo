@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getCurrentUser, createOrder, getOrders, getPublicConfig, getAvailableModels } from '../api'
 
@@ -11,6 +11,18 @@ const user = ref(null)
 const orders = ref([])
 const prompt = ref(route.query.prompt || '')
 const loading = ref(false)
+
+// 模型系列过滤
+const modelSeries = ref(route.query.series || 'all') // '2.3', '3.1', 'all'
+
+// 系列名称映射
+const getSeriesDisplayName = (series) => {
+  switch (series) {
+    case '2.3': return '海螺AI 2.3系列'
+    case '3.1': return '海螺AI 3.1系列'
+    default: return '海螺AI 全系列'
+  }
+}
 
 // 模型选择相关状态
 const availableModels = ref([])
@@ -25,7 +37,6 @@ const lastFramePreview = ref(null)
 
 // 系统配置（从 API 加载）
 const config = ref({
-  video_price: 0.99,
   bonus_rate: 0.2,
   bonus_min_amount: 10,
   min_recharge: 0.01,
@@ -67,6 +78,12 @@ const handleClickOutside = (event) => {
     showModelSelector.value = false
   }
 }
+
+// 监听路由参数变化
+watch(() => route.query.series, (newSeries) => {
+  modelSeries.value = newSeries || 'all'
+  loadData() // 重新加载数据以应用新的过滤
+})
 
 onMounted(() => {
   window.addEventListener('mousemove', handleMouseMove)
@@ -112,9 +129,30 @@ const loadData = async () => {
       config.value = configData
     }
     if (modelsData && modelsData.models) {
-      availableModels.value = modelsData.models
+      // 根据系列过滤模型
+      let filteredModels = modelsData.models
+      if (modelSeries.value === '2.3') {
+        // 只显示2.3系列模型
+        filteredModels = modelsData.models.filter(model => 
+          model.model_id.includes('2_3') || 
+          model.model_id.includes('2.3') ||
+          model.model_id.includes('hailuo_1_0') // 1.0系列归到2.3
+        )
+      } else if (modelSeries.value === '3.1') {
+        // 只显示3.1系列模型
+        filteredModels = modelsData.models.filter(model => 
+          model.model_id.includes('3_1') || 
+          model.model_id.includes('3.1') ||
+          model.model_id.includes('beta_3_1')
+        )
+      }
+      
+      availableModels.value = filteredModels
+      
       // 设置默认选中模型
-      selectedModel.value = modelsData.models.find(m => m.is_default) || modelsData.models[0]
+      if (filteredModels.length > 0) {
+        selectedModel.value = filteredModels.find(m => m.is_default) || filteredModels[0]
+      }
     }
   } catch (err) {
     if (err.response?.status === 401) {
@@ -134,8 +172,9 @@ const handleCreateOrder = async () => {
     return
   }
   
-  if (!user.value || user.value.balance < config.value.video_price) {
-    showNotification(`余额不足，需 ${config.value.video_price} 元`, 'error')
+  const modelPrice = selectedModel.value?.price || 0.99
+  if (!user.value || user.value.balance < modelPrice) {
+    showNotification(`余额不足，需 ¥${modelPrice.toFixed(2)}`, 'error')
     return
   }
   
@@ -294,19 +333,69 @@ const handleLogout = () => {
             
             <div class="relative bg-white/5 backdrop-blur-3xl border border-white/10 border-t-white/20 rounded-3xl p-8 shadow-2xl">
               <div class="flex justify-between items-center mb-6">
-                <h2 class="text-xl font-bold text-white flex items-center gap-2">
-                  <span class="w-1 h-6 bg-cyan-500 rounded-full"></span>
-                  开始创作
-                </h2>
+                <div>
+                  <h2 class="text-xl font-bold text-white flex items-center gap-2">
+                    <span class="w-1 h-6 bg-cyan-500 rounded-full" :class="modelSeries === '3.1' ? 'bg-purple-500' : 'bg-cyan-500'"></span>
+                    {{ getSeriesDisplayName(modelSeries) }}
+                  </h2>
+                  <p v-if="modelSeries !== 'all'" class="text-xs text-gray-400 mt-1 ml-5">
+                    专用模型选择器，仅显示{{ modelSeries }}系列模型
+                  </p>
+                </div>
                 <div class="flex items-center gap-3">
+                  <!-- 系列切换器 -->
+                  <div class="flex bg-white/5 border border-white/10 rounded-xl p-1">
+                    <button 
+                      @click="router.push({ query: { ...route.query, series: '2.3' } })"
+                      :class="[
+                        'px-3 py-1.5 text-xs font-medium rounded-lg transition-all',
+                        modelSeries === '2.3' 
+                          ? 'bg-cyan-500/80 text-white shadow-sm' 
+                          : 'text-gray-400 hover:text-white hover:bg-white/5'
+                      ]"
+                    >
+                      2.3系列
+                    </button>
+                    <button 
+                      @click="router.push({ query: { ...route.query, series: '3.1' } })"
+                      :class="[
+                        'px-3 py-1.5 text-xs font-medium rounded-lg transition-all',
+                        modelSeries === '3.1' 
+                          ? 'bg-purple-500/80 text-white shadow-sm' 
+                          : 'text-gray-400 hover:text-white hover:bg-white/5'
+                      ]"
+                    >
+                      3.1系列
+                    </button>
+                    <button 
+                      @click="router.push({ query: { ...route.query, series: undefined } })"
+                      :class="[
+                        'px-3 py-1.5 text-xs font-medium rounded-lg transition-all',
+                        modelSeries === 'all' 
+                          ? 'bg-gray-500/80 text-white shadow-sm' 
+                          : 'text-gray-400 hover:text-white hover:bg-white/5'
+                      ]"
+                    >
+                      全部
+                    </button>
+                  </div>
+                  
                   <!-- 模型选择器 -->
                   <div class="relative model-selector">
                     <button 
                       @click="showModelSelector = !showModelSelector"
-                      class="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-sm text-white transition-all hover:border-white/20 hover:shadow-lg hover:shadow-cyan-500/10"
+                      :class="[
+                        'flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-sm text-white transition-all hover:border-white/20 hover:shadow-lg',
+                        modelSeries === '3.1' ? 'hover:shadow-purple-500/10' : 'hover:shadow-cyan-500/10'
+                      ]"
                     >
                       <div class="flex items-center gap-2">
-                        <div class="w-2 h-2 bg-cyan-400 rounded-full shadow-[0_0_8px_rgba(34,211,238,0.8)]"></div>
+                        <div 
+                          class="w-2 h-2 rounded-full" 
+                          :class="modelSeries === '3.1' 
+                            ? 'bg-purple-400 shadow-[0_0_8px_rgba(147,51,234,0.8)]' 
+                            : 'bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.8)]'"
+                        ></div>
                         <span class="font-medium tracking-wide">{{ selectedModel?.display_name || '选择模型' }}</span>
                         <span v-if="selectedModel?.badge" class="px-1.5 py-0.5 bg-gradient-to-r from-pink-500 to-rose-500 text-white text-[10px] font-bold rounded uppercase tracking-wider shadow-sm">
                           {{ selectedModel.badge }}

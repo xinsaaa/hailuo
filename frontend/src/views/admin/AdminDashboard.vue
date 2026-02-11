@@ -1,27 +1,23 @@
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
-import { getAdminStats, getAutomationStatus, startAutomation, getAutomationLogs, getAllConfig, updateConfig } from '../../api'
+import { getAdminStats, getAutomationStatus, startAutomation, getAutomationLogs } from '../../api'
 
 const stats = ref(null)
 const automation = ref(null)
 const logs = ref([])
-const configs = ref({})
 const loading = ref(true)
 const logsLoading = ref(false)
-const configLoading = ref(false)
 let logsInterval = null
 
 const loadData = async () => {
     loading.value = true
     try {
-        const [statsData, autoData, configData] = await Promise.all([
+        const [statsData, autoData] = await Promise.all([
             getAdminStats(),
-            getAutomationStatus(),
-            getAllConfig()
+            getAutomationStatus()
         ])
         stats.value = statsData
         automation.value = autoData
-        configs.value = configData.configs
     } catch (err) {
         console.error(err)
     } finally {
@@ -51,25 +47,6 @@ const handleStartAutomation = async () => {
     }
 }
 
-const handleUpdateConfig = async (key) => {
-  if (!configs.value[key]) return
-  
-  const value = parseFloat(configs.value[key].value)
-  if (isNaN(value)) {
-    alert('请输入有效的数字')
-    return
-  }
-  
-  configLoading.value = true
-  try {
-    await updateConfig(key, value)
-    alert('配置更新成功')
-  } catch (err) {
-    alert('更新失败: ' + (err.response?.data?.detail || err.message))
-  } finally {
-    configLoading.value = false
-  }
-}
 
 const getLogColor = (level) => {
     switch (level) {
@@ -188,32 +165,6 @@ onUnmounted(() => {
         </div>
     </div>
     
-    <!-- System Config -->
-    <div class="bg-gray-800 rounded-2xl border border-gray-700/50 shadow-xl overflow-hidden">
-        <div class="px-6 py-4 border-b border-gray-700/50 bg-gray-900/50">
-            <h3 class="text-lg font-bold text-white">系统参数配置</h3>
-        </div>
-        <div class="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <div v-for="(config, key) in configs" :key="key" class="bg-black/20 p-4 rounded-xl border border-white/5">
-                <label class="block text-sm text-gray-400 mb-2 h-10 overflow-hidden">{{ config.description }}</label>
-                <div class="flex gap-2">
-                    <input 
-                        v-model="config.value"
-                        type="number"
-                        step="0.01"
-                        class="flex-1 bg-gray-700/50 border border-gray-600 rounded-lg px-3 py-2 text-white focus:border-blue-500 focus:outline-none transition-all"
-                    >
-                    <button 
-                        @click="handleUpdateConfig(key)"
-                        :disabled="configLoading"
-                        class="px-3 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
-                    >
-                        保存
-                    </button>
-                </div>
-            </div>
-        </div>
-    </div>
 
     <!-- Logs Panel -->
     <div class="bg-gray-800 rounded-2xl border border-gray-700/50 shadow-xl overflow-hidden">
