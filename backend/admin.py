@@ -473,21 +473,63 @@ from sqlmodel import select as sql_select
 
 @router.get("/security/banned-ips")
 def list_banned_ips(admin=Depends(get_admin_user), session: Session = Depends(get_session)):
-    """获取被封禁的 IP 列表（从数据库）"""
+    """获取被封禁的 IP 列表（优化版本）"""
     now = datetime.now()
-    bans = session.exec(sql_select(IPBan).where(IPBan.expires_at > now)).all()
     
-    banned_list = [
-        {
+    # 获取所有封禁记录（包括已过期的，用于显示历史记录）
+    all_bans = session.exec(sql_select(IPBan).order_by(IPBan.created_at.desc()).limit(100)).all()
+    
+    # 清理过期的封禁记录
+    expired_bans = [ban for ban in all_bans if ban.expires_at <= now]
+    for expired_ban in expired_bans:
+        session.delete(expired_ban)
+    
+    if expired_bans:
+        session.commit()
+        # 重新获取有效封禁记录
+        valid_bans = session.exec(sql_select(IPBan).where(IPBan.expires_at > now).order_by(IPBan.created_at.desc())).all()
+    else:
+        valid_bans = [ban for ban in all_bans if ban.expires_at > now]
+    
+    banned_list = []
+    for ban in valid_bans:
+        remaining_seconds = max(0, int((ban.expires_at - now).total_seconds()))
+        banned_list.append({
             "ip": ban.ip,
             "reason": ban.reason,
-            "expires_at": ban.expires_at.isoformat(),
-            "remaining_seconds": max(0, int((ban.expires_at - now).total_seconds()))
-        }
-        for ban in bans
-    ]
+            "expires_at": utc_to_china_time(ban.expires_at),  # 使用中国时间显示
+            "created_at": utc_to_china_time(ban.created_at),  # 显示封禁创建时间
+            "remaining_seconds": remaining_seconds,
+            "remaining_hours": round(remaining_seconds / 3600, 1)  # 显示剩余小时数
+        })
     
-    return {"banned_ips": banned_list}
+    # 获取高风险IP（失败次数多但未封禁）
+    high_risk_ips = session.exec(
+        sql_select(LoginFailure).where(
+            LoginFailure.fail_count >= 5,
+            LoginFailure.fail_count < 10  # 未达到封禁阈值
+        ).order_by(LoginFailure.fail_count.desc()).limit(20)
+    ).all()
+    
+    risk_list = []
+    for risk in high_risk_ips:
+        # 检查是否已被封禁
+        is_banned = session.exec(sql_select(IPBan).where(IPBan.ip == risk.ip)).first()
+        if not is_banned:
+            risk_list.append({
+                "ip": risk.ip,
+                "fail_count": risk.fail_count,
+                "last_fail_at": utc_to_china_time(risk.last_fail_at) if risk.last_fail_at else None,
+                "status": "高风险" if risk.fail_count >= 7 else "中风险"
+            })
+    
+    return {
+        "banned_ips": banned_list,
+        "banned_count": len(banned_list),
+        "high_risk_ips": risk_list,
+        "risk_count": len(risk_list),
+        "total_cleaned": len(expired_bans)
+    }
 
 
 @router.delete("/security/unban")
@@ -497,6 +539,7 @@ def unban_ip(ip: str, admin=Depends(get_admin_user), session: Session = Depends(
     ban = session.exec(sql_select(IPBan).where(IPBan.ip == ip)).first()
     if ban:
         session.delete(ban)
+        print(f"[ADMIN] 解除IP封禁: {ip}")
     
     # 重置失败计数
     failure = session.exec(sql_select(LoginFailure).where(LoginFailure.ip == ip)).first()
@@ -504,28 +547,151 @@ def unban_ip(ip: str, admin=Depends(get_admin_user), session: Session = Depends(
         failure.fail_count = 0
         failure.last_fail_at = None
         session.add(failure)
+        print(f"[ADMIN] 重置失败计数: {ip}")
     
     session.commit()
-    return {"message": f"已解除 {ip} 的封禁"}
+    return {"message": f"已解除 {ip} 的封禁", "success": True}
+
+
+class ManualBanRequest(BaseModel):
+    ip: str
+    reason: str = "管理员手动封禁"
+    duration_hours: int = 24  # 封禁时长（小时）
+
+
+@router.post("/security/ban-ip")
+def manual_ban_ip(
+    data: ManualBanRequest,
+    admin=Depends(get_admin_user), 
+    session: Session = Depends(get_session)
+):
+    """手动封禁IP"""
+    # 检查IP是否已被封禁
+    existing_ban = session.exec(sql_select(IPBan).where(IPBan.ip == data.ip)).first()
+    if existing_ban:
+        # 更新现有封禁
+        existing_ban.expires_at = datetime.now() + timedelta(hours=data.duration_hours)
+        existing_ban.reason = data.reason
+        session.add(existing_ban)
+    else:
+        # 创建新封禁
+        new_ban = IPBan(
+            ip=data.ip,
+            reason=data.reason,
+            expires_at=datetime.now() + timedelta(hours=data.duration_hours)
+        )
+        session.add(new_ban)
+    
+    session.commit()
+    print(f"[ADMIN] 手动封禁IP: {data.ip}, 时长: {data.duration_hours}小时, 原因: {data.reason}")
+    return {
+        "message": f"已封禁 IP {data.ip}",
+        "duration_hours": data.duration_hours,
+        "reason": data.reason,
+        "success": True
+    }
+
+
+@router.post("/security/create-test-data")
+def create_test_security_data(admin=Depends(get_admin_user), session: Session = Depends(get_session)):
+    """创建测试安全数据（仅用于演示和测试）"""
+    now = datetime.now()
+    
+    # 创建一些测试的封禁记录
+    test_bans = [
+        {
+            "ip": "192.168.1.100",
+            "reason": "暴力破解登录",
+            "expires_at": now + timedelta(hours=12)
+        },
+        {
+            "ip": "10.0.0.50",
+            "reason": "恶意注册账号",
+            "expires_at": now + timedelta(hours=6)
+        },
+        {
+            "ip": "172.16.0.25",
+            "reason": "频繁请求API",
+            "expires_at": now + timedelta(hours=24)
+        }
+    ]
+    
+    # 创建一些测试的失败记录
+    test_failures = [
+        {"ip": "192.168.1.200", "fail_count": 7},
+        {"ip": "10.0.0.75", "fail_count": 6},
+        {"ip": "172.16.0.80", "fail_count": 8},
+        {"ip": "203.0.113.15", "fail_count": 5}
+    ]
+    
+    created_bans = 0
+    created_failures = 0
+    
+    # 添加封禁记录
+    for ban_data in test_bans:
+        existing = session.exec(sql_select(IPBan).where(IPBan.ip == ban_data["ip"])).first()
+        if not existing:
+            ban = IPBan(**ban_data)
+            session.add(ban)
+            created_bans += 1
+    
+    # 添加失败记录
+    for failure_data in test_failures:
+        existing = session.exec(sql_select(LoginFailure).where(LoginFailure.ip == failure_data["ip"])).first()
+        if not existing:
+            failure = LoginFailure(
+                ip=failure_data["ip"],
+                fail_count=failure_data["fail_count"],
+                last_fail_at=now - timedelta(minutes=30)
+            )
+            session.add(failure)
+            created_failures += 1
+    
+    session.commit()
+    
+    return {
+        "message": "测试数据创建完成",
+        "created_bans": created_bans,
+        "created_failures": created_failures,
+        "success": True
+    }
 
 
 @router.get("/security/fail-stats")
 def get_fail_stats(admin=Depends(get_admin_user), session: Session = Depends(get_session)):
-    """获取登录失败统计（从数据库）"""
+    """获取登录失败统计（优化版本）"""
     failures = session.exec(
         sql_select(LoginFailure).where(LoginFailure.fail_count > 0).order_by(LoginFailure.fail_count.desc()).limit(50)
     ).all()
     
-    stats = [
-        {
+    stats = []
+    for f in failures:
+        # 检查是否已被封禁
+        is_banned = session.exec(sql_select(IPBan).where(IPBan.ip == f.ip)).first()
+        
+        stats.append({
             "ip": f.ip,
             "fail_count": f.fail_count,
-            "last_fail": f.last_fail_at.isoformat() if f.last_fail_at else None
-        }
-        for f in failures
-    ]
+            "last_fail": utc_to_china_time(f.last_fail_at) if f.last_fail_at else None,
+            "created_at": utc_to_china_time(f.created_at),
+            "is_banned": bool(is_banned),
+            "risk_level": "高风险" if f.fail_count >= 8 else "中风险" if f.fail_count >= 5 else "低风险"
+        })
     
-    return {"fail_stats": stats}
+    # 统计信息
+    total_failures = len(stats)
+    high_risk_count = sum(1 for s in stats if s["fail_count"] >= 8)
+    banned_count = sum(1 for s in stats if s["is_banned"])
+    
+    return {
+        "fail_stats": stats,
+        "summary": {
+            "total_failures": total_failures,
+            "high_risk_count": high_risk_count,
+            "banned_count": banned_count,
+            "active_threats": high_risk_count - banned_count
+        }
+    }
 
 
 # ============ 系统配置管理 ============
