@@ -30,6 +30,7 @@ from backend.security import (
 )
 from backend.admin import router as admin_router
 from backend.email_service import send_verification_code, verify_email_code
+from backend.admin_multi_account import include_multi_account_routes
 
 # 导入日志和异常处理
 from backend.logger import app_logger
@@ -53,6 +54,9 @@ app.add_exception_handler(Exception, global_exception_handler)
 
 # 注册管理员路由
 app.include_router(admin_router)
+
+# 注册多账号管理路由
+include_multi_account_routes(app)
 
 
 # ============ Rate Limiting 中间件 ============

@@ -9,6 +9,7 @@ import AdminUsers from '../views/admin/AdminUsers.vue'
 import AdminOrders from '../views/admin/AdminOrders.vue'
 import AdminSecurity from '../views/admin/AdminSecurity.vue'
 import AdminModels from '../views/admin/AdminModels.vue'
+import AdminMultiAccounts from '../views/admin/AdminMultiAccounts.vue'
 
 const routes = [
     {
@@ -96,6 +97,11 @@ const routes = [
                 path: 'models',
                 name: '模型管理',
                 component: AdminModels
+            },
+            {
+                path: 'multi-accounts',
+                name: '多账号管理',
+                component: AdminMultiAccounts
             },
             {
                 path: '',

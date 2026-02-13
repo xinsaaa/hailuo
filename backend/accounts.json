@@ -1,0 +1,38 @@
+{
+  "accounts": [
+    {
+      "account_id": "hailuo_main",
+      "phone_number": "17366935232",
+      "display_name": "主账号",
+      "priority": 10,
+      "is_active": true,
+      "max_concurrent": 5,
+      "current_tasks": 0
+    },
+    {
+      "account_id": "hailuo_backup_1",
+      "phone_number": "138xxxxxxxx",
+      "display_name": "备用账号1",
+      "priority": 8,
+      "is_active": false,
+      "max_concurrent": 3,
+      "current_tasks": 0
+    },
+    {
+      "account_id": "hailuo_backup_2", 
+      "phone_number": "139xxxxxxxx",
+      "display_name": "备用账号2",
+      "priority": 6,
+      "is_active": false,
+      "max_concurrent": 3,
+      "current_tasks": 0
+    }
+  ],
+  "settings": {
+    "browser_headless": true,
+    "max_total_concurrent": 10,
+    "task_timeout": 300,
+    "account_rotation": true,
+    "auto_switch_on_limit": true
+  }
+}
