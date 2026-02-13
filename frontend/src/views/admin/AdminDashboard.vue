@@ -9,6 +9,19 @@ const loading = ref(true)
 const logsLoading = ref(false)
 let logsInterval = null
 
+// Toast
+const showToast = ref(false)
+const toastMessage = ref('')
+const toastType = ref('info')
+const toast = (msg, type = 'info') => {
+  toastMessage.value = msg
+  toastType.value = type
+  showToast.value = true
+  setTimeout(() => { showToast.value = false }, 3000)
+}
+
+const safeFixed = (val, digits = 2) => (val ?? 0).toFixed(digits)
+
 const loadData = async () => {
     loading.value = true
     try {
@@ -43,7 +56,7 @@ const handleStartAutomation = async () => {
         await loadData()
         await loadLogs()
     } catch (err) {
-        alert('启动失败: ' + (err.response?.data?.detail || err.message))
+        toast('启动失败: ' + (err.response?.data?.detail || err.message), 'error')
     }
 }
 
@@ -79,6 +92,13 @@ onUnmounted(() => {
 </script>
 
 <template>
+  <!-- Toast -->
+  <Transition name="toast">
+    <div v-if="showToast" class="fixed top-6 left-1/2 transform -translate-x-1/2 z-50">
+      <div :class="toastType === 'error' ? 'bg-red-500/90' : 'bg-green-500/90'" class="px-6 py-3 rounded-xl text-white text-sm font-medium shadow-lg backdrop-blur-xl">{{ toastMessage }}</div>
+    </div>
+  </Transition>
+
   <div v-if="loading" class="text-white text-center py-20">加载中...</div>
   <div v-else class="space-y-6">
     
@@ -144,12 +164,12 @@ onUnmounted(() => {
             <div class="absolute right-0 top-0 w-32 h-32 bg-green-500/5 rounded-full blur-3xl -mr-10 -mt-10"></div>
             <h4 class="text-gray-400 text-xs font-bold uppercase tracking-wider">今日充值</h4>
             <div class="mt-4 flex items-end justify-between">
-                <div class="text-3xl font-bold text-green-400 font-mono">¥{{ stats?.revenue.today_recharge.toFixed(2) }}</div>
+                <div class="text-3xl font-bold text-green-400 font-mono">¥{{ safeFixed(stats?.revenue?.today_recharge) }}</div>
                 <div class="p-3 bg-green-500/20 text-green-400 rounded-lg">
                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                 </div>
             </div>
-            <div class="mt-2 text-xs text-gray-500">总充值: ¥{{ stats?.revenue.total_recharge.toFixed(2) }}</div>
+            <div class="mt-2 text-xs text-gray-500">总充值: ¥{{ safeFixed(stats?.revenue?.total_recharge) }}</div>
         </div>
         
         <!-- Invite Bonus -->
@@ -157,7 +177,7 @@ onUnmounted(() => {
             <div class="absolute right-0 top-0 w-32 h-32 bg-orange-500/5 rounded-full blur-3xl -mr-10 -mt-10"></div>
             <h4 class="text-gray-400 text-xs font-bold uppercase tracking-wider">已发邀请奖励</h4>
             <div class="mt-4 flex items-end justify-between">
-                <div class="text-3xl font-bold text-orange-400 font-mono">¥{{ stats?.revenue.total_invite_bonus.toFixed(2) }}</div>
+                <div class="text-3xl font-bold text-orange-400 font-mono">¥{{ safeFixed(stats?.revenue?.total_invite_bonus) }}</div>
                 <div class="p-3 bg-orange-500/20 text-orange-400 rounded-lg">
                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"></path></svg>
                 </div>

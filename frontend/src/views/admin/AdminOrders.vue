@@ -11,6 +11,16 @@ const showModal = ref(false)
 const editingOrder = ref(null)
 const editForm = ref({ status: '', video_url: '' })
 
+const showToast = ref(false)
+const toastMessage = ref('')
+const toastType = ref('info')
+const toast = (msg, type = 'info') => {
+  toastMessage.value = msg
+  toastType.value = type
+  showToast.value = true
+  setTimeout(() => { showToast.value = false }, 3000)
+}
+
 const loadOrders = async (p = 1) => {
     loading.value = true
     try {
@@ -43,9 +53,10 @@ const handleUpdate = async () => {
     try {
         await updateOrder(editingOrder.value.id, editForm.value)
         showModal.value = false
+        toast('订单已更新', 'success')
         loadOrders(page.value)
     } catch (err) {
-        alert('更新失败')
+        toast(err.response?.data?.detail || '更新失败', 'error')
     }
 }
 
@@ -64,6 +75,12 @@ onMounted(() => loadOrders())
 
 <template>
   <div class="space-y-6">
+    <Transition name="toast">
+      <div v-if="showToast" class="fixed top-6 left-1/2 transform -translate-x-1/2 z-[100]">
+        <div :class="toastType === 'error' ? 'bg-red-500/90' : 'bg-green-500/90'" class="px-6 py-3 rounded-xl text-white text-sm font-medium shadow-lg backdrop-blur-xl">{{ toastMessage }}</div>
+      </div>
+    </Transition>
+
     <div class="flex items-center justify-between">
         <h2 class="text-2xl font-bold text-white">订单管理</h2>
         
