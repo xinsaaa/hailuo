@@ -268,31 +268,79 @@ class MultiAccountManager:
         try:
             print(f"[MULTI-ACCOUNT] 发送验证码: {account.display_name}")
             
-            # 导航到海螺AI登录页面
+            # 导航到海螺AI主页
             await page.goto("https://hailuoai.com", timeout=30000)
             await page.wait_for_timeout(3000)
             
-            # 点击登录按钮
+            current_url = page.url
+            page_title = await page.title()
+            print(f"[LOGIN] 页面已加载: {current_url} | 标题: {page_title}")
+            
+            # 点击登录按钮 - 多种选择器覆盖不同版本
             login_selectors = [
+                "div.border-hl_line_00:has-text('登录')",
                 "button:has-text('登录')",
                 "a:has-text('登录')",
+                "span:has-text('登录')",
+                "div:has-text('登录'):not(:has(div:has-text('登录')))",
                 ".login-btn",
-                "[data-testid='login-btn']"
+                "[data-testid='login-btn']",
             ]
             
             login_clicked = False
             for selector in login_selectors:
                 try:
-                    login_btn = await page.wait_for_selector(selector, timeout=5000)
-                    await login_btn.click()
-                    login_clicked = True
-                    print(f"[LOGIN] 已点击登录按钮")
-                    break
+                    login_btn = await page.wait_for_selector(selector, timeout=3000)
+                    if login_btn and await login_btn.is_visible():
+                        await login_btn.click()
+                        login_clicked = True
+                        print(f"[LOGIN] 已点击登录按钮 (选择器: {selector})")
+                        break
                 except:
                     continue
             
+            # JS兜底：遍历所有可见元素找"登录"文字
             if not login_clicked:
-                print("[LOGIN] 未找到登录按钮")
+                print("[LOGIN] CSS选择器未找到登录按钮，尝试JS查找...")
+                login_clicked = await page.evaluate("""
+                    () => {
+                        const allElements = document.querySelectorAll('button, a, div, span');
+                        for (const el of allElements) {
+                            const text = el.textContent.trim();
+                            const isSmall = el.children.length === 0 || el.innerHTML.trim().length < 20;
+                            if (text === '登录' && isSmall && el.offsetParent !== null) {
+                                el.click();
+                                return true;
+                            }
+                        }
+                        // 尝试查找包含"登录/注册"的元素
+                        for (const el of allElements) {
+                            const text = el.textContent.trim();
+                            if ((text === '登录/注册' || text === '登录 / 注册') && el.offsetParent !== null) {
+                                el.click();
+                                return true;
+                            }
+                        }
+                        return false;
+                    }
+                """)
+                if login_clicked:
+                    print("[LOGIN] JS成功点击登录按钮")
+            
+            if not login_clicked:
+                # 输出页面关键元素帮助调试
+                debug_info = await page.evaluate("""
+                    () => {
+                        const texts = [];
+                        document.querySelectorAll('button, a, [role="button"]').forEach(el => {
+                            if (el.offsetParent !== null && el.textContent.trim()) {
+                                texts.push(el.tagName + ': ' + el.textContent.trim().substring(0, 30));
+                            }
+                        });
+                        return texts.slice(0, 15).join(' | ');
+                    }
+                """)
+                print(f"[LOGIN] 未找到登录按钮! 页面可见按钮/链接: {debug_info}")
                 return False
             
             await page.wait_for_timeout(2000)
@@ -300,43 +348,93 @@ class MultiAccountManager:
             # 输入手机号
             phone_selectors = [
                 "input[placeholder*='手机']",
-                "input[placeholder*='phone']", 
+                "input[placeholder*='phone']",
+                "input[placeholder*='Phone']",
                 "input[type='tel']",
-                ".phone-input input"
+                "input[type='number']",
+                ".phone-input input",
+                "input[maxlength='11']",
             ]
             
             phone_entered = False
             for selector in phone_selectors:
                 try:
-                    phone_input = await page.wait_for_selector(selector, timeout=5000)
-                    await phone_input.clear()
-                    await phone_input.type(account.phone_number, delay=100)
-                    print(f"[LOGIN] 已输入手机号: {account.phone_number}")
-                    phone_entered = True
-                    break
+                    phone_input = await page.wait_for_selector(selector, timeout=3000)
+                    if phone_input and await phone_input.is_visible():
+                        await phone_input.click()
+                        await phone_input.fill("")
+                        await phone_input.type(account.phone_number, delay=80)
+                        print(f"[LOGIN] 已输入手机号: {account.phone_number} (选择器: {selector})")
+                        phone_entered = True
+                        break
                 except:
                     continue
+            
+            if not phone_entered:
+                # JS兜底
+                phone_entered = await page.evaluate(f"""
+                    () => {{
+                        const inputs = document.querySelectorAll('input');
+                        for (const input of inputs) {{
+                            const ph = (input.placeholder || '').toLowerCase();
+                            const type = input.type || '';
+                            if (ph.includes('手机') || ph.includes('phone') || type === 'tel') {{
+                                input.focus();
+                                input.value = '{account.phone_number}';
+                                input.dispatchEvent(new Event('input', {{ bubbles: true }}));
+                                return true;
+                            }}
+                        }}
+                        return false;
+                    }}
+                """)
+                if phone_entered:
+                    print(f"[LOGIN] JS已输入手机号: {account.phone_number}")
             
             if not phone_entered:
                 print("[LOGIN] 未找到手机号输入框")
                 return False
             
+            await page.wait_for_timeout(500)
+            
             # 点击获取验证码
             code_btn_selectors = [
                 "button:has-text('获取验证码')",
                 "button:has-text('发送验证码')",
+                "button:has-text('获取短信验证码')",
+                "span:has-text('获取验证码')",
+                "div:has-text('获取验证码'):not(:has(div))",
                 ".send-code-btn",
-                "[data-testid='send-code']"
             ]
             
             for selector in code_btn_selectors:
                 try:
-                    code_btn = await page.wait_for_selector(selector, timeout=5000)
-                    await code_btn.click()
-                    print(f"[LOGIN] 已点击获取验证码按钮")
-                    return True
+                    code_btn = await page.wait_for_selector(selector, timeout=3000)
+                    if code_btn and await code_btn.is_visible():
+                        await code_btn.click()
+                        print(f"[LOGIN] 已点击获取验证码按钮 (选择器: {selector})")
+                        return True
                 except:
                     continue
+            
+            # JS兜底
+            code_clicked = await page.evaluate("""
+                () => {
+                    const allElements = document.querySelectorAll('button, div, span, a');
+                    for (const el of allElements) {
+                        const text = el.textContent.trim();
+                        if ((text.includes('获取验证码') || text.includes('发送验证码') || text.includes('获取短信')) 
+                            && el.offsetParent !== null && text.length < 20) {
+                            el.click();
+                            return true;
+                        }
+                    }
+                    return false;
+                }
+            """)
+            if code_clicked:
+                print("[LOGIN] JS成功点击获取验证码按钮")
+                return True
             
             print("[LOGIN] 未找到验证码按钮")
             return False
