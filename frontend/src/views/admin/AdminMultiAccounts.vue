@@ -257,7 +257,7 @@
 
 <script setup>
 import { ref, reactive, onMounted, onUnmounted } from 'vue'
-import { api } from '../../api'
+import api from '../../api'
 
 const loading = ref(false)
 const showAddModal = ref(false)
