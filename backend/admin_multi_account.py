@@ -146,7 +146,24 @@ async def delete_account(account_id: str, admin=Depends(get_admin_user)):
 @router.get("/status")
 def get_system_status(admin=Depends(get_admin_user)):
     """获取多账号系统状态"""
-    return automation_v2.get_system_status()
+    try:
+        status = automation_v2.get_system_status()
+        # 添加额外的调试信息
+        status["debug_info"] = {
+            "browser_initialized": automation_v2.manager.browser is not None,
+            "contexts_count": len(automation_v2.manager.contexts),
+            "pages_count": len(automation_v2.manager.pages),
+            "last_error": getattr(automation_v2, 'last_error', None)
+        }
+        return status
+    except Exception as e:
+        return {
+            "is_running": False,
+            "error": str(e),
+            "debug_info": {
+                "exception_type": type(e).__name__
+            }
+        }
 
 
 @router.post("/start")

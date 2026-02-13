@@ -209,10 +209,19 @@ async def start_multi_account_system():
     """异步启动多账号管理系统"""
     try:
         from backend.automation_v2 import automation_v2
+        app_logger.info("Starting multi-account system...")
         await automation_v2.start()
-        app_logger.info("Multi-account system started successfully")
+        
+        # 验证启动状态
+        if automation_v2.is_running:
+            app_logger.info("✅ Multi-account system started successfully")
+        else:
+            app_logger.warning("⚠️ Multi-account system startup completed but is_running=False")
+            
     except Exception as e:
-        app_logger.error(f"Multi-account system startup failed: {e}", exc_info=True)
+        app_logger.error(f"❌ Multi-account system startup failed: {e}", exc_info=True)
+        # 重新抛出异常以便上层处理
+        raise
 
 
 def init_default_models():

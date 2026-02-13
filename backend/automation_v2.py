@@ -28,33 +28,59 @@ class HailuoAutomationV2:
             return
         
         print("[AUTO-V2] 🚀 启动多账号自动化系统...")
-        self.is_running = True
         
-        # 加载账号配置
-        self.manager.load_accounts_config("accounts.json")
-        
-        # 并行登录所有激活的账号（先加载Cookie再登录）
-        login_tasks = []
-        for account_id, account in self.manager.accounts.items():
-            if account.is_active:
-                # 创建上下文
-                await self.manager.create_account_context(account_id)
-                # 尝试加载Cookie
-                await self.manager._load_cookies(account_id)
-                # 添加登录任务
-                login_tasks.append(self.manager.login_account(account_id))
-        
-        if login_tasks:
-            # 并行登录
-            login_results = await asyncio.gather(*login_tasks, return_exceptions=True)
-            success_count = sum(1 for result in login_results if result is True)
-            print(f"[AUTO-V2] 成功登录 {success_count}/{len(login_tasks)} 个账号")
-        
-        # 启动任务处理循环
-        asyncio.create_task(self.task_processing_loop())
-        
-        # 启动账号健康检查循环
-        asyncio.create_task(self.account_health_check_loop())
+        try:
+            # 加载账号配置
+            self.manager.load_accounts_config("accounts.json")
+            print(f"[AUTO-V2] 已加载 {len(self.manager.accounts)} 个账号配置")
+            
+            # 检查是否有可用账号
+            active_accounts = [acc for acc in self.manager.accounts.values() if acc.is_active]
+            if not active_accounts:
+                print("[AUTO-V2] ⚠️ 没有激活的账号，系统无法启动")
+                return
+            
+            # 设置运行状态
+            self.is_running = True
+            print("[AUTO-V2] ✅ 系统状态已设置为运行中")
+            
+            # 并行登录所有激活的账号（先加载Cookie再登录）
+            login_tasks = []
+            print("[AUTO-V2] 开始初始化账号上下文...")
+            
+            for account_id, account in self.manager.accounts.items():
+                if account.is_active:
+                    try:
+                        print(f"[AUTO-V2] 正在初始化账号: {account.display_name}")
+                        # 创建上下文
+                        await self.manager.create_account_context(account_id)
+                        # 尝试加载Cookie（已在create_account_context中处理）
+                        # 添加登录任务
+                        login_tasks.append(self.manager.login_account(account_id))
+                    except Exception as e:
+                        print(f"[AUTO-V2] ❌ 初始化账号 {account.display_name} 失败: {e}")
+            
+            if login_tasks:
+                print(f"[AUTO-V2] 开始登录 {len(login_tasks)} 个账号...")
+                # 并行登录
+                login_results = await asyncio.gather(*login_tasks, return_exceptions=True)
+                success_count = sum(1 for result in login_results if result is True)
+                print(f"[AUTO-V2] ✅ 成功登录 {success_count}/{len(login_tasks)} 个账号")
+            
+            # 启动任务处理循环
+            print("[AUTO-V2] 启动任务处理循环...")
+            asyncio.create_task(self.task_processing_loop())
+            
+            # 启动账号健康检查循环
+            print("[AUTO-V2] 启动账号健康检查循环...")
+            asyncio.create_task(self.account_health_check_loop())
+            
+            print("[AUTO-V2] 🎉 多账号自动化系统启动成功！")
+            
+        except Exception as e:
+            print(f"[AUTO-V2] ❌ 系统启动失败: {e}")
+            self.is_running = False  # 确保启动失败时重置状态
+            raise
 
     async def account_health_check_loop(self):
         """账号健康检查循环"""
