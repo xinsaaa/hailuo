@@ -300,14 +300,12 @@ class MultiAccountManager:
                     print("[LOGIN] 未找到登录按钮")
                     return False
             
-            await page.wait_for_timeout(1000)
             
             # 3. 切换到手机登录tab（与automation.py一致）
             phone_tab = page.locator("#rc-tabs-0-tab-phone")
             try:
                 if await phone_tab.is_visible():
                     await phone_tab.click()
-                    await page.wait_for_timeout(500)
                     print(f"[LOGIN] 已切换到手机号登录")
                 else:
                     print(f"[LOGIN] 默认为手机登录模式")
@@ -344,7 +342,6 @@ class MultiAccountManager:
                 agree_btn = page.locator("button.cursor-pointer.rounded-full:has(svg)").first
                 await agree_btn.wait_for(state="visible", timeout=5000)
                 await agree_btn.click()
-                await page.wait_for_timeout(300)
                 print(f"[LOGIN] 已勾选用户协议")
             except:
                 # 兜底：直接用JS点击
@@ -494,11 +491,24 @@ class MultiAccountManager:
             print(f"[LOGIN] 等待登录验证...")
             await page.wait_for_timeout(3000)
             
+            # 截图：点击登录后页面状态
+            try:
+                await page.screenshot(path=f"debug_after_login_click_{account_id}.png")
+                print(f"[DEBUG] 截图已保存: debug_after_login_click_{account_id}.png")
+            except Exception as e:
+                print(f"[DEBUG] 截图失败: {e}")
+            
             # 5. 验证登录结果：登录按钮消失 = 登录成功
             login_btn_check = page.locator("div.border-hl_line_00:has-text('登录')").first
             try:
                 await login_btn_check.wait_for(state="visible", timeout=5000)
                 # 登录按钮仍在 = 登录失败
+                # 截图：登录失败时的页面
+                try:
+                    await page.screenshot(path=f"debug_login_failed_{account_id}.png")
+                    print(f"[DEBUG] 登录失败截图: debug_login_failed_{account_id}.png")
+                except:
+                    pass
                 self.mark_account_logged_out(account_id)
                 print(f"[MULTI-ACCOUNT] 账号 {account.display_name} 登录验证失败 - 登录按钮仍存在")
                 return False
