@@ -2,12 +2,13 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '../stores/user'
-import { getPublicConfig } from '../api'
+import { getPublicConfig, getAvailableModels } from '../api'
 
 const prompt = ref('')
 const router = useRouter()
 const userStore = useUserStore()
 const videoPrice = ref(0.99)
+const videoPriceDisplay = ref('0.99起')
 
 const isLoggedIn = computed(() => !!userStore.token)
 const user = computed(() => userStore.user)
@@ -26,6 +27,19 @@ const bonusInfo = ref([])
 const loadConfig = async () => {
     try {
         const config = await getPublicConfig()
+        
+        // 从模型API获取最低价格
+        try {
+            const modelsData = await getAvailableModels()
+            if (modelsData && modelsData.models && modelsData.models.length > 0) {
+                const prices = modelsData.models.map(m => m.price || 0.99).filter(p => p > 0)
+                const minPrice = Math.min(...prices)
+                videoPrice.value = minPrice
+                videoPriceDisplay.value = prices.length > 1 ? `${minPrice}起` : `${minPrice}`
+            }
+        } catch (e) {
+            console.error('获取模型价格失败', e)
+        }
         
         // 生成赠送信息
         if (config.bonus_rate && config.bonus_min_amount) {

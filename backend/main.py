@@ -802,12 +802,9 @@ def recharge(request: RechargeRequest, current_user: User = Depends(get_current_
     bonus = 0.0
     amount = request.amount
     
-    if amount >= 100:
-        bonus = 20
-    elif amount >= 50:
-        bonus = 5
-    elif amount >= 10:
-        bonus = 1
+    # 与 /api/pay/create 保持一致的赠送逻辑：≥10元赠送20%
+    if amount >= 10:
+        bonus = round(amount * 0.2, 2)
         
     total_add = amount + bonus
     

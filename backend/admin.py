@@ -664,17 +664,18 @@ def get_fail_stats(admin=Depends(get_admin_user), session: Session = Depends(get
         sql_select(LoginFailure).where(LoginFailure.fail_count > 0).order_by(LoginFailure.fail_count.desc()).limit(50)
     ).all()
     
+    # 一次性获取所有封禁IP，避免N+1查询
+    all_bans = session.exec(sql_select(IPBan)).all()
+    banned_ips = {ban.ip for ban in all_bans}
+    
     stats = []
     for f in failures:
-        # 检查是否已被封禁
-        is_banned = session.exec(sql_select(IPBan).where(IPBan.ip == f.ip)).first()
-        
         stats.append({
             "ip": f.ip,
             "fail_count": f.fail_count,
             "last_fail": utc_to_china_time(f.last_fail_at) if f.last_fail_at else None,
             "created_at": utc_to_china_time(f.created_at),
-            "is_banned": bool(is_banned),
+            "is_banned": f.ip in banned_ips,
             "risk_level": "高风险" if f.fail_count >= 8 else "中风险" if f.fail_count >= 5 else "低风险"
         })
     

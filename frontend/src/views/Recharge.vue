@@ -32,15 +32,23 @@ const handleMouseMove = (e) => {
   mouseY.value = e.clientY
 }
 
-// 充值选项（固定赠送金额）
-// ¥10 送 ¥1，¥30 送 ¥5，¥50 送 ¥8，¥100 送 ¥20
+// 充值选项（赠送金额根据后端配置的bonus_rate动态计算）
 const rechargeOptions = computed(() => {
-  return [
-    { amount: 10, bonus: 1, gradient: 'from-blue-500 to-cyan-500' },
-    { amount: 30, bonus: 5, gradient: 'from-orange-500 to-red-500' },
-    { amount: 50, bonus: 8, gradient: 'from-yellow-500 to-orange-500' },
-    { amount: 100, bonus: 20, gradient: 'from-green-500 to-emerald-500', popular: true },
+  const rate = config.value.bonus_rate || 0.2
+  const minAmount = config.value.bonus_min_amount || 10
+  const amounts = [10, 30, 50, 100]
+  const gradients = [
+    'from-blue-500 to-cyan-500',
+    'from-orange-500 to-red-500',
+    'from-yellow-500 to-orange-500',
+    'from-green-500 to-emerald-500'
   ]
+  return amounts.map((amount, i) => ({
+    amount,
+    bonus: amount >= minAmount ? Math.round(amount * rate * 100) / 100 : 0,
+    gradient: gradients[i],
+    ...(amount === 100 ? { popular: true } : {})
+  }))
 })
 
 // 自定义充值金额
