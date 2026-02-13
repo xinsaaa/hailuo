@@ -270,7 +270,7 @@ class MultiAccountManager:
             
             # 1. 导航到海螺AI主页
             await page.goto("https://hailuoai.com", timeout=30000)
-            await page.wait_for_timeout(3000)
+            await page.wait_for_timeout(2000)
             
             current_url = page.url
             page_title = await page.title()
@@ -380,7 +380,7 @@ class MultiAccountManager:
                 print(f"[LOGIN] 已点击获取验证码按钮")
                 
                 # 截图：点击验证码后
-                await page.wait_for_timeout(2000)
+                await page.wait_for_timeout(1000)
                 try:
                     await page.screenshot(path=f"debug_after_send_code_{account_id}.png")
                     print(f"[DEBUG] 截图已保存: debug_after_send_code_{account_id}.png")
@@ -492,12 +492,12 @@ class MultiAccountManager:
             
             # 4. 等待登录完成
             print(f"[LOGIN] 等待登录验证...")
-            await page.wait_for_timeout(5000)
+            await page.wait_for_timeout(3000)
             
             # 5. 验证登录结果：登录按钮消失 = 登录成功
             login_btn_check = page.locator("div.border-hl_line_00:has-text('登录')").first
             try:
-                await login_btn_check.wait_for(state="visible", timeout=10000)
+                await login_btn_check.wait_for(state="visible", timeout=5000)
                 # 登录按钮仍在 = 登录失败
                 self.mark_account_logged_out(account_id)
                 print(f"[MULTI-ACCOUNT] 账号 {account.display_name} 登录验证失败 - 登录按钮仍存在")
