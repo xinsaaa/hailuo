@@ -252,7 +252,7 @@ class MultiAccountManager:
             return False
 
     async def send_verification_code(self, account_id: str) -> bool:
-        """发送验证码到账号手机"""
+        """发送验证码到账号手机 - 参考automation.py已验证的选择器"""
         if account_id not in self.accounts:
             print(f"[MULTI-ACCOUNT] 账号 {account_id} 未配置")
             return False
@@ -268,7 +268,7 @@ class MultiAccountManager:
         try:
             print(f"[MULTI-ACCOUNT] 发送验证码: {account.display_name}")
             
-            # 导航到海螺AI主页
+            # 1. 导航到海螺AI主页
             await page.goto("https://hailuoai.com", timeout=30000)
             await page.wait_for_timeout(3000)
             
@@ -276,175 +276,96 @@ class MultiAccountManager:
             page_title = await page.title()
             print(f"[LOGIN] 页面已加载: {current_url} | 标题: {page_title}")
             
-            # 点击登录按钮 - 多种选择器覆盖不同版本
-            login_selectors = [
-                "div.border-hl_line_00:has-text('登录')",
-                "button:has-text('登录')",
-                "a:has-text('登录')",
-                "span:has-text('登录')",
-                "div:has-text('登录'):not(:has(div:has-text('登录')))",
-                ".login-btn",
-                "[data-testid='login-btn']",
-            ]
+            # 2. 点击登录按钮（与automation.py一致）
+            login_btn = page.locator("div.border-hl_line_00:has-text('登录')").first
+            try:
+                await login_btn.wait_for(state="visible", timeout=10000)
+                await login_btn.click()
+                print(f"[LOGIN] 已点击登录按钮")
+            except:
+                # 兜底：尝试其他选择器
+                fallback_selectors = ["button:has-text('登录')", "a:has-text('登录')", "span:has-text('登录')"]
+                clicked = False
+                for sel in fallback_selectors:
+                    try:
+                        btn = page.locator(sel).first
+                        if await btn.is_visible():
+                            await btn.click()
+                            clicked = True
+                            print(f"[LOGIN] 兜底点击登录按钮: {sel}")
+                            break
+                    except:
+                        continue
+                if not clicked:
+                    print("[LOGIN] 未找到登录按钮")
+                    return False
             
-            login_clicked = False
-            for selector in login_selectors:
-                try:
-                    login_btn = await page.wait_for_selector(selector, timeout=3000)
-                    if login_btn and await login_btn.is_visible():
-                        await login_btn.click()
-                        login_clicked = True
-                        print(f"[LOGIN] 已点击登录按钮 (选择器: {selector})")
-                        break
-                except:
-                    continue
+            await page.wait_for_timeout(1000)
             
-            # JS兜底：遍历所有可见元素找"登录"文字
-            if not login_clicked:
-                print("[LOGIN] CSS选择器未找到登录按钮，尝试JS查找...")
-                login_clicked = await page.evaluate("""
-                    () => {
-                        const allElements = document.querySelectorAll('button, a, div, span');
-                        for (const el of allElements) {
-                            const text = el.textContent.trim();
-                            const isSmall = el.children.length === 0 || el.innerHTML.trim().length < 20;
-                            if (text === '登录' && isSmall && el.offsetParent !== null) {
-                                el.click();
-                                return true;
-                            }
-                        }
-                        // 尝试查找包含"登录/注册"的元素
-                        for (const el of allElements) {
-                            const text = el.textContent.trim();
-                            if ((text === '登录/注册' || text === '登录 / 注册') && el.offsetParent !== null) {
-                                el.click();
-                                return true;
-                            }
-                        }
-                        return false;
-                    }
-                """)
-                if login_clicked:
-                    print("[LOGIN] JS成功点击登录按钮")
+            # 3. 切换到手机登录tab（与automation.py一致）
+            phone_tab = page.locator("#rc-tabs-0-tab-phone")
+            try:
+                if await phone_tab.is_visible():
+                    await phone_tab.click()
+                    await page.wait_for_timeout(500)
+                    print(f"[LOGIN] 已切换到手机号登录")
+                else:
+                    print(f"[LOGIN] 默认为手机登录模式")
+            except:
+                print(f"[LOGIN] 手机登录tab未找到，可能默认就是手机登录")
             
-            if not login_clicked:
-                # 输出页面关键元素帮助调试
-                debug_info = await page.evaluate("""
-                    () => {
-                        const texts = [];
-                        document.querySelectorAll('button, a, [role="button"]').forEach(el => {
-                            if (el.offsetParent !== null && el.textContent.trim()) {
-                                texts.push(el.tagName + ': ' + el.textContent.trim().substring(0, 30));
-                            }
-                        });
-                        return texts.slice(0, 15).join(' | ');
-                    }
-                """)
-                print(f"[LOGIN] 未找到登录按钮! 页面可见按钮/链接: {debug_info}")
-                return False
+            # 4. 填写手机号（与automation.py一致：input#phone）
+            phone_input = page.locator("input#phone")
+            try:
+                await phone_input.wait_for(state="visible", timeout=5000)
+                await phone_input.fill(account.phone_number)
+                print(f"[LOGIN] 已输入手机号: {account.phone_number}")
+            except:
+                # 兜底选择器
+                fallback_phone = ["input[placeholder*='手机']", "input[type='tel']", "input[maxlength='11']"]
+                entered = False
+                for sel in fallback_phone:
+                    try:
+                        inp = page.locator(sel).first
+                        if await inp.is_visible():
+                            await inp.fill(account.phone_number)
+                            entered = True
+                            print(f"[LOGIN] 兜底输入手机号: {sel}")
+                            break
+                    except:
+                        continue
+                if not entered:
+                    print("[LOGIN] 未找到手机号输入框")
+                    return False
             
-            await page.wait_for_timeout(2000)
-            
-            # 输入手机号
-            phone_selectors = [
-                "input[placeholder*='手机']",
-                "input[placeholder*='phone']",
-                "input[placeholder*='Phone']",
-                "input[type='tel']",
-                "input[type='number']",
-                ".phone-input input",
-                "input[maxlength='11']",
-            ]
-            
-            phone_entered = False
-            for selector in phone_selectors:
-                try:
-                    phone_input = await page.wait_for_selector(selector, timeout=3000)
-                    if phone_input and await phone_input.is_visible():
-                        await phone_input.click()
-                        await phone_input.fill("")
-                        await phone_input.type(account.phone_number, delay=80)
-                        print(f"[LOGIN] 已输入手机号: {account.phone_number} (选择器: {selector})")
-                        phone_entered = True
-                        break
-                except:
-                    continue
-            
-            if not phone_entered:
-                # JS兜底
-                phone_entered = await page.evaluate(f"""
-                    () => {{
-                        const inputs = document.querySelectorAll('input');
-                        for (const input of inputs) {{
-                            const ph = (input.placeholder || '').toLowerCase();
-                            const type = input.type || '';
-                            if (ph.includes('手机') || ph.includes('phone') || type === 'tel') {{
-                                input.focus();
-                                input.value = '{account.phone_number}';
-                                input.dispatchEvent(new Event('input', {{ bubbles: true }}));
-                                return true;
-                            }}
-                        }}
-                        return false;
-                    }}
-                """)
-                if phone_entered:
-                    print(f"[LOGIN] JS已输入手机号: {account.phone_number}")
-            
-            if not phone_entered:
-                print("[LOGIN] 未找到手机号输入框")
-                return False
-            
-            await page.wait_for_timeout(500)
-            
-            # 点击获取验证码
-            code_btn_selectors = [
-                "button:has-text('获取验证码')",
-                "button:has-text('发送验证码')",
-                "button:has-text('获取短信验证码')",
-                "span:has-text('获取验证码')",
-                "div:has-text('获取验证码'):not(:has(div))",
-                ".send-code-btn",
-            ]
-            
-            for selector in code_btn_selectors:
-                try:
-                    code_btn = await page.wait_for_selector(selector, timeout=3000)
-                    if code_btn and await code_btn.is_visible():
-                        await code_btn.click()
-                        print(f"[LOGIN] 已点击获取验证码按钮 (选择器: {selector})")
-                        return True
-                except:
-                    continue
-            
-            # JS兜底
-            code_clicked = await page.evaluate("""
-                () => {
-                    const allElements = document.querySelectorAll('button, div, span, a');
-                    for (const el of allElements) {
-                        const text = el.textContent.trim();
-                        if ((text.includes('获取验证码') || text.includes('发送验证码') || text.includes('获取短信')) 
-                            && el.offsetParent !== null && text.length < 20) {
-                            el.click();
-                            return true;
-                        }
-                    }
-                    return false;
-                }
-            """)
-            if code_clicked:
-                print("[LOGIN] JS成功点击获取验证码按钮")
+            # 5. 点击获取验证码（与automation.py一致）
+            get_code_btn = page.locator("button:has-text('获取验证码')").first
+            try:
+                await get_code_btn.wait_for(state="visible", timeout=5000)
+                await get_code_btn.click()
+                print(f"[LOGIN] 已点击获取验证码按钮")
                 return True
-            
-            print("[LOGIN] 未找到验证码按钮")
-            return False
+            except:
+                # 兜底
+                fallback_code = ["button:has-text('发送验证码')", "button:has-text('获取短信验证码')"]
+                for sel in fallback_code:
+                    try:
+                        btn = page.locator(sel).first
+                        if await btn.is_visible():
+                            await btn.click()
+                            print(f"[LOGIN] 兜底点击验证码按钮: {sel}")
+                            return True
+                    except:
+                        continue
+                print("[LOGIN] 未找到获取验证码按钮")
+                return False
             
         except Exception as e:
             print(f"[MULTI-ACCOUNT] 发送验证码失败 {account.display_name}: {e}")
             return False
 
     async def verify_code_and_login(self, account_id: str, verification_code: str) -> bool:
-        """使用验证码完成登录"""
+        """使用验证码完成登录 - 参考automation.py已验证的选择器"""
         if account_id not in self.accounts:
             return False
         
@@ -458,59 +379,84 @@ class MultiAccountManager:
         try:
             print(f"[MULTI-ACCOUNT] 验证码登录: {account.display_name}")
             
-            # 输入验证码
-            code_selectors = [
-                "input[placeholder*='验证码']",
-                "input[placeholder*='code']",
-                ".verify-code-input input",
-                "input[type='text'][maxlength='6']"
-            ]
+            # 1. 填写验证码（与automation.py一致：input#code）
+            code_input = page.locator("input#code")
+            try:
+                await code_input.wait_for(state="visible", timeout=5000)
+                await code_input.fill(verification_code)
+                print(f"[LOGIN] 已输入验证码")
+            except:
+                # 兜底选择器
+                fallback_code = ["input[placeholder*='验证码']", "input[type='text'][maxlength='6']"]
+                entered = False
+                for sel in fallback_code:
+                    try:
+                        inp = page.locator(sel).first
+                        if await inp.is_visible():
+                            await inp.fill(verification_code)
+                            entered = True
+                            print(f"[LOGIN] 兜底输入验证码: {sel}")
+                            break
+                    except:
+                        continue
+                if not entered:
+                    print("[LOGIN] 未找到验证码输入框")
+                    return False
             
-            code_entered = False
-            for selector in code_selectors:
-                try:
-                    code_input = await page.wait_for_selector(selector, timeout=5000)
-                    await code_input.clear()
-                    await code_input.type(verification_code, delay=100)
-                    print(f"[LOGIN] 已输入验证码")
-                    code_entered = True
-                    break
-                except:
-                    continue
+            # 2. 勾选用户协议（与automation.py一致）
+            try:
+                agree_btn = page.locator("button.rounded-full:has(svg)").first
+                if await agree_btn.is_visible():
+                    await agree_btn.click()
+                    print(f"[LOGIN] 已勾选用户协议")
+            except:
+                print(f"[LOGIN] 未找到用户协议勾选框（可能已勾选）")
             
-            if not code_entered:
-                print("[LOGIN] 未找到验证码输入框")
-                return False
+            # 3. 点击登录按钮（与automation.py一致：button.login-btn）
+            login_btn = page.locator("button.login-btn")
+            try:
+                await login_btn.wait_for(state="visible", timeout=5000)
+                await login_btn.click()
+                print(f"[LOGIN] 已提交登录")
+            except:
+                # 兜底
+                fallback_submit = ["button:has-text('登录')", "button[type='submit']"]
+                for sel in fallback_submit:
+                    try:
+                        btn = page.locator(sel).first
+                        if await btn.is_visible():
+                            await btn.click()
+                            print(f"[LOGIN] 兜底点击登录: {sel}")
+                            break
+                    except:
+                        continue
             
-            # 点击登录提交按钮
-            submit_selectors = [
-                "button:has-text('登录')",
-                "button:has-text('确认')",
-                "button[type='submit']",
-                ".login-submit-btn"
-            ]
-            
-            for selector in submit_selectors:
-                try:
-                    submit_btn = await page.wait_for_selector(selector, timeout=5000)
-                    await submit_btn.click()
-                    print(f"[LOGIN] 已提交登录")
-                    break
-                except:
-                    continue
-            
-            # 等待登录完成
+            # 4. 等待登录完成
+            print(f"[LOGIN] 等待登录验证...")
             await page.wait_for_timeout(5000)
             
-            # 检查登录是否成功
-            if await self.check_login_status(account_id):
+            # 5. 验证登录结果（与automation.py一致：检查video-create-input）
+            try:
+                create_input = page.locator("#video-create-input [contenteditable='true']")
+                await create_input.wait_for(state="visible", timeout=30000)
+                print(f"[LOGIN] 登录验证成功！找到创建输入框")
+                
+                # 关闭可能的弹窗
+                try:
+                    close_btn = page.locator("button.ant-modal-close")
+                    if await close_btn.is_visible():
+                        await close_btn.click(force=True)
+                        print(f"[LOGIN] 已关闭弹窗")
+                except:
+                    pass
+                
                 await self._save_cookies(account_id)
-                self.mark_account_logged_in(account_id)  # 标记已验证登录
+                self.mark_account_logged_in(account_id)
                 print(f"[MULTI-ACCOUNT] 账号 {account.display_name} 验证码登录成功")
                 return True
-            else:
-                self.mark_account_logged_out(account_id)  # 标记登录失败
-                print(f"[MULTI-ACCOUNT] 账号 {account.display_name} 验证码登录失败")
+            except:
+                self.mark_account_logged_out(account_id)
+                print(f"[MULTI-ACCOUNT] 账号 {account.display_name} 登录验证失败 - 未找到创建输入框")
                 return False
                 
         except Exception as e:
