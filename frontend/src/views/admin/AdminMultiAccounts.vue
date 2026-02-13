@@ -264,7 +264,7 @@
 
 <script setup>
 import { ref, reactive, onMounted, onUnmounted } from 'vue'
-import axios from 'axios'
+import { api } from '../../api'
 
 const loading = ref(false)
 const showAddModal = ref(false)
@@ -303,10 +303,10 @@ const newAccount = reactive({
 // 获取系统状态
 const getSystemStatus = async () => {
   try {
-    const response = await axios.get('/api/admin/accounts/status')
+    const response = await api.get('/api/admin/accounts/status')
     Object.assign(systemStatus, response.data)
     
-    const perfResponse = await axios.get('/api/admin/accounts/performance')
+    const perfResponse = await api.get('/api/admin/accounts/performance')
     Object.assign(performance, perfResponse.data)
   } catch (error) {
     console.error('获取系统状态失败:', error)
@@ -316,7 +316,7 @@ const getSystemStatus = async () => {
 // 获取账号列表
 const getAccounts = async () => {
   try {
-    const response = await axios.get('/api/admin/accounts/list')
+    const response = await api.get('/api/admin/accounts/list')
     accounts.value = response.data.accounts
   } catch (error) {
     console.error('获取账号列表失败:', error)
@@ -337,9 +337,9 @@ const refreshAccounts = async () => {
 const toggleSystem = async () => {
   try {
     if (systemStatus.is_running) {
-      await axios.post('/api/admin/accounts/stop')
+      await api.post('/api/admin/accounts/stop')
     } else {
-      await axios.post('/api/admin/accounts/start')
+      await api.post('/api/admin/accounts/start')
     }
     await getSystemStatus()
   } catch (error) {
@@ -350,7 +350,7 @@ const toggleSystem = async () => {
 // 添加账号
 const addAccount = async () => {
   try {
-    await axios.post('/api/admin/accounts/create', newAccount)
+    await api.post('/api/admin/accounts/create', newAccount)
     showAddModal.value = false
     Object.assign(newAccount, {
       account_id: '',
@@ -369,7 +369,7 @@ const addAccount = async () => {
 // 登录账号
 const loginAccount = async (accountId) => {
   try {
-    await axios.post(`/api/admin/accounts/${accountId}/login`)
+    await api.post(`/api/admin/accounts/${accountId}/login`)
     await refreshAccounts()
     alert('登录请求已发送，请在浏览器中完成验证码输入')
   } catch (error) {
@@ -380,7 +380,7 @@ const loginAccount = async (accountId) => {
 // 切换账号状态
 const toggleAccount = async (accountId, isActive) => {
   try {
-    await axios.put(`/api/admin/accounts/${accountId}`, {
+    await api.put(`/api/admin/accounts/${accountId}`, {
       is_active: isActive
     })
     await refreshAccounts()
@@ -394,7 +394,7 @@ const deleteAccount = async (accountId) => {
   if (!confirm('确定要删除这个账号吗？')) return
   
   try {
-    await axios.delete(`/api/admin/accounts/${accountId}`)
+    await api.delete(`/api/admin/accounts/${accountId}`)
     await refreshAccounts()
     alert('账号删除成功')
   } catch (error) {

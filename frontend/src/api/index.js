@@ -30,7 +30,7 @@ api.interceptors.request.use(
         const adminToken = localStorage.getItem('adminToken')
 
         // Check if request is for admin
-        if (config.url.startsWith('/admin')) {
+        if (config.url.startsWith('/admin') || config.url.startsWith('/api/admin')) {
             if (adminToken) {
                 config.headers.Authorization = `Bearer ${adminToken}`
             }
