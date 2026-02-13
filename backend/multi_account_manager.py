@@ -169,19 +169,29 @@ class MultiAccountManager:
         if not self.browser:
             await self.init_browser()
         
-        # 每个账号使用独立的用户数据目录
-        user_data_dir = self.data_dir / "profiles" / account_id
-        user_data_dir.mkdir(parents=True, exist_ok=True)
+        # 每个账号使用独立的存储目录来保存cookies等状态
+        storage_dir = self.data_dir / "profiles" / account_id
+        storage_dir.mkdir(parents=True, exist_ok=True)
+        
+        # 尝试加载已保存的登录状态
+        storage_state_file = storage_dir / "storage_state.json"
+        context_options = {
+            "viewport": {"width": 1280, "height": 720},
+            # 每个账号使用不同的User-Agent
+            "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "bypass_csp": True,
+        }
+        
+        # 如果存在已保存的状态，加载它
+        if storage_state_file.exists():
+            try:
+                context_options["storage_state"] = str(storage_state_file)
+                print(f"[MULTI-ACCOUNT] 加载已保存的登录状态: {account_id}")
+            except Exception as e:
+                print(f"[MULTI-ACCOUNT] 加载状态文件失败: {e}")
         
         # 创建上下文
-        context = await self.browser.new_context(
-            user_data_dir=str(user_data_dir),
-            viewport={"width": 1280, "height": 720},
-            # 每个账号使用不同的User-Agent
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            # 禁用图片以节省带宽
-            bypass_csp=True,
-        )
+        context = await self.browser.new_context(**context_options)
         
         # 设置额外的请求拦截（可选）
         await context.route("**/*.{png,jpg,jpeg,gif,webp,svg,ico}", lambda route: route.abort())
@@ -353,41 +363,33 @@ class MultiAccountManager:
             print(f"[LOGIN] 登录流程执行失败: {e}")
 
     async def _save_cookies(self, account_id: str):
-        """保存Cookie到文件"""
+        """保存完整的存储状态（cookies + localStorage）到文件"""
         try:
             context = self.contexts[account_id]
-            cookies = await context.cookies()
             
-            # 保存Cookie到文件
-            cookie_file = self.data_dir / "profiles" / account_id / "cookies.json"
-            cookie_file.parent.mkdir(parents=True, exist_ok=True)
+            # 获取完整的存储状态
+            storage_state = await context.storage_state()
             
-            with open(cookie_file, 'w', encoding='utf-8') as f:
-                json.dump(cookies, f, ensure_ascii=False, indent=2)
+            # 保存存储状态到文件
+            storage_file = self.data_dir / "profiles" / account_id / "storage_state.json"
+            storage_file.parent.mkdir(parents=True, exist_ok=True)
             
-            print(f"[MULTI-ACCOUNT] Cookie已保存: {account_id}")
+            with open(storage_file, 'w', encoding='utf-8') as f:
+                json.dump(storage_state, f, ensure_ascii=False, indent=2)
+            
+            print(f"[MULTI-ACCOUNT] 存储状态已保存: {account_id}")
             
         except Exception as e:
-            print(f"[MULTI-ACCOUNT] 保存Cookie失败 {account_id}: {e}")
+            print(f"[MULTI-ACCOUNT] 保存存储状态失败 {account_id}: {e}")
 
     async def _load_cookies(self, account_id: str):
-        """从文件加载Cookie"""
+        """检查是否存在已保存的存储状态（已在create_account_context中处理）"""
         try:
-            cookie_file = self.data_dir / "profiles" / account_id / "cookies.json"
-            
-            if cookie_file.exists():
-                with open(cookie_file, 'r', encoding='utf-8') as f:
-                    cookies = json.load(f)
-                
-                context = self.contexts[account_id]
-                await context.add_cookies(cookies)
-                
-                print(f"[MULTI-ACCOUNT] Cookie已加载: {account_id}")
-                return True
+            storage_file = self.data_dir / "profiles" / account_id / "storage_state.json"
+            return storage_file.exists()
         except Exception as e:
-            print(f"[MULTI-ACCOUNT] 加载Cookie失败 {account_id}: {e}")
-        
-        return False
+            print(f"[MULTI-ACCOUNT] 检查存储状态失败 {account_id}: {e}")
+            return False
     
     def get_best_account_for_task(self, task_priority: int = 5) -> Optional[str]:
         """智能选择最适合执行任务的账号"""
