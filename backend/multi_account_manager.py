@@ -464,7 +464,7 @@ class MultiAccountManager:
             return False
 
     async def get_account_credits(self, account_id: str) -> int:
-        """获取账号剩余积分"""
+        """获取账号剩余积分 - 通过JS精确定位'升级'按钮旁边的积分数字"""
         if account_id not in self.pages:
             return -1
         
@@ -477,50 +477,66 @@ class MultiAccountManager:
             await page.goto("https://hailuoai.com", timeout=15000)
             await page.wait_for_timeout(3000)
             
-            # 查找积分元素的选择器
-            credit_selectors = [
-                "span.text-hl_text_00.select-none.text-\\[12px\\].font-medium.leading-\\[22px\\]",
-                ".text-hl_text_00.text-\\[12px\\].font-medium",
-                "span:has(~ div:has-text('升级'))",
-                "svg + span.text-hl_text_00",
-                ".mb-2.flex span.text-hl_text_00"
-            ]
+            # 使用JS精确定位：找到"升级"文字，向上遍历找到积分数字
+            credits = await page.evaluate("""
+                () => {
+                    // 方法1: 找到包含"升级"文字的span，然后向上找同级的积分数字
+                    const allSpans = document.querySelectorAll('span');
+                    for (const span of allSpans) {
+                        const text = span.textContent.trim();
+                        if (text === '升级') {
+                            // 向上遍历找到包含积分数字的容器
+                            let container = span.closest('.mb-2') || span.closest('.flex.w-full');
+                            // 尝试多层向上查找
+                            if (!container) {
+                                container = span.parentElement?.parentElement?.parentElement?.parentElement?.parentElement;
+                            }
+                            if (container) {
+                                // 在容器中查找纯数字的span
+                                const numberSpans = container.querySelectorAll('span');
+                                for (const ns of numberSpans) {
+                                    const numText = ns.textContent.trim();
+                                    if (/^\\d+$/.test(numText)) {
+                                        return parseInt(numText);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    // 方法2: 直接找火焰SVG图标旁边的数字
+                    const svgs = document.querySelectorAll('svg');
+                    for (const svg of svgs) {
+                        // 海螺AI火焰图标的特征：包含特定path
+                        const path = svg.querySelector('path');
+                        if (path) {
+                            const d = path.getAttribute('d') || '';
+                            if (d.includes('8.00048') && d.includes('1.82032')) {
+                                // 找到火焰图标，查找相邻的数字span
+                                const parent = svg.closest('.relative') || svg.parentElement?.parentElement;
+                                if (parent) {
+                                    const spans = parent.querySelectorAll('span');
+                                    for (const s of spans) {
+                                        const t = s.textContent.trim();
+                                        if (/^\\d+$/.test(t)) {
+                                            return parseInt(t);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    return -1;
+                }
+            """)
             
-            for selector in credit_selectors:
-                try:
-                    # 等待积分元素出现
-                    credit_element = await page.wait_for_selector(selector, timeout=5000)
-                    if credit_element:
-                        # 获取积分文本
-                        credit_text = await credit_element.text_content()
-                        if credit_text and credit_text.strip().isdigit():
-                            credits = int(credit_text.strip())
-                            print(f"[MULTI-ACCOUNT] ✅ 账号 {account_id} 剩余积分: {credits}")
-                            return credits
-                except Exception as e:
-                    print(f"[MULTI-ACCOUNT] 积分选择器 {selector} 失败: {e}")
-                    continue
+            if credits >= 0:
+                print(f"[MULTI-ACCOUNT] ✅ 账号 {account_id} 剩余积分: {credits}")
+            else:
+                print(f"[MULTI-ACCOUNT] ❌ 账号 {account_id} 无法获取积分信息")
             
-            # 尝试通过更通用的方式查找
-            try:
-                # 查找包含升级文本的父元素，然后找相关的数字
-                upgrade_elements = await page.query_selector_all("*:has-text('升级')")
-                for element in upgrade_elements:
-                    parent = await element.query_selector("..")
-                    if parent:
-                        # 在父元素中查找数字
-                        number_spans = await parent.query_selector_all("span")
-                        for span in number_spans:
-                            span_text = await span.text_content()
-                            if span_text and span_text.strip().isdigit():
-                                credits = int(span_text.strip())
-                                print(f"[MULTI-ACCOUNT] ✅ 账号 {account_id} 剩余积分: {credits}")
-                                return credits
-            except Exception as e:
-                print(f"[MULTI-ACCOUNT] 通用积分查找失败: {e}")
-            
-            print(f"[MULTI-ACCOUNT] ❌ 账号 {account_id} 无法获取积分信息")
-            return -1
+            return credits
             
         except Exception as e:
             print(f"[MULTI-ACCOUNT] 获取积分失败 {account_id}: {e}")
