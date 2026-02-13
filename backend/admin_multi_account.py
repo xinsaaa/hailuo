@@ -141,6 +141,18 @@ async def verify_and_login(account_id: str, data: VerificationCodeRequest, admin
         raise HTTPException(status_code=500, detail=f"验证码登录失败: {str(e)}")
 
 
+@router.get("/{account_id}/credits")
+async def get_account_credits(account_id: str, admin=Depends(get_admin_user)):
+    """获取账号剩余积分"""
+    try:
+        credits = await automation_v2.manager.get_account_credits(account_id)
+        if credits >= 0:
+            return {"credits": credits, "success": True}
+        else:
+            raise HTTPException(status_code=400, detail="无法获取积分信息")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"获取积分失败: {str(e)}")
+
 @router.post("/{account_id}/logout")
 async def logout_account(account_id: str, admin=Depends(get_admin_user)):
     """手动登出账号"""

@@ -205,43 +205,6 @@ class MultiAccountManager:
         print(f"[MULTI-ACCOUNT] 账号 {account_id} 上下文已创建")
         return context
     
-    async def check_login_status(self, account_id: str) -> bool:
-        """检查账号登录状态 - 简化版本"""
-        if account_id not in self.pages:
-            return False
-        
-        page = self.pages[account_id]
-        
-        try:
-            # 访问海螺AI创建页面检查登录状态
-            await page.goto("https://hailuoai.com/create/image-to-video", timeout=15000)
-            await page.wait_for_timeout(3000)
-            
-            # 检查页面是否包含创建相关元素（表示已登录）
-            page_content = await page.content()
-            current_url = page.url
-            
-            # 如果URL包含create并且不是登录页面，则认为已登录
-            if ("create" in current_url and 
-                "login" not in current_url.lower() and
-                ("生成" in page_content or "创建" in page_content or "upload" in page_content.lower())):
-                print(f"[MULTI-ACCOUNT] 账号 {account_id} 登录状态正常")
-                return True
-            
-            # 检查是否有登录按钮（表示未登录）
-            login_buttons = await page.query_selector_all("button:has-text('登录'), a:has-text('登录'), .login")
-            if login_buttons:
-                print(f"[MULTI-ACCOUNT] 账号 {account_id} 需要重新登录")
-                return False
-            
-            # 默认认为需要登录
-            print(f"[MULTI-ACCOUNT] 账号 {account_id} 登录状态未知，假设需要登录")
-            return False
-            
-        except Exception as e:
-            print(f"[MULTI-ACCOUNT] 检查登录状态失败 {account_id}: {e}")
-            return False
-
     async def login_account(self, account_id: str) -> bool:
         """登录指定账号"""
         if account_id not in self.accounts:
@@ -461,6 +424,7 @@ class MultiAccountManager:
                     login_btn = await page.wait_for_selector(selector, timeout=5000)
                     await login_btn.click()
                     login_clicked = True
+                    print(f"[LOGIN] 已点击登录按钮")
                     break
                 except:
                     continue
@@ -514,6 +478,137 @@ class MultiAccountManager:
             
         except Exception as e:
             print(f"[LOGIN] 登录流程执行失败: {e}")
+
+    async def check_login_status(self, account_id: str) -> bool:
+        """检查账号登录状态 - 参考原版本逻辑"""
+        if account_id not in self.pages:
+            return False
+        
+        page = self.pages[account_id]
+        
+        try:
+            print(f"[MULTI-ACCOUNT] 🔍 检查账号 {account_id} 登录状态...")
+            
+            # 访问海螺AI主页检查登录状态
+            await page.goto("https://hailuoai.com", timeout=15000)
+            await page.wait_for_timeout(2000)
+            
+            # 方法1: 检查是否存在登录按钮（如果存在登录按钮 = 未登录）
+            try:
+                login_selectors = [
+                    "div.border-hl_line_00:has-text('登录')",
+                    "button:has-text('登录')",
+                    "a:has-text('登录')"
+                ]
+                
+                for selector in login_selectors:
+                    try:
+                        login_btn = await page.wait_for_selector(selector, timeout=3000)
+                        if login_btn and await login_btn.is_visible():
+                            print(f"[MULTI-ACCOUNT] ❌ 账号 {account_id} 发现登录按钮，未登录状态")
+                            return False
+                    except:
+                        continue
+            except:
+                # 没有找到登录按钮，可能已登录，继续检查
+                pass
+            
+            # 方法2: 访问创建页面检查视频创建输入框（如果存在 = 已登录）
+            await page.goto("https://hailuoai.com/create/image-to-video", timeout=15000)
+            await page.wait_for_timeout(2000)
+            
+            try:
+                # 检查视频创建输入框
+                create_selectors = [
+                    "#video-create-input [contenteditable='true']",
+                    "textarea[placeholder*='描述']", 
+                    "div[contenteditable='true']",
+                    ".create-input",
+                    "input[placeholder*='视频']"
+                ]
+                
+                for selector in create_selectors:
+                    try:
+                        create_input = await page.wait_for_selector(selector, timeout=5000)
+                        if create_input and await create_input.is_visible():
+                            print(f"[MULTI-ACCOUNT] ✅ 账号 {account_id} 找到创建输入框，确认已登录")
+                            return True
+                    except:
+                        continue
+                        
+                print(f"[MULTI-ACCOUNT] ❓ 账号 {account_id} 未找到创建输入框，登录状态不明确")
+                return False
+                
+            except Exception as e:
+                print(f"[MULTI-ACCOUNT] ❌ 账号 {account_id} 检查创建输入框失败: {e}")
+                return False
+            
+        except Exception as e:
+            print(f"[MULTI-ACCOUNT] 检查登录状态失败 {account_id}: {e}")
+            return False
+
+    async def get_account_credits(self, account_id: str) -> int:
+        """获取账号剩余积分"""
+        if account_id not in self.pages:
+            return -1
+        
+        page = self.pages[account_id]
+        
+        try:
+            print(f"[MULTI-ACCOUNT] 🔍 获取账号 {account_id} 剩余积分...")
+            
+            # 访问海螺AI主页
+            await page.goto("https://hailuoai.com", timeout=15000)
+            await page.wait_for_timeout(3000)
+            
+            # 查找积分元素的选择器
+            credit_selectors = [
+                "span.text-hl_text_00.select-none.text-\\[12px\\].font-medium.leading-\\[22px\\]",
+                ".text-hl_text_00.text-\\[12px\\].font-medium",
+                "span:has(~ div:has-text('升级'))",
+                "svg + span.text-hl_text_00",
+                ".mb-2.flex span.text-hl_text_00"
+            ]
+            
+            for selector in credit_selectors:
+                try:
+                    # 等待积分元素出现
+                    credit_element = await page.wait_for_selector(selector, timeout=5000)
+                    if credit_element:
+                        # 获取积分文本
+                        credit_text = await credit_element.text_content()
+                        if credit_text and credit_text.strip().isdigit():
+                            credits = int(credit_text.strip())
+                            print(f"[MULTI-ACCOUNT] ✅ 账号 {account_id} 剩余积分: {credits}")
+                            return credits
+                except Exception as e:
+                    print(f"[MULTI-ACCOUNT] 积分选择器 {selector} 失败: {e}")
+                    continue
+            
+            # 尝试通过更通用的方式查找
+            try:
+                # 查找包含升级文本的父元素，然后找相关的数字
+                upgrade_elements = await page.query_selector_all("*:has-text('升级')")
+                for element in upgrade_elements:
+                    parent = await element.query_selector("..")
+                    if parent:
+                        # 在父元素中查找数字
+                        number_spans = await parent.query_selector_all("span")
+                        for span in number_spans:
+                            span_text = await span.text_content()
+                            if span_text and span_text.strip().isdigit():
+                                credits = int(span_text.strip())
+                                print(f"[MULTI-ACCOUNT] ✅ 账号 {account_id} 剩余积分: {credits}")
+                                return credits
+            except Exception as e:
+                print(f"[MULTI-ACCOUNT] 通用积分查找失败: {e}")
+            
+            print(f"[MULTI-ACCOUNT] ❌ 账号 {account_id} 无法获取积分信息")
+            return -1
+            
+        except Exception as e:
+            print(f"[MULTI-ACCOUNT] 获取积分失败 {account_id}: {e}")
+            return -1
 
     async def _save_cookies(self, account_id: str):
         """保存完整的存储状态（cookies + localStorage）到文件"""

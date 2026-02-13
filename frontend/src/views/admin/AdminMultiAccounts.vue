@@ -122,6 +122,7 @@
               <tr>
                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">账号信息</th>
                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">状态</th>
+                <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">积分</th>
                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">负载情况</th>
                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">优先级</th>
                 <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">操作</th>
@@ -146,6 +147,26 @@
                       :class="account.is_logged_in ? 'bg-blue-100 text-blue-800' : 'bg-red-100 text-red-800'">
                       {{ account.is_logged_in ? '已登录' : '未登录' }}
                     </span>
+                  </div>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap">
+                  <div class="flex items-center space-x-2">
+                    <div class="flex items-center space-x-1">
+                      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" class="text-yellow-400">
+                        <path d="M8.00048 1.82032C6.45773 1.81807 5.19485 2.38132 4.46364 3.58012C4.43766 3.62272 4.42779 3.67378 4.43462 3.72321C4.77643 6.19795 5.30049 8.145 5.40694 8.27814C4.92051 7.79389 4.28303 6.2985 3.68679 4.55829C3.66021 4.48072 3.59361 4.42262 3.51225 4.41238C2.63633 4.55829 1.57668 5.5607 1.25741 6.41925C-0.0504929 9.93425 4.9445 12.3503 4.9445 12.3503C4.9445 12.3503 5.47745 13.2418 6.06218 13.5395C6.44152 13.7327 6.98931 13.5734 7.32494 13.5395C8.01775 13.4697 7.91795 13.4697 8.61077 13.5395C8.94639 13.5734 9.51083 13.7193 9.87461 13.5395C10.475 13.2429 10.8305 12.3503 10.8305 12.3503C10.8305 12.3503 16.0386 9.93425 14.7306 6.41925C14.4114 5.5607 13.3517 4.55829 12.4758 4.41238C12.3944 4.42262 12.3279 4.48072 12.3013 4.55829C11.705 6.2985 11.0676 7.79389 10.5811 8.27814C10.6876 8.145 11.2116 6.19795 11.5534 3.72321C11.5603 3.67378 11.5504 3.62272 11.5244 3.58012C10.7932 2.38132 9.53872 1.82256 8.00048 1.82032Z" fill="currentColor"></path>
+                      </svg>
+                      <span class="text-sm font-medium text-white">
+                        {{ account.credits >= 0 ? account.credits : '--' }}
+                      </span>
+                    </div>
+                    <button 
+                      v-if="account.is_logged_in"
+                      @click="refreshCredits(account.account_id)"
+                      class="text-blue-400 hover:text-blue-300 text-xs"
+                      title="刷新积分"
+                    >
+                      🔄
+                    </button>
                   </div>
                 </td>
                 <td class="px-6 py-4 whitespace-nowrap">
@@ -384,9 +405,44 @@ const getSystemStatus = async () => {
 const getAccounts = async () => {
   try {
     const response = await api.get('/admin/accounts/list')
-    accounts.value = response.data.accounts
+    // 为每个账号初始化积分字段
+    accounts.value = response.data.accounts.map(account => ({
+      ...account,
+      credits: -1 // -1 表示未获取
+    }))
+    
+    // 为已登录的账号获取积分
+    for (const account of accounts.value) {
+      if (account.is_logged_in) {
+        try {
+          const creditsResponse = await api.get(`/admin/accounts/${account.account_id}/credits`)
+          if (creditsResponse.data.success) {
+            account.credits = creditsResponse.data.credits
+          }
+        } catch (error) {
+          console.warn(`获取账号 ${account.account_id} 积分失败:`, error)
+        }
+      }
+    }
   } catch (error) {
     console.error('获取账号列表失败:', error)
+  }
+}
+
+// 刷新单个账号积分
+const refreshCredits = async (accountId) => {
+  try {
+    const response = await api.get(`/admin/accounts/${accountId}/credits`)
+    if (response.data.success) {
+      // 更新账号积分
+      const account = accounts.value.find(acc => acc.account_id === accountId)
+      if (account) {
+        account.credits = response.data.credits
+      }
+    }
+  } catch (error) {
+    console.error(`刷新账号 ${accountId} 积分失败:`, error)
+    alert('刷新积分失败: ' + error.response?.data?.detail)
   }
 }
 
