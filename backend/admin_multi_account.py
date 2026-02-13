@@ -101,28 +101,53 @@ async def update_account(
 @router.post("/{account_id}/login")
 async def login_account(account_id: str, admin=Depends(get_admin_user)):
     """尝试使用Cookie登录账号"""
+    if account_id not in automation_v2.manager.accounts:
+        raise HTTPException(status_code=404, detail="账号不存在")
+    
     try:
-        result = await automation_v2.manager.login_account(account_id)
-        if result:
-            return {"message": f"账号 {account_id} 登录成功", "success": True}
-        else:
-            # 登录失败，可能需要验证码
-            return {"message": f"账号 {account_id} 需要验证码登录", "success": False, "require_code": True}
+        # 确保浏览器上下文存在
+        if account_id not in automation_v2.manager.contexts:
+            await automation_v2.manager.create_account_context(account_id)
+        
+        # 检查是否有保存的登录状态
+        has_saved_state = automation_v2.manager._check_saved_login_state(account_id)
+        
+        if has_saved_state:
+            # 有保存的状态，尝试快速检查登录
+            try:
+                result = await automation_v2.manager.login_account(account_id)
+                if result:
+                    return {"message": f"账号 {account_id} 登录成功", "success": True}
+            except Exception as e:
+                print(f"[API] Cookie登录检查失败: {e}")
+        
+        # 没有保存状态或Cookie登录失败，需要验证码
+        return {"message": f"账号 {account_id} 需要验证码登录", "success": False, "require_code": True}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"登录失败: {str(e)}")
+        # 即使出错也返回需要验证码，而不是500错误
+        print(f"[API] 登录失败: {e}")
+        return {"message": f"登录检查失败，请使用验证码登录", "success": False, "require_code": True}
 
 
 @router.post("/{account_id}/send-code")
 async def send_verification_code(account_id: str, admin=Depends(get_admin_user)):
     """发送验证码到账号手机"""
+    if account_id not in automation_v2.manager.accounts:
+        raise HTTPException(status_code=404, detail="账号不存在")
+    
     try:
+        # 确保浏览器上下文存在
+        if account_id not in automation_v2.manager.contexts:
+            await automation_v2.manager.create_account_context(account_id)
+        
         result = await automation_v2.manager.send_verification_code(account_id)
         if result:
             return {"message": "验证码已发送", "success": True}
         else:
-            raise HTTPException(status_code=400, detail="发送验证码失败")
+            return {"message": "发送验证码失败，请重试", "success": False}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"发送验证码失败: {str(e)}")
+        print(f"[API] 发送验证码失败: {e}")
+        return {"message": f"发送验证码失败: {str(e)}", "success": False}
 
 
 class VerificationCodeRequest(BaseModel):
@@ -136,9 +161,10 @@ async def verify_and_login(account_id: str, data: VerificationCodeRequest, admin
         if result:
             return {"message": f"账号 {account_id} 登录成功", "success": True}
         else:
-            raise HTTPException(status_code=400, detail="验证码错误或登录失败")
+            return {"message": "验证码错误或登录失败", "success": False}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"验证码登录失败: {str(e)}")
+        print(f"[API] 验证码登录失败: {e}")
+        return {"message": f"验证码登录失败: {str(e)}", "success": False}
 
 
 @router.get("/{account_id}/credits")
