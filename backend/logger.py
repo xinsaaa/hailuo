@@ -126,15 +126,15 @@ class AppLogger:
             logger.add(
                 sys.stdout,
                 level=log_level,
-                format=serialize_log_record if log_format == "json" else "{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} | {message}",
-                serialize=log_format == "json",
+                format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} | {message}",
+                serialize=False,
             )
         
         # 文件处理器 - 所有日志
         logger.add(
             f"{log_dir}/app_{{time:YYYY-MM-DD}}.log",
             level=log_level,
-            format=serialize_log_record if log_format == "json" else "{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} | {message}",
+            format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} | {message}",
             rotation=log_rotation,
             retention=log_retention,
             compression="gz",
@@ -146,7 +146,7 @@ class AppLogger:
         logger.add(
             f"{log_dir}/error_{{time:YYYY-MM-DD}}.log",
             level="ERROR",
-            format=serialize_log_record if log_format == "json" else "{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} | {message}",
+            format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} | {message}",
             rotation=log_rotation,
             retention=log_retention,
             compression="gz",
@@ -159,7 +159,7 @@ class AppLogger:
             logger.add(
                 f"{log_dir}/audit_{{time:YYYY-MM-DD}}.log",
                 level="INFO",
-                format=serialize_log_record if log_format == "json" else "{time:YYYY-MM-DD HH:mm:ss} | {message}",
+                format="{time:YYYY-MM-DD HH:mm:ss} | {message}",
                 rotation=log_rotation,
                 retention=log_retention,
                 compression="gz",
