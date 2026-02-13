@@ -494,11 +494,17 @@ class MultiAccountManager:
             print(f"[LOGIN] 等待登录验证...")
             await page.wait_for_timeout(5000)
             
-            # 5. 验证登录结果（与automation.py一致：检查video-create-input）
+            # 5. 验证登录结果：登录按钮消失 = 登录成功
+            login_btn_check = page.locator("div.border-hl_line_00:has-text('登录')").first
             try:
-                create_input = page.locator("#video-create-input [contenteditable='true']")
-                await create_input.wait_for(state="visible", timeout=30000)
-                print(f"[LOGIN] 登录验证成功！找到创建输入框")
+                await login_btn_check.wait_for(state="visible", timeout=10000)
+                # 登录按钮仍在 = 登录失败
+                self.mark_account_logged_out(account_id)
+                print(f"[MULTI-ACCOUNT] 账号 {account.display_name} 登录验证失败 - 登录按钮仍存在")
+                return False
+            except:
+                # 登录按钮消失 = 登录成功
+                print(f"[LOGIN] 登录按钮已消失，登录成功")
                 
                 # 关闭可能的弹窗
                 try:
@@ -513,10 +519,6 @@ class MultiAccountManager:
                 self.mark_account_logged_in(account_id)
                 print(f"[MULTI-ACCOUNT] 账号 {account.display_name} 验证码登录成功")
                 return True
-            except:
-                self.mark_account_logged_out(account_id)
-                print(f"[MULTI-ACCOUNT] 账号 {account.display_name} 登录验证失败 - 未找到创建输入框")
-                return False
                 
         except Exception as e:
             print(f"[MULTI-ACCOUNT] 验证码登录失败 {account.display_name}: {e}")
@@ -542,28 +544,16 @@ class MultiAccountManager:
                 print(f"[MULTI-ACCOUNT] ❌ 页面未加载到海螺AI: {current_url}")
                 return False
             
-            # 方法1: 检查登录按钮（与automation.py一致）
+            # 核心判断：登录按钮存在 = 未登录，不存在 = 已登录
             login_btn = page.locator("div.border-hl_line_00:has-text('登录')").first
             try:
                 await login_btn.wait_for(state="visible", timeout=10000)
-                is_visible = await login_btn.is_visible()
-                if is_visible:
-                    print(f"[MULTI-ACCOUNT] ❌ 账号 {account_id} 发现登录按钮，未登录状态")
-                    return False
+                print(f"[MULTI-ACCOUNT] ❌ 账号 {account_id} 发现登录按钮，未登录状态")
+                return False
             except:
-                print(f"[MULTI-ACCOUNT] ℹ️ 未找到登录按钮，可能已登录，继续验证...")
-            
-            # 方法2: 检查视频创建入口（与automation.py一致）
-            try:
-                create_input = page.locator("#video-create-input").first
-                await create_input.wait_for(state="visible", timeout=5000)
-                print(f"[MULTI-ACCOUNT] ✅ 账号 {account_id} 找到创建入口，确认已登录")
+                # 登录按钮不存在 = 已登录
+                print(f"[MULTI-ACCOUNT] ✅ 账号 {account_id} 登录按钮不存在，确认已登录")
                 return True
-            except:
-                pass
-            
-            print(f"[MULTI-ACCOUNT] ❓ 账号 {account_id} 登录状态不明确，判定为未登录")
-            return False
             
         except Exception as e:
             print(f"[MULTI-ACCOUNT] 检查登录状态失败 {account_id}: {e}")
