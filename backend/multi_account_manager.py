@@ -338,39 +338,32 @@ class MultiAccountManager:
                     print("[LOGIN] 未找到手机号输入框")
                     return False
             
-            # 5. 勾选用户协议（与automation.py一致：button.rounded-full:has(svg)）
+            # 5. 勾选用户协议
+            # 按钮结构: <button type="button" class="text-hl_text_00 mr-1.5 cursor-pointer rounded-full"><svg...></button>
             try:
-                agree_btn = page.locator("button.rounded-full:has(svg)").first
-                if await agree_btn.is_visible():
-                    await agree_btn.click()
-                    await page.wait_for_timeout(300)
-                    print(f"[LOGIN] 已勾选用户协议")
-                else:
-                    print(f"[LOGIN] 未找到用户协议勾选框，dump协议区域HTML...")
-                    # 调试：输出协议相关元素的HTML
-                    debug_html = await page.evaluate("""
-                        () => {
-                            // 查找包含"协议"或"同意"文字的区域
-                            const results = [];
-                            document.querySelectorAll('button, label, input[type="checkbox"], div, span').forEach(el => {
-                                const text = el.textContent || '';
-                                if ((text.includes('协议') || text.includes('同意') || text.includes('条款') || text.includes('隐私'))
-                                    && text.length < 200 && el.offsetParent !== null) {
-                                    results.push(el.tagName + '.' + el.className.replace(/\\s+/g, '.') + ' => ' + el.outerHTML.substring(0, 300));
-                                }
-                            });
-                            // 也查找所有包含svg的button
-                            document.querySelectorAll('button:has(svg), div:has(svg)').forEach(el => {
-                                if (el.offsetParent !== null) {
-                                    results.push('SVG容器: ' + el.tagName + '.' + el.className.replace(/\\s+/g, '.') + ' => ' + el.outerHTML.substring(0, 300));
-                                }
-                            });
-                            return results.slice(0, 10).join('\\n---\\n');
+                agree_btn = page.locator("button.cursor-pointer.rounded-full:has(svg)").first
+                await agree_btn.wait_for(state="visible", timeout=5000)
+                await agree_btn.click()
+                await page.wait_for_timeout(300)
+                print(f"[LOGIN] 已勾选用户协议")
+            except:
+                # 兜底：直接用JS点击
+                clicked = await page.evaluate("""
+                    () => {
+                        const btns = document.querySelectorAll('button.rounded-full');
+                        for (const btn of btns) {
+                            if (btn.querySelector('svg') && btn.offsetParent !== null) {
+                                btn.click();
+                                return true;
+                            }
                         }
-                    """)
-                    print(f"[DEBUG] 协议区域元素:\\n{debug_html}")
-            except Exception as e:
-                print(f"[LOGIN] 用户协议勾选框未找到: {e}")
+                        return false;
+                    }
+                """)
+                if clicked:
+                    print(f"[LOGIN] JS兜底勾选用户协议成功")
+                else:
+                    print(f"[LOGIN] 用户协议勾选失败（可能已勾选或无需勾选）")
             
             # 6. 点击获取验证码（与automation.py一致）
             # 截图：点击验证码前
@@ -453,14 +446,30 @@ class MultiAccountManager:
                     print("[LOGIN] 未找到验证码输入框")
                     return False
             
-            # 2. 勾选用户协议（与automation.py一致）
+            # 2. 勾选用户协议
             try:
-                agree_btn = page.locator("button.rounded-full:has(svg)").first
-                if await agree_btn.is_visible():
-                    await agree_btn.click()
-                    print(f"[LOGIN] 已勾选用户协议")
+                agree_btn = page.locator("button.cursor-pointer.rounded-full:has(svg)").first
+                await agree_btn.wait_for(state="visible", timeout=3000)
+                await agree_btn.click()
+                print(f"[LOGIN] 已勾选用户协议")
             except:
-                print(f"[LOGIN] 未找到用户协议勾选框（可能已勾选）")
+                # JS兜底
+                clicked = await page.evaluate("""
+                    () => {
+                        const btns = document.querySelectorAll('button.rounded-full');
+                        for (const btn of btns) {
+                            if (btn.querySelector('svg') && btn.offsetParent !== null) {
+                                btn.click();
+                                return true;
+                            }
+                        }
+                        return false;
+                    }
+                """)
+                if clicked:
+                    print(f"[LOGIN] JS兜底勾选用户协议成功")
+                else:
+                    print(f"[LOGIN] 用户协议勾选失败（可能已勾选）")
             
             # 3. 点击登录按钮（与automation.py一致：button.login-btn）
             login_btn = page.locator("button.login-btn")
