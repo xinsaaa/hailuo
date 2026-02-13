@@ -7,8 +7,8 @@ import { getPublicConfig, getAvailableModels } from '../api'
 const prompt = ref('')
 const router = useRouter()
 const userStore = useUserStore()
-const videoPrice = ref(0.99)
-const videoPriceDisplay = ref('0.99起')
+const videoPrice23 = ref(0.99)
+const videoPrice31 = ref(0.99)
 
 const isLoggedIn = computed(() => !!userStore.token)
 const user = computed(() => userStore.user)
@@ -28,17 +28,21 @@ const loadConfig = async () => {
     try {
         const config = await getPublicConfig()
         
-        // 从模型API获取最低价格
+        // 从模型API分别获取2.3和3.1系列最低价格
         try {
             const modelsData = await getAvailableModels()
             if (modelsData && modelsData.models && modelsData.models.length > 0) {
-                const prices = modelsData.models.map(m => m.price || 0.99).filter(p => p > 0)
-                const minPrice = Math.min(...prices)
-                videoPrice.value = minPrice
-                videoPriceDisplay.value = prices.length > 1 ? `${minPrice}起` : `${minPrice}`
+                const models23 = modelsData.models.filter(m => m.id.includes('2_0') || m.id.includes('2_3') || m.id.includes('hailuo_1_0'))
+                const models31 = modelsData.models.filter(m => m.id.includes('3_1') || m.id.includes('beta_3'))
+                if (models23.length > 0) {
+                    videoPrice23.value = Math.min(...models23.map(m => m.price || 0.99))
+                }
+                if (models31.length > 0) {
+                    videoPrice31.value = Math.min(...models31.map(m => m.price || 0.99))
+                }
             }
         } catch (e) {
-            console.error('获取模型价格失败', e)
+            // 保持默认价格
         }
         
         // 生成赠送信息
@@ -150,14 +154,14 @@ const handleModelSeriesGenerate = (series) => {
           <!-- 发光边框 - 优化为单色简约光晕 -->
           <div class="absolute -inset-0.5 bg-gradient-to-b from-cyan-500/20 to-blue-500/5 rounded-3xl blur opacity-20 group-hover:opacity-60 transition-opacity duration-700"></div>
           
-          <div class="relative bg-white/5 border border-white/5 border-t-white/20 rounded-2xl p-6 shadow-2xl h-full cursor-pointer transition-all duration-500 hover:scale-[1.02] hover:-translate-y-1 backdrop-blur-3xl hover:bg-white/10 hover:shadow-cyan-500/10" @click="handleStart">
+          <div class="relative bg-white/5 border border-white/5 border-t-white/20 rounded-2xl p-6 shadow-2xl h-full cursor-pointer transition-all duration-500 hover:scale-[1.02] hover:-translate-y-1 backdrop-blur-3xl hover:bg-white/10 hover:shadow-cyan-500/10">
             <!-- 顶部标签 -->
             <div class="flex justify-between items-center mb-4">
               <div class="px-2.5 py-1 rounded-full bg-gradient-to-r from-red-500 to-orange-500 text-white text-xs font-bold shadow-sm ring-1 ring-white/10">
                 HOT
               </div>
               <div class="text-xl font-bold text-white drop-shadow-sm tracking-wide">
-                ¥{{ videoPrice }}
+                ¥{{ videoPrice23 }}
               </div>
             </div>
             
@@ -181,13 +185,13 @@ const handleModelSeriesGenerate = (series) => {
             <!-- 价格说明 -->
             <div class="text-center mb-6">
               <div class="text-sm font-medium text-gray-400">
-                单次生成仅需 <span class="text-white font-bold mx-1">{{ videoPrice }}元</span>
+                单次生成仅需 <span class="text-white font-bold mx-1">{{ videoPrice23 }}元</span>
               </div>
             </div>
             
             <!-- 生成按钮 -->
             <div>
-              <button @click="handleModelSeriesGenerate('2.3')" class="w-full py-3.5 bg-white text-black hover:bg-gray-50 rounded-xl font-bold text-sm transition-all duration-300 shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-95">
+              <button @click.stop="handleModelSeriesGenerate('2.3')" class="w-full py-3.5 bg-white text-black hover:bg-gray-50 rounded-xl font-bold text-sm transition-all duration-300 shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-95">
                 使用2.3系列生成
               </button>
             </div>
@@ -204,7 +208,7 @@ const handleModelSeriesGenerate = (series) => {
                 NEW
               </div>
               <div class="text-xl font-bold text-white drop-shadow-sm tracking-wide">
-                ¥{{ videoPrice }}
+                ¥{{ videoPrice31 }}
               </div>
             </div>
             
@@ -228,13 +232,13 @@ const handleModelSeriesGenerate = (series) => {
             <!-- 价格说明 -->
             <div class="text-center mb-6">
               <div class="text-sm font-medium text-gray-400">
-                单次生成仅需 <span class="text-white font-bold mx-1">{{ videoPrice }}元</span>
+                单次生成仅需 <span class="text-white font-bold mx-1">{{ videoPrice31 }}元</span>
               </div>
             </div>
             
             <!-- 生成按钮 -->
             <div>
-              <button @click="handleModelSeriesGenerate('3.1')" class="w-full py-3.5 bg-white text-black hover:bg-gray-50 rounded-xl font-bold text-sm transition-all duration-300 shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-95">
+              <button @click.stop="handleModelSeriesGenerate('3.1')" class="w-full py-3.5 bg-white text-black hover:bg-gray-50 rounded-xl font-bold text-sm transition-all duration-300 shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-95">
                 使用3.1系列生成
               </button>
             </div>

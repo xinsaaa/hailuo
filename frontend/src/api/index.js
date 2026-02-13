@@ -50,6 +50,16 @@ api.interceptors.request.use(
 api.interceptors.response.use(
     (response) => response,
     (error) => {
+        // 网络错误（无响应）
+        if (!error.response) {
+            if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
+                error.friendlyMessage = '请求超时，请检查网络后重试'
+            } else {
+                error.friendlyMessage = '网络连接失败，请检查网络设置'
+            }
+            return Promise.reject(error)
+        }
+
         if (error.response?.status === 401) {
             const isLoginPage = window.location.pathname === '/login'
             const isAdminLoginPage = window.location.pathname === '/admin/login'
@@ -192,7 +202,8 @@ export const createOrder = async (prompt, model_name, firstFrameImage, lastFrame
     const { data } = await api.post('/orders/create', formData, {
         headers: {
             'Content-Type': 'multipart/form-data'
-        }
+        },
+        timeout: 60000
     });
     return data;
 };

@@ -217,7 +217,7 @@ const handleCreateOrder = async () => {
     removeImage('last')
     await loadData()
   } catch (err) {
-    showNotification(err.response?.data?.detail || '创建订单失败', 'error')
+    showNotification(err.friendlyMessage || err.response?.data?.detail || '创建订单失败', 'error')
   } finally {
     loading.value = false
   }
