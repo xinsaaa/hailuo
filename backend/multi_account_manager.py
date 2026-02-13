@@ -42,6 +42,9 @@ class MultiAccountManager:
         
         # 任务分配
         self.account_queues: Dict[str, asyncio.Queue] = {}
+        
+        # 已验证登录的账号集合（只有真正通过页面验证的才算）
+        self._verified_accounts: set = set()
     
     async def init_browser(self):
         """初始化单个浏览器实例"""
@@ -785,38 +788,17 @@ class MultiAccountManager:
         return status
 
     def _verify_real_login_status(self, account_id: str) -> bool:
-        """严格验证账号的真实登录状态"""
-        try:
-            # 1. 必须有浏览器上下文
-            if account_id not in self.contexts:
-                return False
-            
-            # 2. 必须有保存的状态文件
-            if not self._check_saved_login_state(account_id):
-                return False
-            
-            # 3. 标记为需要真实验证（避免误判）
-            # 这里我们不再假设有文件就是已登录，需要通过实际API调用验证
-            print(f"[MULTI-ACCOUNT] 📋 账号 {account_id} 状态: 上下文存在={account_id in self.contexts}, 状态文件存在={self._check_saved_login_state(account_id)}")
-            
-            # 简化判断：只有明确验证过登录成功的才算已登录
-            return hasattr(self, '_verified_accounts') and account_id in getattr(self, '_verified_accounts', set())
-            
-        except Exception as e:
-            print(f"[MULTI-ACCOUNT] 验证登录状态失败 {account_id}: {e}")
-            return False
+        """严格验证账号的真实登录状态 - 只有通过check_login_status验证的才算"""
+        return account_id in self._verified_accounts
 
     def mark_account_logged_in(self, account_id: str):
         """标记账号已验证登录"""
-        if not hasattr(self, '_verified_accounts'):
-            self._verified_accounts = set()
         self._verified_accounts.add(account_id)
         print(f"[MULTI-ACCOUNT] ✅ 标记账号 {account_id} 已验证登录")
 
     def mark_account_logged_out(self, account_id: str):
         """标记账号已登出"""
-        if hasattr(self, '_verified_accounts'):
-            self._verified_accounts.discard(account_id)
+        self._verified_accounts.discard(account_id)
         print(f"[MULTI-ACCOUNT] ❌ 标记账号 {account_id} 已登出")
 
     def _check_saved_login_state(self, account_id: str) -> bool:

@@ -490,40 +490,32 @@ const verificationModal = reactive({
 // 登录账号
 const loginAccount = async (accountId) => {
   try {
-    const response = await api.post(`/admin/accounts/${accountId}/login`)
+    // 登录检查可能需要较长时间（页面导航+等待），设置60秒超时
+    const response = await api.post(`/admin/accounts/${accountId}/login`, {}, { timeout: 60000 })
     
     if (response.data.success) {
       await refreshAccounts()
       alert('登录成功！')
-    } else if (response.data.require_code || !response.data.success) {
-      // 需要验证码登录
-      console.log('需要验证码登录，账号:', accountId)
-      const account = accounts.value.find(acc => acc.account_id === accountId)
-      verificationModal.accountId = accountId
-      verificationModal.accountName = account?.display_name || accountId
-      verificationModal.step = 'send'
-      verificationModal.show = true
+      return
     }
   } catch (error) {
-    console.error('登录失败:', error)
-    // 如果是500错误，也可能需要验证码登录
-    if (error.response?.status === 500) {
-      const account = accounts.value.find(acc => acc.account_id === accountId)
-      verificationModal.accountId = accountId
-      verificationModal.accountName = account?.display_name || accountId
-      verificationModal.step = 'send'
-      verificationModal.show = true
-    } else {
-      alert('登录失败: ' + (error.response?.data?.detail || error.message))
-    }
+    console.error('登录检查失败（将弹出验证码登录）:', error)
   }
+  
+  // 无论什么原因失败，都弹出验证码登录窗口
+  const account = accounts.value.find(acc => acc.account_id === accountId)
+  verificationModal.accountId = accountId
+  verificationModal.accountName = account?.display_name || accountId
+  verificationModal.step = 'send'
+  verificationModal.code = ''
+  verificationModal.show = true
 }
 
 // 发送验证码
 const sendVerificationCode = async () => {
   verificationModal.loading = true
   try {
-    const response = await api.post(`/admin/accounts/${verificationModal.accountId}/send-code`)
+    const response = await api.post(`/admin/accounts/${verificationModal.accountId}/send-code`, {}, { timeout: 60000 })
     if (response.data.success) {
       verificationModal.step = 'verify'
       alert('验证码已发送到绑定手机，请查收')
@@ -531,7 +523,7 @@ const sendVerificationCode = async () => {
       alert('发送验证码失败')
     }
   } catch (error) {
-    alert('发送验证码失败: ' + error.response?.data?.detail)
+    alert('发送验证码失败: ' + (error.response?.data?.detail || error.message || '请重试'))
   } finally {
     verificationModal.loading = false
   }
@@ -548,7 +540,7 @@ const verifyAndLogin = async () => {
   try {
     const response = await api.post(`/admin/accounts/${verificationModal.accountId}/verify-code`, {
       verification_code: verificationModal.code
-    })
+    }, { timeout: 60000 })
     
     if (response.data.success) {
       verificationModal.show = false
@@ -559,7 +551,7 @@ const verifyAndLogin = async () => {
       alert('登录失败，请检查验证码是否正确')
     }
   } catch (error) {
-    alert('验证码登录失败: ' + error.response?.data?.detail)
+    alert('验证码登录失败: ' + (error.response?.data?.detail || error.message || '请重试'))
   } finally {
     verificationModal.loading = false
   }
