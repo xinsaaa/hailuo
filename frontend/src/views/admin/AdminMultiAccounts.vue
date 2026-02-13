@@ -576,6 +576,20 @@ const toggleAccount = async (accountId, isActive) => {
   }
 }
 
+// 编辑账号（暂时使用简单弹窗）
+const editAccount = (account) => {
+  const newName = prompt('修改显示名称:', account.display_name)
+  if (newName && newName !== account.display_name) {
+    api.put(`/admin/accounts/${account.account_id}`, {
+      display_name: newName
+    }).then(() => {
+      refreshAccounts()
+    }).catch(error => {
+      alert('修改失败: ' + (error.response?.data?.detail || error.message))
+    })
+  }
+}
+
 // 删除账号
 const deleteAccount = async (accountId) => {
   if (!confirm('确定要删除这个账号吗？')) return

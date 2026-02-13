@@ -169,6 +169,11 @@ class MultiAccountManager:
     
     async def create_account_context(self, account_id: str) -> BrowserContext:
         """为指定账号创建独立的浏览器上下文"""
+        # 如果已存在上下文，先关闭旧的防止内存泄漏
+        if account_id in self.contexts:
+            print(f"[MULTI-ACCOUNT] 账号 {account_id} 已有上下文，跳过创建")
+            return self.contexts[account_id]
+        
         if not self.browser:
             await self.init_browser()
         
@@ -199,8 +204,7 @@ class MultiAccountManager:
         # 创建上下文
         context = await self.browser.new_context(**context_options)
         
-        # 设置额外的请求拦截（可选）
-        await context.route("**/*.{png,jpg,jpeg,gif,webp,svg,ico}", lambda route: route.abort())
+        # 注意：不拦截图片，因为登录页面可能需要加载验证码图片等资源
         
         self.contexts[account_id] = context
         
@@ -346,6 +350,10 @@ class MultiAccountManager:
         if account_id not in self.accounts:
             return False
         
+        if account_id not in self.pages:
+            print(f"[MULTI-ACCOUNT] 账号 {account_id} 没有浏览器页面，无法验证")
+            return False
+        
         account = self.accounts[account_id]
         page = self.pages[account_id]
         
@@ -410,78 +418,6 @@ class MultiAccountManager:
         except Exception as e:
             print(f"[MULTI-ACCOUNT] 验证码登录失败 {account.display_name}: {e}")
             return False
-
-    async def _perform_login_flow(self, page: Page, account: AccountConfig):
-        """执行具体的登录流程"""
-        try:
-            # 查找并点击登录按钮
-            login_selectors = [
-                "button:has-text('登录')",
-                ".login-btn",
-                "[data-testid='login-btn']",
-                "a:has-text('登录')"
-            ]
-            
-            login_clicked = False
-            for selector in login_selectors:
-                try:
-                    login_btn = await page.wait_for_selector(selector, timeout=5000)
-                    await login_btn.click()
-                    login_clicked = True
-                    print(f"[LOGIN] 已点击登录按钮")
-                    break
-                except:
-                    continue
-            
-            if not login_clicked:
-                print("[LOGIN] 未找到登录按钮")
-                return
-            
-            await page.wait_for_timeout(2000)
-            
-            # 输入手机号
-            phone_selectors = [
-                "input[placeholder*='手机']",
-                "input[placeholder*='phone']", 
-                "input[type='tel']",
-                ".phone-input input"
-            ]
-            
-            for selector in phone_selectors:
-                try:
-                    phone_input = await page.wait_for_selector(selector, timeout=5000)
-                    await phone_input.clear()
-                    await phone_input.type(account.phone_number, delay=100)
-                    print(f"[LOGIN] 已输入手机号: {account.phone_number}")
-                    break
-                except:
-                    continue
-            
-            # 点击获取验证码
-            code_btn_selectors = [
-                "button:has-text('获取验证码')",
-                "button:has-text('发送验证码')",
-                ".send-code-btn",
-                "[data-testid='send-code']"
-            ]
-            
-            for selector in code_btn_selectors:
-                try:
-                    code_btn = await page.wait_for_selector(selector, timeout=5000)
-                    await code_btn.click()
-                    print("[LOGIN] 已点击获取验证码")
-                    break
-                except:
-                    continue
-            
-            # 等待手动输入验证码（或者集成自动化验证码服务）
-            print(f"[LOGIN] 请手动输入验证码完成 {account.display_name} 的登录...")
-            
-            # 等待登录完成（检查URL变化或页面元素）
-            await page.wait_for_timeout(30000)  # 给30秒时间手动输入验证码
-            
-        except Exception as e:
-            print(f"[LOGIN] 登录流程执行失败: {e}")
 
     async def check_login_status(self, account_id: str) -> bool:
         """检查账号登录状态 - 恢复简洁有效的版本"""
@@ -625,7 +561,8 @@ class MultiAccountManager:
         
         for account_id, account in self.accounts.items():
             if (account.is_active and 
-                account.current_tasks < account.max_concurrent):
+                account.current_tasks < account.max_concurrent and
+                account_id in self._verified_accounts):  # 必须已登录
                 
                 # 计算账号负载率
                 load_rate = account.current_tasks / account.max_concurrent if account.max_concurrent > 0 else 0
@@ -656,27 +593,19 @@ class MultiAccountManager:
         """自动检查和恢复失效账号"""
         print("[SCHEDULER] 开始检查账号登录状态...")
         
-        recovery_tasks = []
         for account_id, account in self.accounts.items():
             if not account.is_active:
                 continue
                 
-            # 检查登录状态
+            # 只检查已有上下文的账号
             if account_id in self.contexts:
                 is_logged_in = await self.check_login_status(account_id)
                 
-                if not is_logged_in:
-                    print(f"[SCHEDULER] 账号 {account.display_name} 登录失效，准备重新登录...")
-                    # 先加载Cookie
-                    await self._load_cookies(account_id)
-                    # 创建重新登录任务
-                    recovery_tasks.append(self.login_account(account_id))
-        
-        # 并行执行恢复任务
-        if recovery_tasks:
-            results = await asyncio.gather(*recovery_tasks, return_exceptions=True)
-            success_count = sum(1 for result in results if result is True)
-            print(f"[SCHEDULER] 账号恢复完成，成功 {success_count}/{len(recovery_tasks)} 个")
+                if is_logged_in:
+                    self.mark_account_logged_in(account_id)
+                else:
+                    self.mark_account_logged_out(account_id)
+                    print(f"[SCHEDULER] ⚠️ 账号 {account.display_name} 登录失效，需要重新验证码登录")
     
     def get_system_performance_stats(self) -> Dict[str, Any]:
         """获取系统性能统计"""
@@ -691,7 +620,7 @@ class MultiAccountManager:
                 total_capacity += account.max_concurrent
                 current_load += account.current_tasks
                 
-                if account_id in self.contexts:
+                if account_id in self._verified_accounts:
                     logged_in_accounts += 1
         
         utilization = current_load / total_capacity if total_capacity > 0 else 0
@@ -750,11 +679,17 @@ class MultiAccountManager:
     async def close_account(self, account_id: str):
         """关闭指定账号的上下文"""
         if account_id in self.contexts:
-            await self.contexts[account_id].close()
+            try:
+                await self.contexts[account_id].close()
+            except Exception as e:
+                print(f"[MULTI-ACCOUNT] 关闭上下文失败 {account_id}: {e}")
             del self.contexts[account_id]
             
         if account_id in self.pages:
             del self.pages[account_id]
+        
+        # 清除登录验证状态
+        self.mark_account_logged_out(account_id)
     
     async def close_all(self):
         """关闭所有账号和浏览器"""
@@ -821,8 +756,12 @@ class MultiAccountManager:
             return False
 
     async def _migrate_old_login_state(self, account_id: str, target_file: Path):
-        """从旧格式迁移登录状态到新格式"""
+        """从旧格式迁移登录状态到新格式（只迁移给主账号）"""
         try:
+            # 旧格式只有一份cookie，只能迁移给主账号
+            if account_id != "hailuo_main":
+                return
+            
             old_cookies_file = Path("login_state") / "cookies.json"
             old_localStorage_file = Path("login_state") / "localStorage.json"
             
