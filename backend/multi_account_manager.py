@@ -53,11 +53,15 @@ class MultiAccountManager:
         # 浏览器启动参数
         browser_args = [
             "--no-sandbox",
-            "--disable-blink-features=AutomationControlled",
+            "--disable-setuid-sandbox",
+            "--disable-dev-shm-usage",  # Linux内存优化
+            "--disable-gpu",  # Linux无GPU环境
+            "--disable-web-security",
             "--disable-features=VizDisplayCompositor",
+            "--disable-blink-features=AutomationControlled",
             "--disable-extensions",
             "--disable-plugins",
-            "--disable-images",  # 禁用图片加载
+            "--disable-images",  # 节省带宽和内存
             "--disable-javascript-harmony-shipping",
             "--disable-background-timer-throttling",
             "--disable-renderer-backgrounding",
@@ -65,10 +69,11 @@ class MultiAccountManager:
             "--disable-features=TranslateUI",
             "--disable-ipc-flooding-protection",
             "--window-size=1280,720",
+            "--max_old_space_size=512",  # 限制内存使用
         ]
         
-        # 检测是否应该使用headless模式
-        use_headless = os.getenv("AUTOMATION_HEADLESS", "false").lower() == "true"
+        # 智能检测是否应该使用headless模式
+        use_headless = self._should_use_headless()
         
         self.browser = await self.playwright.chromium.launch(
             headless=use_headless,
@@ -77,6 +82,33 @@ class MultiAccountManager:
         )
         
         print(f"[MULTI-ACCOUNT] 浏览器已启动 (Headless: {use_headless})")
+    
+    def _should_use_headless(self) -> bool:
+        """智能检测是否应该使用headless模式"""
+        import platform
+        
+        # 环境变量强制指定
+        env_headless = os.getenv("AUTOMATION_HEADLESS", "").lower()
+        if env_headless in ["true", "1"]:
+            print("[MULTI-ACCOUNT] 环境变量强制启用headless模式")
+            return True
+        elif env_headless in ["false", "0"]:
+            print("[MULTI-ACCOUNT] 环境变量强制禁用headless模式")
+            return False
+        
+        # Linux环境自动检测
+        if platform.system() == "Linux":
+            # 检查是否有DISPLAY环境变量（X11图形界面）
+            if not os.getenv("DISPLAY"):
+                print("[MULTI-ACCOUNT] 🐧 检测到Linux无界面环境，自动启用headless模式")
+                return True
+            else:
+                print("[MULTI-ACCOUNT] 🐧 检测到Linux图形环境，使用有界面模式")
+                return False
+        
+        # Windows/Mac默认使用有界面模式（开发环境）
+        print(f"[MULTI-ACCOUNT] 检测到{platform.system()}环境，默认使用有界面模式")
+        return False
     
     def load_accounts_config(self, config_file: str = "accounts.json"):
         """加载账号配置"""
