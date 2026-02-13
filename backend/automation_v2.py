@@ -346,7 +346,7 @@ def get_automation_v2_status():
     return automation_v2.get_system_status()
 
 async def add_account(account_config: dict):
-    """添加新账号"""
+    """添加新账号（只保存配置，不自动登录，登录由用户手动触发）"""
     account = AccountConfig(**account_config)
     automation_v2.manager.accounts[account.account_id] = account
     
@@ -354,9 +354,7 @@ async def add_account(account_config: dict):
     accounts_list = list(automation_v2.manager.accounts.values())
     automation_v2.manager.save_accounts_config(accounts_list)
     
-    # 如果系统正在运行且账号激活，立即登录
-    if automation_v2.is_running and account.is_active:
-        await automation_v2.manager.login_account(account.account_id)
+    print(f"[AUTO-V2] ✅ 账号 {account.display_name} 已添加，请在管理后台手动登录")
 
 async def toggle_account(account_id: str, is_active: bool):
     """启用/禁用账号"""
