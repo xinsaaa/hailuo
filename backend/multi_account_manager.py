@@ -189,6 +189,9 @@ class MultiAccountManager:
                 print(f"[MULTI-ACCOUNT] 加载已保存的登录状态: {account_id}")
             except Exception as e:
                 print(f"[MULTI-ACCOUNT] 加载状态文件失败: {e}")
+        else:
+            # 尝试从旧格式迁移
+            await self._migrate_old_login_state(account_id, storage_state_file)
         
         # 创建上下文
         context = await self.browser.new_context(**context_options)
@@ -765,15 +768,76 @@ class MultiAccountManager:
         """获取所有账号状态"""
         status = {}
         for account_id, account in self.accounts.items():
+            # 检查真实登录状态：需要同时满足有上下文且Cookie文件存在
+            has_context = account_id in self.contexts
+            has_saved_state = self._check_saved_login_state(account_id)
+            
             status[account_id] = {
                 "display_name": account.display_name,
                 "is_active": account.is_active,
                 "current_tasks": account.current_tasks,
                 "max_concurrent": account.max_concurrent,
-                "is_logged_in": account_id in self.contexts,
+                "is_logged_in": has_context and has_saved_state,
                 "utilization": account.current_tasks / account.max_concurrent if account.max_concurrent > 0 else 0
             }
         return status
+
+    def _check_saved_login_state(self, account_id: str) -> bool:
+        """检查是否存在已保存的登录状态（兼容新旧格式）"""
+        try:
+            # 新格式：单个storage_state.json文件
+            storage_file = self.data_dir / "profiles" / account_id / "storage_state.json"
+            if storage_file.exists():
+                return True
+            
+            # 兼容旧格式：cookies.json + localStorage.json
+            old_cookies_file = Path("login_state") / "cookies.json"
+            old_localStorage_file = Path("login_state") / "localStorage.json"
+            if old_cookies_file.exists() and old_localStorage_file.exists():
+                print(f"[MULTI-ACCOUNT] 检测到旧格式登录状态文件，账号 {account_id}")
+                return True
+            
+            return False
+        except Exception:
+            return False
+
+    async def _migrate_old_login_state(self, account_id: str, target_file: Path):
+        """从旧格式迁移登录状态到新格式"""
+        try:
+            old_cookies_file = Path("login_state") / "cookies.json"
+            old_localStorage_file = Path("login_state") / "localStorage.json"
+            
+            if old_cookies_file.exists() and old_localStorage_file.exists():
+                print(f"[MULTI-ACCOUNT] 🔄 迁移旧格式登录状态到新格式: {account_id}")
+                
+                # 读取旧格式文件
+                with open(old_cookies_file, 'r', encoding='utf-8') as f:
+                    cookies = json.load(f)
+                
+                with open(old_localStorage_file, 'r', encoding='utf-8') as f:
+                    localStorage_data = json.load(f)
+                
+                # 转换为新格式
+                storage_state = {
+                    "cookies": cookies,
+                    "origins": [{
+                        "origin": "https://hailuoai.com",
+                        "localStorage": [
+                            {"name": key, "value": value} 
+                            for key, value in localStorage_data.items()
+                        ]
+                    }]
+                }
+                
+                # 保存为新格式
+                target_file.parent.mkdir(parents=True, exist_ok=True)
+                with open(target_file, 'w', encoding='utf-8') as f:
+                    json.dump(storage_state, f, ensure_ascii=False, indent=2)
+                
+                print(f"[MULTI-ACCOUNT] ✅ 旧格式登录状态迁移完成: {account_id}")
+                
+        except Exception as e:
+            print(f"[MULTI-ACCOUNT] ⚠️ 迁移旧格式登录状态失败 {account_id}: {e}")
 
 
 # 全局多账号管理器实例
