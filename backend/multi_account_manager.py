@@ -220,25 +220,20 @@ class MultiAccountManager:
         page = self.pages[account_id]
         
         try:
-            print(f"[MULTI-ACCOUNT] 开始登录账号: {account.display_name}")
+            print(f"[MULTI-ACCOUNT] 🔍 检查账号登录状态: {account.display_name}")
             
-            # 导航到海螺AI创建页面
-            await page.goto("https://hailuoai.com/create/image-to-video", timeout=30000)
-            await page.wait_for_timeout(3000)
-            
-            # 检查是否已经登录
+            # 严格检查是否已经登录 - 不依赖Cookie，直接检查页面状态
             if await self.check_login_status(account_id):
-                # 保存存储状态
+                print(f"[MULTI-ACCOUNT] ✅ 账号 {account.display_name} 已确认登录")
                 await self._save_cookies(account_id)
-                print(f"[MULTI-ACCOUNT] 账号 {account.display_name} 已处于登录状态")
                 return True
             
-            # Headless模式下跳过自动登录，提示用户手动登录
-            print(f"[MULTI-ACCOUNT] 账号 {account.display_name} 需要手动登录")
-            print(f"[MULTI-ACCOUNT] 请在浏览器中访问 https://hailuoai.com 并登录账号: {account.phone_number}")
-            print(f"[MULTI-ACCOUNT] 登录后系统将自动检测并保存登录状态")
+            # 未登录，需要验证码登录流程
+            print(f"[MULTI-ACCOUNT] ❌ 账号 {account.display_name} 未登录")
+            print(f"[MULTI-ACCOUNT] 📱 需要通过管理后台进行验证码登录")
+            print(f"[MULTI-ACCOUNT] 账号手机号: {account.phone_number}")
             
-            # 暂时返回False，等待手动登录
+            # 返回False，表示需要验证码登录
             return False
             
         except Exception as e:
@@ -515,9 +510,23 @@ class MultiAccountManager:
             
             # 方法2: 访问创建页面检查视频创建输入框（如果存在 = 已登录）
             await page.goto("https://hailuoai.com/create/image-to-video", timeout=15000)
-            await page.wait_for_timeout(2000)
+            await page.wait_for_timeout(3000)
             
             try:
+                # 检查是否被重定向到登录页面
+                current_url = page.url
+                if "login" in current_url.lower() or "auth" in current_url.lower():
+                    print(f"[MULTI-ACCOUNT] ❌ 账号 {account_id} 被重定向到登录页面，未登录")
+                    return False
+                
+                # 再次检查是否有登录按钮（在创建页面上也可能出现）
+                login_elements = await page.query_selector_all("button:has-text('登录'), a:has-text('登录')")
+                if login_elements:
+                    for element in login_elements:
+                        if await element.is_visible():
+                            print(f"[MULTI-ACCOUNT] ❌ 账号 {account_id} 创建页面仍显示登录按钮，未登录")
+                            return False
+                
                 # 检查视频创建输入框
                 create_selectors = [
                     "#video-create-input [contenteditable='true']",
@@ -529,14 +538,22 @@ class MultiAccountManager:
                 
                 for selector in create_selectors:
                     try:
-                        create_input = await page.wait_for_selector(selector, timeout=5000)
+                        create_input = await page.wait_for_selector(selector, timeout=3000)
                         if create_input and await create_input.is_visible():
-                            print(f"[MULTI-ACCOUNT] ✅ 账号 {account_id} 找到创建输入框，确认已登录")
-                            return True
+                            # 再次验证：尝试与输入框交互
+                            try:
+                                await create_input.click()
+                                await page.wait_for_timeout(1000)
+                                placeholder_text = await create_input.get_attribute("placeholder")
+                                if placeholder_text or await create_input.is_editable():
+                                    print(f"[MULTI-ACCOUNT] ✅ 账号 {account_id} 创建输入框可用，确认已登录")
+                                    return True
+                            except:
+                                continue
                     except:
                         continue
                         
-                print(f"[MULTI-ACCOUNT] ❓ 账号 {account_id} 未找到创建输入框，登录状态不明确")
+                print(f"[MULTI-ACCOUNT] ❌ 账号 {account_id} 未找到可用的创建输入框，未登录")
                 return False
                 
             except Exception as e:
