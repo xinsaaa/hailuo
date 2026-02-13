@@ -175,19 +175,23 @@ def startup_event():
     # 初始化默认模型数据
     init_default_models()
     
-    # 自动启动自动化工作线程
-    import os
+    # 自动启动自动化工作线程（单账号模式） - 多账号系统启用时禁用
     enable_auto_worker = os.getenv("ENABLE_AUTO_WORKER", "true").lower() == "true"
+    enable_multi_account = os.getenv("ENABLE_MULTI_ACCOUNT", "true").lower() == "true"
     
-    if enable_auto_worker:
+    if enable_auto_worker and not enable_multi_account:
         app_logger.info("Auto-starting automation worker...")
         try:
-            start_automation_worker()
+            from backend.automation import start_automation
+            # 在后台任务中启动自动化（异步）
+            asyncio.create_task(start_automation_async())
             app_logger.info("Automation worker started successfully")
         except Exception as e:
             app_logger.error("Failed to start automation worker", exc_info=e)
+    elif enable_multi_account:
+        app_logger.info("Single automation worker disabled (multi-account system enabled)")
     else:
-        app_logger.info("Backend started. Automation worker disabled by config")
+        app_logger.info("Automation worker disabled by config")
     
     # 自动启动多账号管理系统
     enable_multi_account = os.getenv("ENABLE_MULTI_ACCOUNT", "true").lower() == "true"
