@@ -124,7 +124,7 @@ class MultiAccountManager:
             # 创建默认配置
             default_accounts = [
                 AccountConfig(
-                    account_id="account_1",
+                    account_id="hailuo_main",
                     phone_number="17366935232",
                     display_name="主账号",
                     priority=10,
@@ -280,6 +280,168 @@ class MultiAccountManager:
             
         except Exception as e:
             print(f"[MULTI-ACCOUNT] 账号 {account.display_name} 登录检查失败: {e}")
+            return False
+
+    async def send_verification_code(self, account_id: str) -> bool:
+        """发送验证码到账号手机"""
+        if account_id not in self.accounts:
+            print(f"[MULTI-ACCOUNT] 账号 {account_id} 未配置")
+            return False
+        
+        account = self.accounts[account_id]
+        
+        # 创建上下文（如果不存在）
+        if account_id not in self.contexts:
+            await self.create_account_context(account_id)
+        
+        page = self.pages[account_id]
+        
+        try:
+            print(f"[MULTI-ACCOUNT] 发送验证码: {account.display_name}")
+            
+            # 导航到海螺AI登录页面
+            await page.goto("https://hailuoai.com", timeout=30000)
+            await page.wait_for_timeout(3000)
+            
+            # 点击登录按钮
+            login_selectors = [
+                "button:has-text('登录')",
+                "a:has-text('登录')",
+                ".login-btn",
+                "[data-testid='login-btn']"
+            ]
+            
+            login_clicked = False
+            for selector in login_selectors:
+                try:
+                    login_btn = await page.wait_for_selector(selector, timeout=5000)
+                    await login_btn.click()
+                    login_clicked = True
+                    print(f"[LOGIN] 已点击登录按钮")
+                    break
+                except:
+                    continue
+            
+            if not login_clicked:
+                print("[LOGIN] 未找到登录按钮")
+                return False
+            
+            await page.wait_for_timeout(2000)
+            
+            # 输入手机号
+            phone_selectors = [
+                "input[placeholder*='手机']",
+                "input[placeholder*='phone']", 
+                "input[type='tel']",
+                ".phone-input input"
+            ]
+            
+            phone_entered = False
+            for selector in phone_selectors:
+                try:
+                    phone_input = await page.wait_for_selector(selector, timeout=5000)
+                    await phone_input.clear()
+                    await phone_input.type(account.phone_number, delay=100)
+                    print(f"[LOGIN] 已输入手机号: {account.phone_number}")
+                    phone_entered = True
+                    break
+                except:
+                    continue
+            
+            if not phone_entered:
+                print("[LOGIN] 未找到手机号输入框")
+                return False
+            
+            # 点击获取验证码
+            code_btn_selectors = [
+                "button:has-text('获取验证码')",
+                "button:has-text('发送验证码')",
+                ".send-code-btn",
+                "[data-testid='send-code']"
+            ]
+            
+            for selector in code_btn_selectors:
+                try:
+                    code_btn = await page.wait_for_selector(selector, timeout=5000)
+                    await code_btn.click()
+                    print(f"[LOGIN] 已点击获取验证码按钮")
+                    return True
+                except:
+                    continue
+            
+            print("[LOGIN] 未找到验证码按钮")
+            return False
+            
+        except Exception as e:
+            print(f"[MULTI-ACCOUNT] 发送验证码失败 {account.display_name}: {e}")
+            return False
+
+    async def verify_code_and_login(self, account_id: str, verification_code: str) -> bool:
+        """使用验证码完成登录"""
+        if account_id not in self.accounts:
+            return False
+        
+        account = self.accounts[account_id]
+        page = self.pages[account_id]
+        
+        try:
+            print(f"[MULTI-ACCOUNT] 验证码登录: {account.display_name}")
+            
+            # 输入验证码
+            code_selectors = [
+                "input[placeholder*='验证码']",
+                "input[placeholder*='code']",
+                ".verify-code-input input",
+                "input[type='text'][maxlength='6']"
+            ]
+            
+            code_entered = False
+            for selector in code_selectors:
+                try:
+                    code_input = await page.wait_for_selector(selector, timeout=5000)
+                    await code_input.clear()
+                    await code_input.type(verification_code, delay=100)
+                    print(f"[LOGIN] 已输入验证码")
+                    code_entered = True
+                    break
+                except:
+                    continue
+            
+            if not code_entered:
+                print("[LOGIN] 未找到验证码输入框")
+                return False
+            
+            # 点击登录提交按钮
+            submit_selectors = [
+                "button:has-text('登录')",
+                "button:has-text('确认')",
+                "button[type='submit']",
+                ".login-submit-btn"
+            ]
+            
+            for selector in submit_selectors:
+                try:
+                    submit_btn = await page.wait_for_selector(selector, timeout=5000)
+                    await submit_btn.click()
+                    print(f"[LOGIN] 已提交登录")
+                    break
+                except:
+                    continue
+            
+            # 等待登录完成
+            await page.wait_for_timeout(5000)
+            
+            # 检查登录是否成功
+            if await self.check_login_status(account_id):
+                await self._save_cookies(account_id)
+                print(f"[MULTI-ACCOUNT] 账号 {account.display_name} 验证码登录成功")
+                return True
+            else:
+                print(f"[MULTI-ACCOUNT] 账号 {account.display_name} 验证码登录失败")
+                return False
+                
+        except Exception as e:
+            print(f"[MULTI-ACCOUNT] 验证码登录失败 {account.display_name}: {e}")
             return False
 
     async def _perform_login_flow(self, page: Page, account: AccountConfig):

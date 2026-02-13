@@ -253,6 +253,80 @@
       </div>
     </div>
   </div>
+
+  <!-- 验证码登录弹窗 -->
+  <div v-if="verificationModal.show" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div class="bg-slate-800 rounded-xl p-6 w-full max-w-md mx-4">
+      <h3 class="text-xl font-bold text-white mb-4">
+        {{ verificationModal.step === 'send' ? '发送验证码' : '验证码登录' }}
+      </h3>
+      
+      <div class="mb-4">
+        <p class="text-gray-300 mb-2">账号：{{ verificationModal.accountName }}</p>
+        
+        <div v-if="verificationModal.step === 'send'" class="text-gray-400 text-sm">
+          <p>将向绑定手机发送验证码</p>
+          <p>请确认手机号正确并保持畅通</p>
+        </div>
+        
+        <div v-else class="space-y-3">
+          <div>
+            <label class="block text-sm font-medium text-gray-300 mb-1">
+              验证码
+            </label>
+            <input
+              v-model="verificationModal.code"
+              type="text"
+              placeholder="请输入6位验证码"
+              maxlength="6"
+              class="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
+              @keyup.enter="verifyAndLogin"
+            />
+          </div>
+          <p class="text-gray-400 text-sm">
+            请输入收到的短信验证码
+          </p>
+        </div>
+      </div>
+      
+      <div class="flex justify-end space-x-3">
+        <button
+          type="button"
+          @click="closeVerificationModal"
+          :disabled="verificationModal.loading"
+          class="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors disabled:opacity-50"
+        >
+          取消
+        </button>
+        
+        <button
+          v-if="verificationModal.step === 'send'"
+          @click="sendVerificationCode"
+          :disabled="verificationModal.loading"
+          class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-50 flex items-center"
+        >
+          <svg v-if="verificationModal.loading" class="animate-spin h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="m4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+          {{ verificationModal.loading ? '发送中...' : '发送验证码' }}
+        </button>
+        
+        <button
+          v-else
+          @click="verifyAndLogin"
+          :disabled="verificationModal.loading || !verificationModal.code.trim()"
+          class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors disabled:opacity-50 flex items-center"
+        >
+          <svg v-if="verificationModal.loading" class="animate-spin h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="m4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+          {{ verificationModal.loading ? '登录中...' : '确认登录' }}
+        </button>
+      </div>
+    </div>
+  </div>
 </template>
 
 <script setup>
@@ -347,15 +421,88 @@ const addAccount = async () => {
   }
 }
 
+// 验证码登录状态
+const verificationModal = reactive({
+  show: false,
+  accountId: '',
+  accountName: '',
+  code: '',
+  loading: false,
+  step: 'send' // 'send' | 'verify'
+})
+
 // 登录账号
 const loginAccount = async (accountId) => {
   try {
-    await api.post(`/admin/accounts/${accountId}/login`)
-    await refreshAccounts()
-    alert('登录请求已发送，请在浏览器中完成验证码输入')
+    const response = await api.post(`/admin/accounts/${accountId}/login`)
+    
+    if (response.data.success) {
+      await refreshAccounts()
+      alert('登录成功！')
+    } else if (response.data.require_code) {
+      // 需要验证码登录
+      const account = accounts.value.find(acc => acc.account_id === accountId)
+      verificationModal.accountId = accountId
+      verificationModal.accountName = account?.display_name || accountId
+      verificationModal.step = 'send'
+      verificationModal.show = true
+    }
   } catch (error) {
     alert('登录失败: ' + error.response?.data?.detail)
   }
+}
+
+// 发送验证码
+const sendVerificationCode = async () => {
+  verificationModal.loading = true
+  try {
+    const response = await api.post(`/admin/accounts/${verificationModal.accountId}/send-code`)
+    if (response.data.success) {
+      verificationModal.step = 'verify'
+      alert('验证码已发送到绑定手机，请查收')
+    } else {
+      alert('发送验证码失败')
+    }
+  } catch (error) {
+    alert('发送验证码失败: ' + error.response?.data?.detail)
+  } finally {
+    verificationModal.loading = false
+  }
+}
+
+// 验证码登录
+const verifyAndLogin = async () => {
+  if (!verificationModal.code.trim()) {
+    alert('请输入验证码')
+    return
+  }
+  
+  verificationModal.loading = true
+  try {
+    const response = await api.post(`/admin/accounts/${verificationModal.accountId}/verify-code`, {
+      verification_code: verificationModal.code
+    })
+    
+    if (response.data.success) {
+      verificationModal.show = false
+      verificationModal.code = ''
+      await refreshAccounts()
+      alert('登录成功！')
+    } else {
+      alert('登录失败，请检查验证码是否正确')
+    }
+  } catch (error) {
+    alert('验证码登录失败: ' + error.response?.data?.detail)
+  } finally {
+    verificationModal.loading = false
+  }
+}
+
+// 关闭验证码弹窗
+const closeVerificationModal = () => {
+  verificationModal.show = false
+  verificationModal.code = ''
+  verificationModal.step = 'send'
 }
 
 // 切换账号状态

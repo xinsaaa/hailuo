@@ -100,18 +100,45 @@ async def update_account(
 
 @router.post("/{account_id}/login")
 async def login_account(account_id: str, admin=Depends(get_admin_user)):
-    """手动登录账号"""
-    if account_id not in automation_v2.manager.accounts:
-        raise HTTPException(status_code=404, detail="账号不存在")
-    
+    """尝试使用Cookie登录账号"""
     try:
-        success = await automation_v2.manager.login_account(account_id)
-        if success:
-            return {"message": "登录成功", "account_id": account_id}
+        result = await automation_v2.manager.login_account(account_id)
+        if result:
+            return {"message": f"账号 {account_id} 登录成功", "success": True}
         else:
-            raise HTTPException(status_code=400, detail="登录失败")
+            # 登录失败，可能需要验证码
+            return {"message": f"账号 {account_id} 需要验证码登录", "success": False, "require_code": True}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"登录过程出错: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"登录失败: {str(e)}")
+
+
+@router.post("/{account_id}/send-code")
+async def send_verification_code(account_id: str, admin=Depends(get_admin_user)):
+    """发送验证码到账号手机"""
+    try:
+        result = await automation_v2.manager.send_verification_code(account_id)
+        if result:
+            return {"message": "验证码已发送", "success": True}
+        else:
+            raise HTTPException(status_code=400, detail="发送验证码失败")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"发送验证码失败: {str(e)}")
+
+
+class VerificationCodeRequest(BaseModel):
+    verification_code: str
+
+@router.post("/{account_id}/verify-code")
+async def verify_and_login(account_id: str, data: VerificationCodeRequest, admin=Depends(get_admin_user)):
+    """使用验证码完成登录"""
+    try:
+        result = await automation_v2.manager.verify_code_and_login(account_id, data.verification_code)
+        if result:
+            return {"message": f"账号 {account_id} 登录成功", "success": True}
+        else:
+            raise HTTPException(status_code=400, detail="验证码错误或登录失败")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"验证码登录失败: {str(e)}")
 
 
 @router.post("/{account_id}/logout")
