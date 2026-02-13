@@ -475,7 +475,7 @@ class MultiAccountManager:
             print(f"[LOGIN] 登录流程执行失败: {e}")
 
     async def check_login_status(self, account_id: str) -> bool:
-        """检查账号登录状态 - 参考原版本逻辑"""
+        """检查账号登录状态 - 恢复简洁有效的版本"""
         if account_id not in self.pages:
             return False
         
@@ -490,75 +490,29 @@ class MultiAccountManager:
             
             # 方法1: 检查是否存在登录按钮（如果存在登录按钮 = 未登录）
             try:
-                login_selectors = [
-                    "div.border-hl_line_00:has-text('登录')",
-                    "button:has-text('登录')",
-                    "a:has-text('登录')"
-                ]
-                
-                for selector in login_selectors:
-                    try:
-                        login_btn = await page.wait_for_selector(selector, timeout=3000)
-                        if login_btn and await login_btn.is_visible():
-                            print(f"[MULTI-ACCOUNT] ❌ 账号 {account_id} 发现登录按钮，未登录状态")
-                            return False
-                    except:
-                        continue
+                login_btn = await page.wait_for_selector("div.border-hl_line_00:has-text('登录')", timeout=3000)
+                if login_btn and await login_btn.is_visible():
+                    print(f"[MULTI-ACCOUNT] ❌ 账号 {account_id} 发现登录按钮，未登录状态")
+                    return False
             except:
                 # 没有找到登录按钮，可能已登录，继续检查
                 pass
             
             # 方法2: 访问创建页面检查视频创建输入框（如果存在 = 已登录）
             await page.goto("https://hailuoai.com/create/image-to-video", timeout=15000)
-            await page.wait_for_timeout(3000)
+            await page.wait_for_timeout(2000)
             
             try:
-                # 检查是否被重定向到登录页面
-                current_url = page.url
-                if "login" in current_url.lower() or "auth" in current_url.lower():
-                    print(f"[MULTI-ACCOUNT] ❌ 账号 {account_id} 被重定向到登录页面，未登录")
-                    return False
-                
-                # 再次检查是否有登录按钮（在创建页面上也可能出现）
-                login_elements = await page.query_selector_all("button:has-text('登录'), a:has-text('登录')")
-                if login_elements:
-                    for element in login_elements:
-                        if await element.is_visible():
-                            print(f"[MULTI-ACCOUNT] ❌ 账号 {account_id} 创建页面仍显示登录按钮，未登录")
-                            return False
-                
                 # 检查视频创建输入框
-                create_selectors = [
-                    "#video-create-input [contenteditable='true']",
-                    "textarea[placeholder*='描述']", 
-                    "div[contenteditable='true']",
-                    ".create-input",
-                    "input[placeholder*='视频']"
-                ]
-                
-                for selector in create_selectors:
-                    try:
-                        create_input = await page.wait_for_selector(selector, timeout=3000)
-                        if create_input and await create_input.is_visible():
-                            # 再次验证：尝试与输入框交互
-                            try:
-                                await create_input.click()
-                                await page.wait_for_timeout(1000)
-                                placeholder_text = await create_input.get_attribute("placeholder")
-                                if placeholder_text or await create_input.is_editable():
-                                    print(f"[MULTI-ACCOUNT] ✅ 账号 {account_id} 创建输入框可用，确认已登录")
-                                    return True
-                            except:
-                                continue
-                    except:
-                        continue
-                        
-                print(f"[MULTI-ACCOUNT] ❌ 账号 {account_id} 未找到可用的创建输入框，未登录")
-                return False
-                
-            except Exception as e:
-                print(f"[MULTI-ACCOUNT] ❌ 账号 {account_id} 检查创建输入框失败: {e}")
-                return False
+                create_input = await page.wait_for_selector("#video-create-input [contenteditable='true']", timeout=5000)
+                if create_input and await create_input.is_visible():
+                    print(f"[MULTI-ACCOUNT] ✅ 账号 {account_id} 找到创建输入框，确认已登录")
+                    return True
+            except:
+                pass
+            
+            print(f"[MULTI-ACCOUNT] ❓ 账号 {account_id} 登录状态不明确，假设未登录")
+            return False
             
         except Exception as e:
             print(f"[MULTI-ACCOUNT] 检查登录状态失败 {account_id}: {e}")
