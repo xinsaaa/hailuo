@@ -29,48 +29,37 @@ const needCaptcha = ref(false)
 // 鼠标跟随效果
 const mouseX = ref(0)
 
-// 用户名验证
+// 用户名验证（与后端规则保持一致：支持中文、字母、数字、下划线，最少3位）
 const usernameError = ref('')
 const validateUsername = (username) => {
   if (!username) {
     return '请输入用户名'
   }
   
-  // 长度检查
-  if (username.length < 4) {
-    return '用户名至少需要4个字符'
+  // 长度检查（与后端一致：3-20）
+  if (username.length < 3) {
+    return '用户名至少需要3个字符'
   }
   if (username.length > 20) {
     return '用户名不能超过20个字符'
   }
   
-  // 字符检查 - 只允许字母、数字、下划线，必须以字母开头
-  if (!/^[a-zA-Z][a-zA-Z0-9_]*$/.test(username)) {
-    return '用户名必须以字母开头，只能包含字母、数字和下划线'
+  // 字符检查 - 支持中文、字母、数字、下划线
+  if (!/^[\u4e00-\u9fa5a-zA-Z0-9_]+$/.test(username)) {
+    return '用户名只能包含中文、字母、数字和下划线'
   }
   
-  // 必须包含字母
-  if (!/[a-zA-Z]/.test(username)) {
-    return '用户名必须包含至少一个字母'
+  // 不能全是数字
+  if (/^\d+$/.test(username)) {
+    return '用户名不能全是数字'
   }
   
-  // 敏感词检查
-  const forbiddenWords = [
-    'admin', 'administrator', 'root', 'system', 'test',
-    'user', 'guest', 'null', 'undefined', 'bot', 'api',
-    'service', 'support', 'help', 'info', 'mail', 'email'
-  ]
+  // 系统保留词检查（只禁止系统关键词，与后端一致）
+  const forbiddenWords = ['admin', 'administrator', 'root', 'system']
   
   const usernameLower = username.toLowerCase()
-  for (const word of forbiddenWords) {
-    if (usernameLower.includes(word)) {
-      return '用户名包含敏感词，请重新输入'
-    }
-  }
-  
-  // 连续字符检查
-  if (/(.)\1{2,}/.test(username)) {
-    return '用户名不能包含3个以上连续相同字符'
+  if (forbiddenWords.includes(usernameLower)) {
+    return '该用户名为系统保留词，请换一个'
   }
   
   return ''
