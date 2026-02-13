@@ -229,6 +229,7 @@ class MultiAccountManager:
             if await self.check_login_status(account_id):
                 print(f"[MULTI-ACCOUNT] ✅ 账号 {account.display_name} 已确认登录")
                 await self._save_cookies(account_id)
+                self.mark_account_logged_in(account_id)  # 标记已验证登录
                 return True
             
             # 未登录，需要验证码登录流程
@@ -395,9 +396,11 @@ class MultiAccountManager:
             # 检查登录是否成功
             if await self.check_login_status(account_id):
                 await self._save_cookies(account_id)
+                self.mark_account_logged_in(account_id)  # 标记已验证登录
                 print(f"[MULTI-ACCOUNT] 账号 {account.display_name} 验证码登录成功")
                 return True
             else:
+                self.mark_account_logged_out(account_id)  # 标记登录失败
                 print(f"[MULTI-ACCOUNT] 账号 {account.display_name} 验证码登录失败")
                 return False
                 
@@ -768,19 +771,53 @@ class MultiAccountManager:
         """获取所有账号状态"""
         status = {}
         for account_id, account in self.accounts.items():
-            # 检查真实登录状态：需要同时满足有上下文且Cookie文件存在
-            has_context = account_id in self.contexts
-            has_saved_state = self._check_saved_login_state(account_id)
+            # 更严格的登录状态检查：只有通过真实验证的才算已登录
+            is_logged_in = self._verify_real_login_status(account_id)
             
             status[account_id] = {
                 "display_name": account.display_name,
                 "is_active": account.is_active,
                 "current_tasks": account.current_tasks,
                 "max_concurrent": account.max_concurrent,
-                "is_logged_in": has_context and has_saved_state,
+                "is_logged_in": is_logged_in,
                 "utilization": account.current_tasks / account.max_concurrent if account.max_concurrent > 0 else 0
             }
         return status
+
+    def _verify_real_login_status(self, account_id: str) -> bool:
+        """严格验证账号的真实登录状态"""
+        try:
+            # 1. 必须有浏览器上下文
+            if account_id not in self.contexts:
+                return False
+            
+            # 2. 必须有保存的状态文件
+            if not self._check_saved_login_state(account_id):
+                return False
+            
+            # 3. 标记为需要真实验证（避免误判）
+            # 这里我们不再假设有文件就是已登录，需要通过实际API调用验证
+            print(f"[MULTI-ACCOUNT] 📋 账号 {account_id} 状态: 上下文存在={account_id in self.contexts}, 状态文件存在={self._check_saved_login_state(account_id)}")
+            
+            # 简化判断：只有明确验证过登录成功的才算已登录
+            return hasattr(self, '_verified_accounts') and account_id in getattr(self, '_verified_accounts', set())
+            
+        except Exception as e:
+            print(f"[MULTI-ACCOUNT] 验证登录状态失败 {account_id}: {e}")
+            return False
+
+    def mark_account_logged_in(self, account_id: str):
+        """标记账号已验证登录"""
+        if not hasattr(self, '_verified_accounts'):
+            self._verified_accounts = set()
+        self._verified_accounts.add(account_id)
+        print(f"[MULTI-ACCOUNT] ✅ 标记账号 {account_id} 已验证登录")
+
+    def mark_account_logged_out(self, account_id: str):
+        """标记账号已登出"""
+        if hasattr(self, '_verified_accounts'):
+            self._verified_accounts.discard(account_id)
+        print(f"[MULTI-ACCOUNT] ❌ 标记账号 {account_id} 已登出")
 
     def _check_saved_login_state(self, account_id: str) -> bool:
         """检查是否存在已保存的登录状态（兼容新旧格式）"""

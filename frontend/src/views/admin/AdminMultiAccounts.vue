@@ -495,8 +495,9 @@ const loginAccount = async (accountId) => {
     if (response.data.success) {
       await refreshAccounts()
       alert('登录成功！')
-    } else if (response.data.require_code) {
+    } else if (response.data.require_code || !response.data.success) {
       // 需要验证码登录
+      console.log('需要验证码登录，账号:', accountId)
       const account = accounts.value.find(acc => acc.account_id === accountId)
       verificationModal.accountId = accountId
       verificationModal.accountName = account?.display_name || accountId
@@ -504,7 +505,17 @@ const loginAccount = async (accountId) => {
       verificationModal.show = true
     }
   } catch (error) {
-    alert('登录失败: ' + error.response?.data?.detail)
+    console.error('登录失败:', error)
+    // 如果是500错误，也可能需要验证码登录
+    if (error.response?.status === 500) {
+      const account = accounts.value.find(acc => acc.account_id === accountId)
+      verificationModal.accountId = accountId
+      verificationModal.accountName = account?.display_name || accountId
+      verificationModal.step = 'send'
+      verificationModal.show = true
+    } else {
+      alert('登录失败: ' + (error.response?.data?.detail || error.message))
+    }
   }
 }
 
