@@ -420,7 +420,7 @@ class MultiAccountManager:
             return False
 
     async def check_login_status(self, account_id: str) -> bool:
-        """检查账号登录状态 - 恢复简洁有效的版本"""
+        """检查账号登录状态 - 必须有明确证据才返回True"""
         if account_id not in self.pages:
             return False
         
@@ -431,24 +431,46 @@ class MultiAccountManager:
             
             # 访问海螺AI主页检查登录状态
             await page.goto("https://hailuoai.com", timeout=15000)
-            await page.wait_for_timeout(2000)
+            await page.wait_for_timeout(3000)
             
-            # 方法1: 检查是否存在登录按钮（如果存在登录按钮 = 未登录）
-            try:
-                login_btn = await page.wait_for_selector("div.border-hl_line_00:has-text('登录')", timeout=3000)
-                if login_btn and await login_btn.is_visible():
-                    print(f"[MULTI-ACCOUNT] ❌ 账号 {account_id} 发现登录按钮，未登录状态")
-                    return False
-            except:
-                # 没有找到登录按钮，可能已登录，继续检查
-                pass
+            # 确认页面已加载到海螺AI（防止加载失败导致误判）
+            current_url = page.url
+            if "hailuoai.com" not in current_url:
+                print(f"[MULTI-ACCOUNT] ❌ 页面未加载到海螺AI: {current_url}")
+                return False
+            
+            # 方法1: 检查是否存在登录按钮（多个选择器覆盖改版情况）
+            login_selectors = [
+                "div.border-hl_line_00:has-text('登录')",
+                "button:has-text('登录')",
+                "a:has-text('登录')",
+                "span:has-text('登录')",
+            ]
+            for selector in login_selectors:
+                try:
+                    login_btn = await page.wait_for_selector(selector, timeout=2000)
+                    if login_btn and await login_btn.is_visible():
+                        print(f"[MULTI-ACCOUNT] ❌ 账号 {account_id} 发现登录按钮，未登录状态")
+                        return False
+                except:
+                    continue
             
             # 方法2: 访问创建页面检查视频创建输入框（如果存在 = 已登录）
             await page.goto("https://hailuoai.com/create/image-to-video", timeout=15000)
-            await page.wait_for_timeout(2000)
+            await page.wait_for_timeout(3000)
+            
+            # 检查是否被重定向到登录页（未登录通常会重定向）
+            current_url = page.url
+            if "login" in current_url or "signin" in current_url:
+                print(f"[MULTI-ACCOUNT] ❌ 账号 {account_id} 被重定向到登录页: {current_url}")
+                return False
+            
+            # 必须在create页面才算已登录
+            if "/create" not in current_url:
+                print(f"[MULTI-ACCOUNT] ❌ 账号 {account_id} 未停留在创建页面: {current_url}")
+                return False
             
             try:
-                # 检查视频创建输入框
                 create_input = await page.wait_for_selector("#video-create-input [contenteditable='true']", timeout=5000)
                 if create_input and await create_input.is_visible():
                     print(f"[MULTI-ACCOUNT] ✅ 账号 {account_id} 找到创建输入框，确认已登录")
@@ -456,7 +478,7 @@ class MultiAccountManager:
             except:
                 pass
             
-            print(f"[MULTI-ACCOUNT] ❓ 账号 {account_id} 登录状态不明确，假设未登录")
+            print(f"[MULTI-ACCOUNT] ❓ 账号 {account_id} 登录状态不明确，判定为未登录")
             return False
             
         except Exception as e:
@@ -755,17 +777,18 @@ class MultiAccountManager:
     def _check_saved_login_state(self, account_id: str) -> bool:
         """检查是否存在已保存的登录状态（兼容新旧格式）"""
         try:
-            # 新格式：单个storage_state.json文件
+            # 新格式：单个storage_state.json文件（每个账号独立）
             storage_file = self.data_dir / "profiles" / account_id / "storage_state.json"
             if storage_file.exists():
                 return True
             
-            # 兼容旧格式：cookies.json + localStorage.json
-            old_cookies_file = Path("login_state") / "cookies.json"
-            old_localStorage_file = Path("login_state") / "localStorage.json"
-            if old_cookies_file.exists() and old_localStorage_file.exists():
-                print(f"[MULTI-ACCOUNT] 检测到旧格式登录状态文件，账号 {account_id}")
-                return True
+            # 兼容旧格式：只对主账号有效（旧格式是全局文件，不属于特定账号）
+            if account_id == "hailuo_main":
+                old_cookies_file = Path("login_state") / "cookies.json"
+                old_localStorage_file = Path("login_state") / "localStorage.json"
+                if old_cookies_file.exists() and old_localStorage_file.exists():
+                    print(f"[MULTI-ACCOUNT] 检测到旧格式登录状态文件，账号 {account_id}")
+                    return True
             
             return False
         except Exception:
