@@ -464,7 +464,7 @@ class MultiAccountManager:
             return False
 
     async def check_login_status(self, account_id: str) -> bool:
-        """检查账号登录状态 - 必须有明确证据才返回True"""
+        """检查账号登录状态 - 参考automation.py的选择器和逻辑"""
         if account_id not in self.pages:
             return False
         
@@ -473,52 +473,33 @@ class MultiAccountManager:
         try:
             print(f"[MULTI-ACCOUNT] 🔍 检查账号 {account_id} 登录状态...")
             
-            # 访问海螺AI主页检查登录状态
+            # 访问海螺AI主页
             await page.goto("https://hailuoai.com", timeout=15000)
-            await page.wait_for_timeout(3000)
+            await page.wait_for_timeout(2000)
             
-            # 确认页面已加载到海螺AI（防止加载失败导致误判）
+            # 确认页面已加载到海螺AI
             current_url = page.url
             if "hailuoai.com" not in current_url:
                 print(f"[MULTI-ACCOUNT] ❌ 页面未加载到海螺AI: {current_url}")
                 return False
             
-            # 方法1: 检查是否存在登录按钮（多个选择器覆盖改版情况）
-            login_selectors = [
-                "div.border-hl_line_00:has-text('登录')",
-                "button:has-text('登录')",
-                "a:has-text('登录')",
-                "span:has-text('登录')",
-            ]
-            for selector in login_selectors:
-                try:
-                    login_btn = await page.wait_for_selector(selector, timeout=2000)
-                    if login_btn and await login_btn.is_visible():
-                        print(f"[MULTI-ACCOUNT] ❌ 账号 {account_id} 发现登录按钮，未登录状态")
-                        return False
-                except:
-                    continue
-            
-            # 方法2: 访问创建页面检查视频创建输入框（如果存在 = 已登录）
-            await page.goto("https://hailuoai.com/create/image-to-video", timeout=15000)
-            await page.wait_for_timeout(3000)
-            
-            # 检查是否被重定向到登录页（未登录通常会重定向）
-            current_url = page.url
-            if "login" in current_url or "signin" in current_url:
-                print(f"[MULTI-ACCOUNT] ❌ 账号 {account_id} 被重定向到登录页: {current_url}")
-                return False
-            
-            # 必须在create页面才算已登录
-            if "/create" not in current_url:
-                print(f"[MULTI-ACCOUNT] ❌ 账号 {account_id} 未停留在创建页面: {current_url}")
-                return False
-            
+            # 方法1: 检查登录按钮（与automation.py一致）
+            login_btn = page.locator("div.border-hl_line_00:has-text('登录')").first
             try:
-                create_input = await page.wait_for_selector("#video-create-input [contenteditable='true']", timeout=5000)
-                if create_input and await create_input.is_visible():
-                    print(f"[MULTI-ACCOUNT] ✅ 账号 {account_id} 找到创建输入框，确认已登录")
-                    return True
+                await login_btn.wait_for(state="visible", timeout=10000)
+                is_visible = await login_btn.is_visible()
+                if is_visible:
+                    print(f"[MULTI-ACCOUNT] ❌ 账号 {account_id} 发现登录按钮，未登录状态")
+                    return False
+            except:
+                print(f"[MULTI-ACCOUNT] ℹ️ 未找到登录按钮，可能已登录，继续验证...")
+            
+            # 方法2: 检查视频创建入口（与automation.py一致）
+            try:
+                create_input = page.locator("#video-create-input").first
+                await create_input.wait_for(state="visible", timeout=5000)
+                print(f"[MULTI-ACCOUNT] ✅ 账号 {account_id} 找到创建入口，确认已登录")
+                return True
             except:
                 pass
             
