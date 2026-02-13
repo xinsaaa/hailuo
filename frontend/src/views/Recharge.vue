@@ -79,8 +79,13 @@ const handleRecharge = async (amount) => {
 
 const handleCustomRecharge = async () => {
   const min = config.value.min_recharge
+  const max = config.value.max_recharge
   if (!customAmount.value || customAmount.value < min) {
     showNotification(`最低充值金额为 ${min} 元`, 'error')
+    return
+  }
+  if (customAmount.value > max) {
+    showNotification(`单笔充值最高 ${max} 元`, 'error')
     return
   }
   handleRecharge(customAmount.value)
@@ -197,9 +202,10 @@ onUnmounted(() => {
                 <div class="flex justify-between items-center">
                   <div>
                     <div class="font-bold text-white text-lg">¥ {{ opt.amount }}</div>
-                    <div :class="`text-xs font-semibold bg-gradient-to-r ${opt.gradient} bg-clip-text text-transparent`">
-                      赠送 ¥{{ opt.bonus }}
+                    <div v-if="opt.bonus > 0" :class="`text-xs font-semibold bg-gradient-to-r ${opt.gradient} bg-clip-text text-transparent`">
+                      赠送 ¥{{ opt.bonus }} · 到账 ¥{{ (opt.amount + opt.bonus).toFixed(2) }}
                     </div>
+                    <div v-else class="text-xs text-gray-500">到账 ¥{{ opt.amount.toFixed(2) }}</div>
                   </div>
                   <div class="h-10 w-10 rounded-full bg-white/5 flex items-center justify-center group-hover/btn:bg-cyan-500/20 transition-all duration-300 group-hover/btn:scale-110">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-400 group-hover/btn:text-cyan-400 transition-colors" viewBox="0 0 20 20" fill="currentColor">

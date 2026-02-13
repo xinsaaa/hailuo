@@ -35,6 +35,18 @@ const lastFrameImage = ref(null)
 const firstFramePreview = ref(null)
 const lastFramePreview = ref(null)
 
+// prompt字数限制
+const maxPromptLength = 500
+const promptLength = computed(() => prompt.value.length)
+
+// Ctrl+Enter 快捷提交
+const handleKeydown = (e) => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+    e.preventDefault()
+    handleCreateOrder()
+  }
+}
+
 // 系统配置（从 API 加载）
 const config = ref({
   bonus_rate: 0.2,
@@ -54,22 +66,27 @@ const handleMouseMove = (e) => {
 
 // 订单自动刷新
 let ordersInterval = null
+let pollCount = 0
 
 const startOrdersPolling = () => {
   if (ordersInterval) return
-  ordersInterval = setInterval(async () => {
-    // 检查是否有处理中的订单
+  const poll = async () => {
     const hasProcessing = orders.value.some(o => 
       o.status === 'pending' || o.status === 'processing' || o.status === 'generating'
     )
     if (hasProcessing) {
+      pollCount = 0
       try {
         orders.value = await getOrders()
-      } catch (err) {
-        console.error('刷新订单失败', err)
-      }
+      } catch (err) { /* ignore */ }
+    } else {
+      pollCount++
     }
-  }, 1500) // 1.5秒刷新一次
+    // 渐进式轮询：有处理中订单2s，无处理中3→5→10s
+    const interval = hasProcessing ? 2000 : Math.min(3000 + pollCount * 2000, 10000)
+    ordersInterval = setTimeout(poll, interval)
+  }
+  ordersInterval = setTimeout(poll, 2000)
 }
 
 // 点击外部关闭模型选择器
@@ -81,21 +98,16 @@ const handleClickOutside = (event) => {
 
 // 监听路由参数变化
 watch(() => route.query.series, (newSeries) => {
-  console.log('🔄 [WATCH] 系列变化:', newSeries)
   modelSeries.value = newSeries || 'all'
-  loadData() // 重新加载数据以应用新的过滤
+  loadData()
 })
 
 // 监听可用模型变化，自动选择合适的模型
 watch(() => availableModels.value, (newModels) => {
-  console.log('🔄 [WATCH] 可用模型变化:', newModels.length, '个模型')
   if (newModels.length > 0) {
-    // 如果当前选中的模型不在新的模型列表中，重新选择
     const currentModelInList = newModels.find(m => m.id === selectedModel.value?.id)
     if (!currentModelInList) {
-      // 选择默认模型或第一个模型
       selectedModel.value = newModels.find(m => m.is_default) || newModels[0]
-      console.log('🔄 [WATCH] 自动切换模型:', selectedModel.value?.id, '价格:', selectedModel.value?.price)
     }
   }
 }, { deep: true })
@@ -110,7 +122,7 @@ onMounted(() => {
 onUnmounted(() => {
   window.removeEventListener('mousemove', handleMouseMove)
   document.removeEventListener('click', handleClickOutside)
-  if (ordersInterval) clearInterval(ordersInterval)
+  if (ordersInterval) clearTimeout(ordersInterval)
 })
 
 // Toast 状态
@@ -144,53 +156,31 @@ const loadData = async () => {
       config.value = configData
     }
     if (modelsData && modelsData.models) {
-      console.log('🔍 [DEBUG] 所有模型:', modelsData.models.map(m => `${m.id} - ¥${m.price}`))
-      console.log('🔍 [DEBUG] 当前系列:', modelSeries.value)
-      console.log('🔍 [DEBUG] 模型总数:', modelsData.models.length)
-      
       // 根据系列过滤模型
       let filteredModels = modelsData.models
       if (modelSeries.value === '2.3') {
-        // 只显示2.3系列模型（包含2.0、2.3等）
         filteredModels = modelsData.models.filter(model => 
           model.id.includes('2_0') || 
           model.id.includes('2_3') || 
-          model.id.includes('hailuo_1_0') // 1.0系列归到2.3
+          model.id.includes('hailuo_1_0')
         )
-        console.log('🔍 [DEBUG] 2.3系列过滤结果:', filteredModels.length, '个模型')
-        console.log('🔍 [DEBUG] 2.3系列模型列表:', filteredModels.map(m => `${m.id} - ¥${m.price}`))
       } else if (modelSeries.value === '3.1') {
-        // 只显示3.1系列模型（包括beta_3_1）
         filteredModels = modelsData.models.filter(model => 
           model.id.includes('3_1') || 
-          model.id.includes('beta_3')  // 修改：包含所有beta_3开头的模型
+          model.id.includes('beta_3')
         )
-        console.log('🔍 [DEBUG] 3.1系列过滤结果:', filteredModels.length, '个模型')
-        console.log('🔍 [DEBUG] 3.1系列模型列表:', filteredModels.map(m => `${m.id} - ¥${m.price}`))
-      } else {
-        console.log('🔍 [DEBUG] 显示所有模型:', filteredModels.length, '个')
       }
       
       availableModels.value = filteredModels
-      console.log('🔍 [DEBUG] 最终可用模型数量:', availableModels.value.length)
-      console.log('🔍 [DEBUG] 最终可用模型列表:', availableModels.value.map(m => `${m.id} - ¥${m.price}`))
       
-      // 设置默认选中模型
       if (filteredModels.length > 0) {
-        // 如果当前选中的模型不在过滤后的列表中，重新选择
         const currentModelInList = filteredModels.find(m => m.id === selectedModel.value?.id)
         if (!currentModelInList) {
           selectedModel.value = filteredModels.find(m => m.is_default) || filteredModels[0]
-          console.log('🔄 [DEBUG] 切换到新模型:', selectedModel.value?.id, '价格:', selectedModel.value?.price)
-        } else {
-          console.log('✅ [DEBUG] 保持当前模型:', selectedModel.value?.id, '价格:', selectedModel.value?.price)
         }
       } else {
-        console.warn('⚠️ [DEBUG] 过滤后没有可用模型！')
         selectedModel.value = null
       }
-    } else {
-      console.error('❌ [DEBUG] 没有收到模型数据！')
     }
   } catch (err) {
     if (err.response?.status === 401) {
@@ -212,7 +202,7 @@ const handleCreateOrder = async () => {
   
   const modelPrice = selectedModel.value?.price || 0.99
   if (!user.value || user.value.balance < modelPrice) {
-    showNotification(`余额不足，需 ¥${modelPrice.toFixed(2)}`, 'error')
+    showBalanceInsufficient(modelPrice)
     return
   }
   
@@ -296,9 +286,24 @@ const statusMap = {
   failed: { text: '失败', class: 'bg-red-500/20 text-red-400 border-red-500/30' },
 }
 
+// 余额不足提示（带充值引导）
+const showInsufficientModal = ref(false)
+const insufficientPrice = ref(0)
+
+const showBalanceInsufficient = (price) => {
+  insufficientPrice.value = price
+  showInsufficientModal.value = true
+}
+
+// 失败订单重试
+const retryOrder = async (order) => {
+  prompt.value = order.prompt
+  showNotification('已填入原始描述，请点击生成', 'info')
+}
+
 const copyInviteCode = () => {
   if (!user.value || !user.value.invite_code) return
-  const inviteLink = `${window.location.origin}/register?invite=${user.value.invite_code}`
+  const inviteLink = `${window.location.origin}/login?invite=${user.value.invite_code}`
   navigator.clipboard.writeText(inviteLink).then(() => {
     showNotification('邀请链接已复制！快去分享吧', 'success')
   }).catch(() => {
@@ -499,12 +504,16 @@ const handleLogout = () => {
                 <div class="absolute -inset-0.5 bg-gradient-to-r from-cyan-500/20 to-purple-500/20 rounded-2xl blur opacity-0 group-hover:opacity-100 transition duration-500"></div>
                 <textarea 
                   v-model="prompt"
+                  :maxlength="maxPromptLength"
+                  @keydown="handleKeydown"
                   placeholder="请输入详细的画面描述... (例如: 赛博朋克风格的雨夜街道，霓虹灯闪烁)"
                   class="relative w-full h-40 p-6 rounded-2xl bg-black/20 border border-white/10 text-white placeholder-gray-500 outline-none focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/20 transition-all resize-none text-lg shadow-inner backdrop-blur-sm"
                 ></textarea>
-                <div class="absolute bottom-4 right-4 text-xs text-gray-500 flex items-center gap-1 bg-black/20 px-2 py-1 rounded-lg border border-white/5 backdrop-blur-md pointer-events-none">
-                  <svg class="w-3 h-3 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
-                  支持中文 · 自动优化
+                <div class="absolute bottom-4 right-4 flex items-center gap-3 pointer-events-none">
+                  <span class="text-xs px-2 py-1 rounded-lg bg-black/20 border border-white/5 backdrop-blur-md" :class="promptLength > maxPromptLength * 0.9 ? 'text-orange-400' : 'text-gray-500'">{{ promptLength }}/{{ maxPromptLength }}</span>
+                  <span class="text-xs text-gray-500 bg-black/20 px-2 py-1 rounded-lg border border-white/5 backdrop-blur-md hidden sm:inline-flex items-center gap-1">
+                    <kbd class="px-1 py-0.5 bg-white/10 rounded text-[10px] font-mono">Ctrl</kbd>+<kbd class="px-1 py-0.5 bg-white/10 rounded text-[10px] font-mono">Enter</kbd> 发送
+                  </span>
                 </div>
               </div>
               
@@ -668,6 +677,14 @@ const handleLogout = () => {
                          </svg>
                          <span class="font-bold">观看视频</span>
                       </a>
+                      <button v-if="order.status === 'failed'"
+                        @click="retryOrder(order)"
+                        class="px-3 py-1 bg-orange-500/10 hover:bg-orange-500/20 text-orange-400 text-xs rounded-full border border-orange-500/20 hover:border-orange-500/40 transition-all flex items-center gap-1.5">
+                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                        </svg>
+                        <span class="font-bold">重试</span>
+                      </button>
                     </div>
                   </div>
                   <div>
@@ -708,6 +725,28 @@ const handleLogout = () => {
 
       </div>
     </div>
+    
+    <!-- 余额不足弹窗 -->
+    <Transition name="toast">
+      <div v-if="showInsufficientModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50" @click.self="showInsufficientModal = false">
+        <div class="bg-[#0f1115]/95 border border-white/10 rounded-2xl p-8 max-w-sm w-full mx-4 shadow-2xl">
+          <div class="text-center">
+            <div class="w-16 h-16 bg-orange-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
+              <svg class="w-8 h-8 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              </svg>
+            </div>
+            <h3 class="text-lg font-bold text-white mb-2">余额不足</h3>
+            <p class="text-gray-400 text-sm mb-1">本次生成需要 <span class="text-white font-bold">¥{{ insufficientPrice.toFixed(2) }}</span></p>
+            <p class="text-gray-500 text-sm mb-6">当前余额 <span class="text-orange-400 font-bold">¥{{ formattedBalance }}</span></p>
+            <div class="flex gap-3">
+              <button @click="showInsufficientModal = false" class="flex-1 py-2.5 bg-white/5 hover:bg-white/10 text-gray-300 rounded-xl text-sm font-medium border border-white/10 transition-all">取消</button>
+              <button @click="showInsufficientModal = false; router.push('/recharge')" class="flex-1 py-2.5 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white rounded-xl text-sm font-bold transition-all shadow-lg shadow-cyan-900/30">去充值</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Transition>
   </div>
 </template>
 

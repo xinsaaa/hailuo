@@ -202,7 +202,7 @@ onMounted(async () => {
   }
   
   // 首次加载等待后端服务就绪
-  await new Promise(resolve => setTimeout(resolve, 1500))
+  await new Promise(resolve => setTimeout(resolve, 500))
   
   try {
     await checkSecurityStatus()
