@@ -338,7 +338,19 @@ class MultiAccountManager:
                     print("[LOGIN] 未找到手机号输入框")
                     return False
             
-            # 5. 点击获取验证码（与automation.py一致）
+            # 5. 勾选用户协议（与automation.py一致：button.rounded-full:has(svg)）
+            try:
+                agree_btn = page.locator("button.rounded-full:has(svg)").first
+                if await agree_btn.is_visible():
+                    await agree_btn.click()
+                    await page.wait_for_timeout(300)
+                    print(f"[LOGIN] 已勾选用户协议")
+                else:
+                    print(f"[LOGIN] 未找到用户协议勾选框（可能已勾选）")
+            except:
+                print(f"[LOGIN] 用户协议勾选框未找到")
+            
+            # 6. 点击获取验证码（与automation.py一致）
             # 截图：点击验证码前
             try:
                 await page.screenshot(path=f"debug_before_send_code_{account_id}.png")
