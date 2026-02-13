@@ -29,9 +29,11 @@ class AccountUpdateRequest(BaseModel):
 @router.get("/list")
 def list_accounts(admin=Depends(get_admin_user)):
     """获取所有账号列表"""
+    # 一次性获取所有账号状态，避免循环内重复调用
+    all_status = automation_v2.manager.get_account_status()
     accounts = []
     for account_id, account in automation_v2.manager.accounts.items():
-        status = automation_v2.manager.get_account_status().get(account_id, {})
+        status = all_status.get(account_id, {})
         accounts.append({
             "account_id": account_id,
             "phone_number": account.phone_number,
@@ -94,6 +96,10 @@ async def update_account(
         account.max_concurrent = data.max_concurrent
     if data.is_active is not None:
         await toggle_account(account_id, data.is_active)
+    
+    # 保存配置到文件（toggle_account内部会保存，但其他字段修改也需要保存）
+    accounts_list = list(automation_v2.manager.accounts.values())
+    automation_v2.manager.save_accounts_config(accounts_list)
     
     return {"message": "账号更新成功"}
 
@@ -253,24 +259,38 @@ async def stop_multi_account_system(admin=Depends(get_admin_user)):
 
 @router.get("/performance")
 def get_performance_metrics(admin=Depends(get_admin_user)):
-    """获取性能指标"""
+    """获取性能指标 - 字段必须与前端AdminMultiAccounts.vue的performance对象匹配"""
     status = automation_v2.get_system_status()
     accounts = status["accounts"]
     
-    # 计算性能指标
+    total_accounts = len(automation_v2.manager.accounts)
+    active_accounts = sum(1 for acc in automation_v2.manager.accounts.values() if acc.is_active)
+    logged_in_accounts = sum(1 for acc_status in accounts.values() if acc_status["is_logged_in"])
     total_capacity = sum(acc.max_concurrent for acc in automation_v2.manager.accounts.values() if acc.is_active)
     current_load = sum(acc.current_tasks for acc in automation_v2.manager.accounts.values())
+    utilization = current_load / total_capacity if total_capacity > 0 else 0
     
-    performance = {
+    # 性能等级
+    if utilization < 0.3:
+        performance_level = "优秀"
+    elif utilization < 0.6:
+        performance_level = "良好"
+    elif utilization < 0.8:
+        performance_level = "一般"
+    else:
+        performance_level = "繁忙"
+    
+    return {
+        "total_accounts": total_accounts,
+        "active_accounts": active_accounts,
+        "logged_in_accounts": logged_in_accounts,
         "total_capacity": total_capacity,
         "current_load": current_load,
-        "utilization_rate": current_load / total_capacity if total_capacity > 0 else 0,
-        "active_accounts": status["active_accounts"],
-        "logged_in_accounts": sum(1 for acc_status in accounts.values() if acc_status["is_logged_in"]),
-        "avg_utilization": sum(acc_status["utilization"] for acc_status in accounts.values()) / len(accounts) if accounts else 0
+        "utilization": utilization,
+        "performance_level": performance_level,
+        "available_slots": total_capacity - current_load,
+        "efficiency_score": (logged_in_accounts / active_accounts * 100) if active_accounts > 0 else 0
     }
-    
-    return performance
 
 
 # 导出路由

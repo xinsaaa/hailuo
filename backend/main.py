@@ -108,18 +108,7 @@ app.add_middleware(
     expose_headers=["*"]
 )
 
-# 添加全局异常处理中间件
-@app.exception_handler(RequestValidationError)
-async def validation_exception_handler(request: Request, exc: RequestValidationError):
-    return error_handler.handle_validation_error(request, exc)
-
-@app.exception_handler(HTTPException)
-async def http_exception_handler(request: Request, exc: HTTPException):
-    return error_handler.handle_http_exception(request, exc)
-
-@app.exception_handler(Exception)
-async def general_exception_handler(request: Request, exc: Exception):
-    return error_handler.handle_unexpected_error(request, exc)
+# 注意：异常处理器已在上方通过 app.add_exception_handler 注册，不再重复注册
 
 # 添加请求日志记录
 @app.middleware("http")
@@ -182,9 +171,7 @@ def startup_event():
     if enable_auto_worker and not enable_multi_account:
         app_logger.info("Auto-starting automation worker...")
         try:
-            from backend.automation import start_automation
-            # 在后台任务中启动自动化（异步）
-            asyncio.create_task(start_automation_async())
+            start_automation_worker()
             app_logger.info("Automation worker started successfully")
         except Exception as e:
             app_logger.error("Failed to start automation worker", exc_info=e)
@@ -476,7 +463,7 @@ def get_captcha():
 
 
 # ============ 邮箱验证 API ============
-from backend.email_service import send_verification_code, verify_email_code
+# send_verification_code, verify_email_code 已在文件顶部导入
 
 
 class SendEmailCodeRequest(BaseModel):
@@ -1070,9 +1057,15 @@ async def create_order(
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_session)
 ):
-    cost = 0.99
+    # 根据用户选择的模型获取价格
+    model = session.exec(select(AIModel).where(AIModel.name == model_name)).first()
+    cost = model.price if model and model.price else 0.99
     if current_user.balance < cost:
-        raise HTTPException(status_code=400, detail="Insufficient balance")
+        raise HTTPException(status_code=400, detail=f"余额不足，需要 ¥{cost}")
+    
+    # 按用户ID分类存储上传图片
+    import uuid as _uuid
+    user_upload_dir = os.path.join("user_images", f"user_{current_user.id}")
     
     # 处理首帧图片上传
     first_frame_path = None
@@ -1080,17 +1073,10 @@ async def create_order(
         if not first_frame_image.content_type.startswith('image/'):
             raise HTTPException(status_code=400, detail="首帧文件必须是图片")
         
-        import os
-        import uuid
-        from datetime import datetime
-        
-        # 按用户ID分类存储
-        user_upload_dir = os.path.join("user_images", f"user_{current_user.id}")
         os.makedirs(user_upload_dir, exist_ok=True)
-        
         file_ext = first_frame_image.filename.split('.')[-1]
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"first_{timestamp}_{uuid.uuid4().hex[:8]}.{file_ext}"
+        filename = f"first_{timestamp}_{_uuid.uuid4().hex[:8]}.{file_ext}"
         first_frame_path = os.path.join(user_upload_dir, filename)
         
         with open(first_frame_path, "wb") as f:
@@ -1102,11 +1088,11 @@ async def create_order(
     if last_frame_image:
         if not last_frame_image.content_type.startswith('image/'):
             raise HTTPException(status_code=400, detail="尾帧文件必须是图片")
-            
-        # 使用相同的用户目录
+        
+        os.makedirs(user_upload_dir, exist_ok=True)
         file_ext = last_frame_image.filename.split('.')[-1]
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"last_{timestamp}_{uuid.uuid4().hex[:8]}.{file_ext}"
+        filename = f"last_{timestamp}_{_uuid.uuid4().hex[:8]}.{file_ext}"
         last_frame_path = os.path.join(user_upload_dir, filename)
         
         with open(last_frame_path, "wb") as f:
@@ -1181,6 +1167,8 @@ def upload_verification_code(request: VerificationCodeRequest, session: Session 
 @app.get("/api/dev/codes")
 def get_recent_codes(session: Session = Depends(get_session)):
     """开发模式：获取最近的验证码列表"""
+    if os.getenv("ENVIRONMENT", "development").lower() == "production":
+        raise HTTPException(status_code=404, detail="Not found")
     codes = session.exec(
         select(VerificationCode)
         .order_by(VerificationCode.created_at.desc())
@@ -1199,6 +1187,8 @@ def get_recent_codes(session: Session = Depends(get_session)):
 @app.get("/api/dev/latest-code")
 def get_latest_code(session: Session = Depends(get_session)):
     """开发模式：获取最新验证码"""
+    if os.getenv("ENVIRONMENT", "development").lower() == "production":
+        raise HTTPException(status_code=404, detail="Not found")
     code = session.exec(
         select(VerificationCode)
         .where(VerificationCode.is_used == False)  # 修正字段名
