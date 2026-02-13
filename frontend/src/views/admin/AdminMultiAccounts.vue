@@ -304,9 +304,18 @@
               @keyup.enter="verifyAndLogin"
             />
           </div>
-          <p class="text-gray-400 text-sm">
-            请输入收到的短信验证码
-          </p>
+          <div class="flex items-center justify-between">
+            <p class="text-gray-400 text-sm">
+              请输入收到的短信验证码
+            </p>
+            <button
+              @click="resendVerificationCode"
+              :disabled="verificationModal.loading || resendCountdown > 0"
+              class="text-blue-400 hover:text-blue-300 text-sm disabled:text-gray-500 disabled:cursor-not-allowed transition-colors"
+            >
+              {{ resendCountdown > 0 ? `${resendCountdown}s后重发` : '重新发送' }}
+            </button>
+          </div>
         </div>
       </div>
       
@@ -511,6 +520,22 @@ const loginAccount = async (accountId) => {
   verificationModal.show = true
 }
 
+// 重发倒计时
+const resendCountdown = ref(0)
+let resendTimer = null
+
+const startResendCountdown = () => {
+  resendCountdown.value = 60
+  if (resendTimer) clearInterval(resendTimer)
+  resendTimer = setInterval(() => {
+    resendCountdown.value--
+    if (resendCountdown.value <= 0) {
+      clearInterval(resendTimer)
+      resendTimer = null
+    }
+  }, 1000)
+}
+
 // 发送验证码
 const sendVerificationCode = async () => {
   verificationModal.loading = true
@@ -518,12 +543,31 @@ const sendVerificationCode = async () => {
     const response = await api.post(`/admin/accounts/${verificationModal.accountId}/send-code`, {}, { timeout: 60000 })
     if (response.data.success) {
       verificationModal.step = 'verify'
+      startResendCountdown()
       alert('验证码已发送到绑定手机，请查收')
     } else {
       alert('发送验证码失败')
     }
   } catch (error) {
     alert('发送验证码失败: ' + (error.response?.data?.detail || error.message || '请重试'))
+  } finally {
+    verificationModal.loading = false
+  }
+}
+
+// 重新发送验证码
+const resendVerificationCode = async () => {
+  verificationModal.loading = true
+  try {
+    const response = await api.post(`/admin/accounts/${verificationModal.accountId}/send-code`, {}, { timeout: 60000 })
+    if (response.data.success) {
+      startResendCountdown()
+      alert('验证码已重新发送，请查收')
+    } else {
+      alert('重新发送失败')
+    }
+  } catch (error) {
+    alert('重新发送失败: ' + (error.response?.data?.detail || error.message || '请重试'))
   } finally {
     verificationModal.loading = false
   }
@@ -562,6 +606,8 @@ const closeVerificationModal = () => {
   verificationModal.show = false
   verificationModal.code = ''
   verificationModal.step = 'send'
+  resendCountdown.value = 0
+  if (resendTimer) { clearInterval(resendTimer); resendTimer = null }
 }
 
 // 切换账号状态
