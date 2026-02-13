@@ -339,11 +339,27 @@ class MultiAccountManager:
                     return False
             
             # 5. 点击获取验证码（与automation.py一致）
+            # 截图：点击验证码前
+            try:
+                await page.screenshot(path=f"debug_before_send_code_{account_id}.png")
+                print(f"[DEBUG] 截图已保存: debug_before_send_code_{account_id}.png")
+            except Exception as e:
+                print(f"[DEBUG] 截图失败: {e}")
+            
             get_code_btn = page.locator("button:has-text('获取验证码')").first
             try:
                 await get_code_btn.wait_for(state="visible", timeout=5000)
                 await get_code_btn.click()
                 print(f"[LOGIN] 已点击获取验证码按钮")
+                
+                # 截图：点击验证码后
+                await page.wait_for_timeout(2000)
+                try:
+                    await page.screenshot(path=f"debug_after_send_code_{account_id}.png")
+                    print(f"[DEBUG] 截图已保存: debug_after_send_code_{account_id}.png")
+                except Exception as e:
+                    print(f"[DEBUG] 截图失败: {e}")
+                
                 return True
             except:
                 # 兜底
