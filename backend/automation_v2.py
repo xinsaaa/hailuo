@@ -121,9 +121,9 @@ class HailuoAutomationV2:
                             task = asyncio.create_task(
                                 self.process_order(account_id, order)
                             )
-                            self.task_handlers[f"{account_id}_{order.id}"] = task
+                            self.task_handlers[f"{account_id}_{order['id']}"] = task
                         else:
-                            print(f"[AUTO-V2] 暂无可用账号处理订单 {order.id}")
+                            print(f"[AUTO-V2] 暂无可用账号处理订单 {order['id']}")
                 
                 # 清理完成的任务
                 completed_tasks = [
@@ -140,29 +140,54 @@ class HailuoAutomationV2:
                 print(f"[AUTO-V2] 任务循环错误: {e}")
                 await asyncio.sleep(10)
     
-    def get_pending_orders(self) -> List[VideoOrder]:
-        """获取待处理的订单"""
+    def get_pending_orders(self) -> List[dict]:
+        """获取待处理的订单（返回dict避免detached ORM对象问题）"""
         with Session(engine) as session:
             orders = session.exec(
                 select(VideoOrder).where(
                     VideoOrder.status == "pending"
                 ).limit(10)
             ).all()
-            return orders
+            # 在session关闭前提取所有需要的字段
+            return [
+                {
+                    "id": o.id,
+                    "prompt": o.prompt,
+                    "model_name": o.model_name,
+                    "first_frame_image": getattr(o, 'first_frame_image', None),
+                    "last_frame_image": getattr(o, 'last_frame_image', None),
+                    "user_id": o.user_id,
+                }
+                for o in orders
+            ]
     
-    async def process_order(self, account_id: str, order: VideoOrder):
-        """处理单个订单"""
-        account = self.manager.accounts[account_id]
-        page = self.manager.pages[account_id]
+    async def process_order(self, account_id: str, order: dict):
+        """处理单个订单（order为dict，包含id/prompt/model_name等字段）"""
+        account = self.manager.accounts.get(account_id)
+        if not account:
+            print(f"[AUTO-V2] ❌ 账号 {account_id} 不存在")
+            self.update_order_status(order["id"], "failed")
+            return
         
-        print(f"[AUTO-V2] 账号 {account.display_name} 开始处理订单 {order.id}")
+        # BUG23: 检查page是否存在
+        if account_id not in self.manager.pages:
+            print(f"[AUTO-V2] ❌ 账号 {account.display_name} 没有可用的页面")
+            self.update_order_status(order["id"], "failed")
+            return
+        
+        page = self.manager.pages[account_id]
+        order_id = order["id"]
+        prompt = order["prompt"]
+        model_name = order.get("model_name", "Hailuo 2.3")
+        
+        print(f"[AUTO-V2] 账号 {account.display_name} 开始处理订单 {order_id}")
         
         try:
             # 增加任务计数
             account.current_tasks += 1
             
             # 更新订单状态
-            self.update_order_status(order.id, "processing")
+            self.update_order_status(order_id, "processing")
             
             # 导航到海螺AI生成页面
             await page.goto("https://hailuoai.com", timeout=30000)
@@ -181,13 +206,13 @@ class HailuoAutomationV2:
                 
                 # 清空并输入提示词
                 await prompt_input.fill("")
-                await prompt_input.type(order.prompt, delay=100)
+                await prompt_input.type(prompt, delay=100)
                 
-                print(f"[AUTO-V2] 已输入提示词: {order.prompt[:50]}...")
+                print(f"[AUTO-V2] 已输入提示词: {prompt[:50]}...")
                 
                 # 选择模型（如果指定了）
-                if order.model_name and order.model_name != "hailuo_1_0":
-                    await self.select_model(page, order.model_name)
+                if model_name and model_name != "hailuo_1_0":
+                    await self.select_model(page, model_name)
                 
                 # 点击生成按钮
                 generate_btn = await page.wait_for_selector(
@@ -196,26 +221,26 @@ class HailuoAutomationV2:
                 )
                 await generate_btn.click()
                 
-                print(f"[AUTO-V2] 已提交生成任务，订单ID: {order.id}")
+                print(f"[AUTO-V2] 已提交生成任务，订单ID: {order_id}")
                 
                 # 等待生成完成并获取结果
-                result_url = await self.wait_for_generation_complete(page, order.id)
+                result_url = await self.wait_for_generation_complete(page, order_id)
                 
                 if result_url:
-                    # 更新订单结果
-                    self.update_order_result(order.id, result_url, "completed")
-                    print(f"[AUTO-V2] 订单 {order.id} 生成完成: {result_url}")
+                    # BUG21: 使用video_url而非result_url
+                    self.update_order_result(order_id, result_url, "completed")
+                    print(f"[AUTO-V2] 订单 {order_id} 生成完成: {result_url}")
                 else:
-                    self.update_order_status(order.id, "failed")
-                    print(f"[AUTO-V2] 订单 {order.id} 生成失败")
+                    self.update_order_status(order_id, "failed")
+                    print(f"[AUTO-V2] 订单 {order_id} 生成失败")
                 
             except Exception as e:
-                print(f"[AUTO-V2] 订单处理失败 {order.id}: {e}")
-                self.update_order_status(order.id, "failed")
+                print(f"[AUTO-V2] 订单处理失败 {order_id}: {e}")
+                self.update_order_status(order_id, "failed")
                 
         except Exception as e:
-            print(f"[AUTO-V2] 账号 {account.display_name} 处理订单 {order.id} 出错: {e}")
-            self.update_order_status(order.id, "failed")
+            print(f"[AUTO-V2] 账号 {account.display_name} 处理订单 {order_id} 出错: {e}")
+            self.update_order_status(order_id, "failed")
         finally:
             # 减少任务计数
             account.current_tasks -= 1
@@ -294,12 +319,12 @@ class HailuoAutomationV2:
                 session.add(order)
                 session.commit()
     
-    def update_order_result(self, order_id: int, result_url: str, status: str):
+    def update_order_result(self, order_id: int, video_url: str, status: str):
         """更新订单结果"""
         with Session(engine) as session:
             order = session.get(VideoOrder, order_id)
             if order:
-                order.result_url = result_url
+                order.video_url = video_url
                 order.status = status
                 session.add(order)
                 session.commit()

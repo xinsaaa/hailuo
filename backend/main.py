@@ -1124,8 +1124,16 @@ async def create_order(
     session.commit()
     session.refresh(new_order)
     
-    import asyncio
-    asyncio.create_task(run_hailuo_task(new_order.id))
+    # 根据运行模式选择订单路由
+    enable_multi_account = os.getenv("ENABLE_MULTI_ACCOUNT", "true").lower() == "true"
+    if enable_multi_account:
+        # 多账号模式：订单由task_processing_loop自动从数据库拉取pending订单
+        # 不需要手动推送，只需确保订单状态为pending即可
+        pass
+    else:
+        # 单账号模式：推入队列
+        import asyncio
+        asyncio.create_task(run_hailuo_task(new_order.id))
     
     return new_order
 
