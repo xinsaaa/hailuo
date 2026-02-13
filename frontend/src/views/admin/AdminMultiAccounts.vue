@@ -6,19 +6,12 @@
         <h1 class="text-2xl font-bold text-white">多账号智能调度系统</h1>
         <div class="flex items-center space-x-4">
           <div class="flex items-center space-x-2">
-            <div class="w-3 h-3 rounded-full" :class="systemStatus.is_running ? 'bg-green-400' : 'bg-red-400'"></div>
-            <span class="text-sm">{{ systemStatus.is_running ? '运行中' : '已停止' }}</span>
+            <div class="w-3 h-3 rounded-full" :class="systemStatus.is_running ? 'bg-green-400' : 'bg-yellow-400'"></div>
+            <span class="text-sm">{{ systemStatus.is_running ? '系统运行中' : '系统启动中...' }}</span>
           </div>
-          <button 
-            @click="toggleSystem"
-            :disabled="loading"
-            class="px-4 py-2 rounded-lg font-medium transition-colors"
-            :class="systemStatus.is_running 
-              ? 'bg-red-600 hover:bg-red-700 text-white' 
-              : 'bg-green-600 hover:bg-green-700 text-white'"
-          >
-            {{ systemStatus.is_running ? '停止系统' : '启动系统' }}
-          </button>
+          <div class="px-4 py-2 bg-gray-700 text-gray-300 rounded-lg text-sm">
+            自动管理系统
+          </div>
         </div>
       </div>
     </div>
@@ -333,19 +326,7 @@ const refreshAccounts = async () => {
   }
 }
 
-// 切换系统状态
-const toggleSystem = async () => {
-  try {
-    if (systemStatus.is_running) {
-      await api.post('/api/admin/accounts/stop')
-    } else {
-      await api.post('/api/admin/accounts/start')
-    }
-    await getSystemStatus()
-  } catch (error) {
-    alert('操作失败: ' + error.response?.data?.detail)
-  }
-}
+// 系统状态说明：多账号管理系统现在自动启动，无需手动控制
 
 // 添加账号
 const addAccount = async () => {

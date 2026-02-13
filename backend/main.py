@@ -188,6 +188,31 @@ def startup_event():
             app_logger.error("Failed to start automation worker", exc_info=e)
     else:
         app_logger.info("Backend started. Automation worker disabled by config")
+    
+    # 自动启动多账号管理系统
+    enable_multi_account = os.getenv("ENABLE_MULTI_ACCOUNT", "true").lower() == "true"
+    if enable_multi_account:
+        app_logger.info("Auto-starting multi-account system...")
+        try:
+            import asyncio
+            from backend.automation_v2 import automation_v2
+            # 在后台任务中启动多账号系统（异步）
+            asyncio.create_task(start_multi_account_system())
+            app_logger.info("Multi-account system startup initiated")
+        except Exception as e:
+            app_logger.error("Failed to start multi-account system", exc_info=e)
+    else:
+        app_logger.info("Multi-account system disabled by config")
+
+
+async def start_multi_account_system():
+    """异步启动多账号管理系统"""
+    try:
+        from backend.automation_v2 import automation_v2
+        await automation_v2.start()
+        app_logger.info("Multi-account system started successfully")
+    except Exception as e:
+        app_logger.error(f"Multi-account system startup failed: {e}", exc_info=True)
 
 
 def init_default_models():
