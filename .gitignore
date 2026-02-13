@@ -78,3 +78,18 @@ test-results/
 *.bak
 *.tmp
 response.html
+
+# 临时调试/修复文档
+BUGFIX_*.md
+CRITICAL_*.md
+DEBUG_*.md
+SOLUTION_*.md
+*_GUIDE.md
+*_TROUBLESHOOTING.md
+
+# 测试和工具脚本
+test_*.py
+reset_*.py
+verify_*.py
+reset_*.bat
+reset_*.sh
