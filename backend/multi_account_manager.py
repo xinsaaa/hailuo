@@ -346,9 +346,31 @@ class MultiAccountManager:
                     await page.wait_for_timeout(300)
                     print(f"[LOGIN] 已勾选用户协议")
                 else:
-                    print(f"[LOGIN] 未找到用户协议勾选框（可能已勾选）")
-            except:
-                print(f"[LOGIN] 用户协议勾选框未找到")
+                    print(f"[LOGIN] 未找到用户协议勾选框，dump协议区域HTML...")
+                    # 调试：输出协议相关元素的HTML
+                    debug_html = await page.evaluate("""
+                        () => {
+                            // 查找包含"协议"或"同意"文字的区域
+                            const results = [];
+                            document.querySelectorAll('button, label, input[type="checkbox"], div, span').forEach(el => {
+                                const text = el.textContent || '';
+                                if ((text.includes('协议') || text.includes('同意') || text.includes('条款') || text.includes('隐私'))
+                                    && text.length < 200 && el.offsetParent !== null) {
+                                    results.push(el.tagName + '.' + el.className.replace(/\\s+/g, '.') + ' => ' + el.outerHTML.substring(0, 300));
+                                }
+                            });
+                            // 也查找所有包含svg的button
+                            document.querySelectorAll('button:has(svg), div:has(svg)').forEach(el => {
+                                if (el.offsetParent !== null) {
+                                    results.push('SVG容器: ' + el.tagName + '.' + el.className.replace(/\\s+/g, '.') + ' => ' + el.outerHTML.substring(0, 300));
+                                }
+                            });
+                            return results.slice(0, 10).join('\\n---\\n');
+                        }
+                    """)
+                    print(f"[DEBUG] 协议区域元素:\\n{debug_html}")
+            except Exception as e:
+                print(f"[LOGIN] 用户协议勾选框未找到: {e}")
             
             # 6. 点击获取验证码（与automation.py一致）
             # 截图：点击验证码前
