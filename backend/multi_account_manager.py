@@ -206,40 +206,36 @@ class MultiAccountManager:
         return context
     
     async def check_login_status(self, account_id: str) -> bool:
-        """检查账号登录状态"""
+        """检查账号登录状态 - 简化版本"""
         if account_id not in self.pages:
             return False
         
         page = self.pages[account_id]
         
         try:
-            # 访问海螺AI主页检查登录状态
-            await page.goto("https://hailuoai.com", timeout=15000)
-            await page.wait_for_timeout(2000)
+            # 访问海螺AI创建页面检查登录状态
+            await page.goto("https://hailuoai.com/create/image-to-video", timeout=15000)
+            await page.wait_for_timeout(3000)
             
-            # 检查登录标识
-            login_indicators = [
-                ".avatar",
-                ".user-info", 
-                "[data-testid='user-avatar']",
-                ".user-menu",
-                ".profile-dropdown"
-            ]
+            # 检查页面是否包含创建相关元素（表示已登录）
+            page_content = await page.content()
+            current_url = page.url
             
-            for selector in login_indicators:
-                try:
-                    await page.wait_for_selector(selector, timeout=3000)
-                    print(f"[MULTI-ACCOUNT] 账号 {account_id} 登录状态正常")
-                    return True
-                except:
-                    continue
+            # 如果URL包含create并且不是登录页面，则认为已登录
+            if ("create" in current_url and 
+                "login" not in current_url.lower() and
+                ("生成" in page_content or "创建" in page_content or "upload" in page_content.lower())):
+                print(f"[MULTI-ACCOUNT] 账号 {account_id} 登录状态正常")
+                return True
             
-            # 检查是否在登录页面
-            login_elements = await page.query_selector_all("button:has-text('登录'), input[placeholder*='手机'], .login-form")
-            if login_elements:
+            # 检查是否有登录按钮（表示未登录）
+            login_buttons = await page.query_selector_all("button:has-text('登录'), a:has-text('登录'), .login")
+            if login_buttons:
                 print(f"[MULTI-ACCOUNT] 账号 {account_id} 需要重新登录")
                 return False
             
+            # 默认认为需要登录
+            print(f"[MULTI-ACCOUNT] 账号 {account_id} 登录状态未知，假设需要登录")
             return False
             
         except Exception as e:
@@ -263,32 +259,27 @@ class MultiAccountManager:
         try:
             print(f"[MULTI-ACCOUNT] 开始登录账号: {account.display_name}")
             
-            # 导航到海螺AI
-            await page.goto("https://hailuoai.com", timeout=30000)
+            # 导航到海螺AI创建页面
+            await page.goto("https://hailuoai.com/create/image-to-video", timeout=30000)
             await page.wait_for_timeout(3000)
             
-            # 首先检查是否已经登录
+            # 检查是否已经登录
             if await self.check_login_status(account_id):
-                return True
-            
-            # 执行登录流程
-            await self._perform_login_flow(page, account)
-            
-            # 等待登录完成
-            await page.wait_for_timeout(3000)
-            
-            # 再次检查登录状态
-            if await self.check_login_status(account_id):
-                # 保存Cookie到文件
+                # 保存存储状态
                 await self._save_cookies(account_id)
-                print(f"[MULTI-ACCOUNT] 账号 {account.display_name} 登录成功")
+                print(f"[MULTI-ACCOUNT] 账号 {account.display_name} 已处于登录状态")
                 return True
-            else:
-                print(f"[MULTI-ACCOUNT] 账号 {account.display_name} 登录验证失败")
-                return False
+            
+            # Headless模式下跳过自动登录，提示用户手动登录
+            print(f"[MULTI-ACCOUNT] 账号 {account.display_name} 需要手动登录")
+            print(f"[MULTI-ACCOUNT] 请在浏览器中访问 https://hailuoai.com 并登录账号: {account.phone_number}")
+            print(f"[MULTI-ACCOUNT] 登录后系统将自动检测并保存登录状态")
+            
+            # 暂时返回False，等待手动登录
+            return False
             
         except Exception as e:
-            print(f"[MULTI-ACCOUNT] 账号 {account.display_name} 登录失败: {e}")
+            print(f"[MULTI-ACCOUNT] 账号 {account.display_name} 登录检查失败: {e}")
             return False
 
     async def _perform_login_flow(self, page: Page, account: AccountConfig):
