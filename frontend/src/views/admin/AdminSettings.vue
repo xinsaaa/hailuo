@@ -78,6 +78,28 @@
         />
       </SettingsSection>
 
+      <!-- 访问控制 -->
+      <SettingsSection title="访问控制" icon="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z">
+        <SettingsItem
+          v-for="item in getByCategory('access')"
+          :key="item.key"
+          :item="item"
+          v-model="editedValues[item.key]"
+          :original="originalValues[item.key]"
+        />
+      </SettingsSection>
+
+      <!-- 调度规则 -->
+      <SettingsSection title="调度规则" icon="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4">
+        <SettingsItem
+          v-for="item in getByCategory('scheduling')"
+          :key="item.key"
+          :item="item"
+          v-model="editedValues[item.key]"
+          :original="originalValues[item.key]"
+        />
+      </SettingsSection>
+
       <!-- 存储管理 -->
       <div class="bg-slate-800/60 rounded-xl border border-slate-700/50 overflow-hidden">
         <div class="px-6 py-4 border-b border-slate-700/50 flex items-center gap-3">

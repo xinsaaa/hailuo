@@ -740,6 +740,12 @@ DEFAULT_CONFIG = {
     "token_expire_hours": {"value": 24, "description": "用户Token过期时间（小时）", "category": "security", "type": "number"},
     "admin_max_fail": {"value": 5, "description": "管理员登录最大失败次数", "category": "security", "type": "number"},
     "code_expire_minutes": {"value": 5, "description": "邮箱验证码有效期（分钟）", "category": "security", "type": "number"},
+    # ---- 访问控制 ----
+    "block_mobile_users": {"value": False, "description": "是否拦截手机端用户访问", "category": "access", "type": "boolean"},
+    "block_mobile_message": {"value": "暂不支持移动端访问，请使用电脑浏览器", "description": "手机用户拦截提示语", "category": "access", "type": "string"},
+    # ---- 调度规则 ----
+    "prefer_series3_min_credits": {"value": 100, "description": "海螺账户积分≥此值时优先分配3系列模型", "category": "scheduling", "type": "number"},
+    "prefer_series3_enabled": {"value": True, "description": "是否启用积分优先分配3系列模型规则", "category": "scheduling", "type": "boolean"},
 }
 
 
