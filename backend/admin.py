@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlmodel import Session, select, func
 from pydantic import BaseModel
 from datetime import datetime, timezone, timedelta
-from typing import Optional, List
+from typing import Optional, List, Any
 
 from backend.models import User, VideoOrder, Transaction, AIModel, engine
 from backend.auth import get_password_hash, verify_password, create_access_token, SECRET_KEY, ALGORITHM
@@ -751,7 +751,7 @@ DEFAULT_CONFIG = {
 
 class ConfigUpdate(BaseModel):
     key: str
-    value: any
+    value: Any
 
 
 @router.get("/config")
