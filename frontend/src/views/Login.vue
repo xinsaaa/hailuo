@@ -1,7 +1,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { login, register, getCaptcha, getSecurityStatus, sendEmailCode } from '../api'
+import { login, register, getCaptcha, getSecurityStatus, sendEmailCode, getPublicConfig } from '../api'
 import { useUserStore } from '../stores/user'
 import SliderCaptcha from '../components/SliderCaptcha.vue'
 
@@ -9,6 +9,7 @@ const router = useRouter()
 const userStore = useUserStore()
 
 const isLoginMode = ref(true)
+const siteConfig = ref({ allow_register: true, site_name: '大帝AI' })
 const username = ref('')
 const password = ref('')
 const confirmPassword = ref('')
@@ -201,6 +202,13 @@ onMounted(async () => {
     console.log('[Login] 检测到邀请码:', urlInviteCode)
   }
   
+  // 加载公共配置
+  try {
+    const cfg = await getPublicConfig()
+    if (cfg) siteConfig.value = { ...siteConfig.value, ...cfg }
+    if (!cfg.allow_register && !isLoginMode.value) isLoginMode.value = true
+  } catch (e) {}
+  
   // 首次加载等待后端服务就绪
   await new Promise(resolve => setTimeout(resolve, 500))
   
@@ -250,7 +258,15 @@ const buttonText = computed(() => {
 })
 
 const toggleMode = () => {
-  isLoginMode.value = !isLoginMode.value
+  if (!isLoginMode.value) {
+    isLoginMode.value = true
+  } else {
+    if (!siteConfig.value.allow_register) {
+      showAlert('系统暂未开放注册', 'error')
+      return
+    }
+    isLoginMode.value = false
+  }
 }
 
 const showAlert = (message, type = 'error') => {

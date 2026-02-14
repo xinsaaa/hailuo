@@ -429,7 +429,17 @@ def get_public_config(session: Session = Depends(get_session)):
             "max_length": 20,
             "pattern": "支持中文、字母、数字、下划线",
             "forbidden": "不能全是数字或使用系统保留词"
-        }
+        },
+        # 访问控制
+        "block_mobile_users": get_config_value(session, "block_mobile_users", False),
+        "block_mobile_message": get_config_value(session, "block_mobile_message", "暂不支持移动端访问，请使用电脑浏览器"),
+        # 站点信息
+        "site_name": get_config_value(session, "site_name", "大帝AI"),
+        "site_announcement": get_config_value(session, "site_announcement", ""),
+        # 用户设置
+        "allow_register": get_config_value(session, "allow_register", True),
+        "register_bonus": get_config_value(session, "register_bonus", 3.0),
+        "invite_reward": get_config_value(session, "invite_reward", 3.0),
     }
 
 @app.get("/api/config/public")
@@ -535,6 +545,10 @@ def forgot_password_api(data: ForgotPasswordRequest, session: Session = Depends(
 def register(user: UserCreateWithCaptcha, request: Request, session: Session = Depends(get_session)):
     client_ip = get_client_ip(request)
     
+    # 检查是否开放注册
+    if not get_config_value(session, "allow_register", True):
+        raise HTTPException(status_code=403, detail="系统暂未开放注册，请稍后再试")
+    
     # 验证验证码（5参数验证）
     if not verify_captcha(
         user.captcha_challenge,
@@ -597,28 +611,31 @@ def register(user: UserCreateWithCaptcha, request: Request, session: Session = D
         new_invite_code = generate_invite_code()
         retry_count += 1
     
-    # 创建用户（默认余额 ¥3 在模型中已设置）
+    # 读取动态配置
+    register_bonus = get_config_value(session, "register_bonus", 3.0)
+    invite_reward = get_config_value(session, "invite_reward", 3.0)
+    
+    # 创建用户（余额使用动态配置）
     hashed_password = get_password_hash(user.password)
     new_user = User(
         username=user.username,
-        email=user.email,  # 存储邮箱
+        email=user.email,
         hashed_password=hashed_password,
+        balance=register_bonus,
         invite_code=new_invite_code,
         device_fingerprint=user.device_fingerprint,
-        register_ip=client_ip,  # 记录注册 IP
+        register_ip=client_ip,
         invited_by=inviter.id if inviter else None
     )
     session.add(new_user)
     session.commit()
     session.refresh(new_user)
     
-    # 如果有邀请人，给双方发放 ¥3 奖励
+    # 如果有邀请人，给双方发放动态奖励
     if inviter:
-        # 奖励邀请人
-        inviter.balance += 3.0
+        inviter.balance += invite_reward
         session.add(inviter)
-        # 奖励被邀请人（额外加 ¥3，总共 ¥6）
-        new_user.balance += 3.0
+        new_user.balance += invite_reward
         session.add(new_user)
         session.commit()
     
@@ -1430,7 +1447,7 @@ def get_invite_stats(current_user: User = Depends(get_current_user), session: Se
         select(User).where(User.invited_by == current_user.id).order_by(User.created_at.desc())
     ).all()
     
-    invite_reward = 3.0  # 每次邀请奖励
+    invite_reward = get_config_value(session, "invite_reward", 3.0)
     
     invite_list = []
     for u in invited_users:
