@@ -350,6 +350,13 @@ export const closeTicket = async (ticketId) => {
     return response.data
 }
 
+// ============ Transaction API ============
+
+export const getTransactions = async () => {
+    const response = await api.get('/transactions')
+    return response.data
+}
+
 // ============ Invite API ============
 
 export const getInviteStats = async () => {

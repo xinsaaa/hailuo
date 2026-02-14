@@ -1386,6 +1386,40 @@ def user_close_ticket(
     return {"message": "工单已关闭"}
 
 
+# ============ 交易记录 API ============
+
+@app.get("/api/transactions")
+def get_transactions(current_user: User = Depends(get_current_user), session: Session = Depends(get_session)):
+    """获取当前用户的交易记录"""
+    from sqlmodel import desc
+    records = session.exec(
+        select(Transaction).where(Transaction.user_id == current_user.id).order_by(desc(Transaction.created_at)).limit(50)
+    ).all()
+    
+    result = []
+    for r in records:
+        result.append({
+            "id": r.id,
+            "amount": r.amount,
+            "bonus": r.bonus,
+            "type": r.type,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+        })
+    
+    # 统计
+    total_recharge = sum(r.amount + r.bonus for r in records if r.type == "recharge")
+    total_expense = sum(r.amount for r in records if r.type == "expense")
+    
+    return {
+        "transactions": result,
+        "summary": {
+            "total_recharge": round(total_recharge, 2),
+            "total_expense": round(total_expense, 2),
+            "balance": round(current_user.balance, 2),
+        }
+    }
+
+
 # ============ 邀请系统 API ============
 
 @app.get("/api/invite/stats")
