@@ -13,16 +13,22 @@ onMounted(async () => {
   const mobileRegex = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini|mobile|tablet/i
   isMobile.value = mobileRegex.test(userAgent.toLowerCase())
   
-  // 从后台配置读取是否拦截手机端
-  if (isMobile.value) {
-    try {
-      const config = await getPublicConfig()
-      blockMobile.value = config.block_mobile_users === true
-      if (config.block_mobile_message) blockMessage.value = config.block_mobile_message
-    } catch (e) {
-      blockMobile.value = false
+  // 加载公共配置
+  try {
+    const config = await getPublicConfig()
+    if (config) {
+      // 设置标签页标题
+      if (config.site_name) document.title = config.site_name
+      // 手机端拦截
+      if (isMobile.value) {
+        blockMobile.value = config.block_mobile_users === true
+        if (config.block_mobile_message) blockMessage.value = config.block_mobile_message
+      }
     }
+  } catch (e) {
+    blockMobile.value = false
   }
+  
   configLoaded.value = true
 })
 </script>
