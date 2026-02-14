@@ -5,6 +5,8 @@ import { getCurrentUser, createOrder, getOrders, getPublicConfig, getAvailableMo
 
 const route = useRoute()
 const router = useRouter()
+const siteName = ref(localStorage.getItem('site_name') || '大帝AI')
+const siteAnnouncement = ref('')
 
 // State
 const user = ref(null)
@@ -154,6 +156,7 @@ const loadData = async () => {
     orders.value = ordersData
     if (configData) {
       config.value = configData
+      if (configData.site_announcement) siteAnnouncement.value = configData.site_announcement
     }
     if (modelsData && modelsData.models) {
       // 根据系列过滤模型
@@ -345,7 +348,7 @@ const handleLogout = () => {
     <nav class="relative z-20 px-8 py-4 border-b border-white/10 bg-black/20 backdrop-blur-md">
       <div class="max-w-7xl mx-auto flex justify-between items-center">
         <div class="text-2xl font-extrabold cursor-pointer flex items-center gap-2" @click="router.push('/')">
-          <span class="text-white drop-shadow-md">大帝</span><span class="text-cyan-400 drop-shadow-md">AI</span>
+          <span class="text-white drop-shadow-md">{{ siteName }}</span>
         </div>
         <div class="flex items-center gap-6">
           <router-link to="/tickets" class="text-sm text-gray-400 hover:text-white transition-colors">工单</router-link>
@@ -364,6 +367,14 @@ const handleLogout = () => {
         </div>
       </div>
     </nav>
+    
+    <!-- 站点公告 -->
+    <div v-if="siteAnnouncement" class="relative z-20 max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 mt-4">
+      <div class="flex items-center gap-3 px-4 py-2.5 bg-amber-500/10 border border-amber-500/20 rounded-xl text-sm">
+        <span class="text-amber-400 text-base">📢</span>
+        <span class="text-amber-200/90">{{ siteAnnouncement }}</span>
+      </div>
+    </div>
     
     <!-- Main Content -->
     <div class="flex-grow max-w-5xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-10 relative z-10">

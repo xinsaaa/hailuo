@@ -9,7 +9,17 @@ import time
 from typing import Dict, List, Optional, Any
 from playwright.async_api import async_playwright, Browser, BrowserContext, Page
 from sqlmodel import Session, select
-from backend.models import VideoOrder, engine
+from backend.models import VideoOrder, SystemConfig, engine
+
+def _get_v2_config(key, default):
+    try:
+        with Session(engine) as s:
+            cfg = s.exec(select(SystemConfig).where(SystemConfig.key == key)).first()
+            if cfg:
+                return type(default)(json.loads(cfg.value))
+    except Exception:
+        pass
+    return default
 from backend.multi_account_manager import MultiAccountManager, AccountConfig
 
 
@@ -88,8 +98,7 @@ class HailuoAutomationV2:
         
         while self.is_running:
             try:
-                # 每5分钟检查一次
-                await asyncio.sleep(300)
+                await asyncio.sleep(_get_v2_config('health_check_interval', 300))
                 
                 if not self.is_running:
                     break
@@ -134,7 +143,7 @@ class HailuoAutomationV2:
                     del self.task_handlers[task_id]
                 
                 # 等待下一轮
-                await asyncio.sleep(5)
+                await asyncio.sleep(_get_v2_config('task_poll_interval', 5))
                 
             except Exception as e:
                 print(f"[AUTO-V2] 任务循环错误: {e}")

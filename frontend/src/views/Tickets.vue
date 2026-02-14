@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { getCurrentUser, getMyTickets, createTicket, getTicketDetail, userReplyTicket, userCloseTicket } from '../api'
 
 const router = useRouter()
+const siteName = ref(localStorage.getItem('site_name') || '大帝AI')
 const user = ref(null)
 const tickets = ref([])
 const loading = ref(false)
@@ -170,7 +171,7 @@ onMounted(loadData)
     <nav class="relative z-20 px-8 py-4 border-b border-white/10 bg-black/20 backdrop-blur-md">
       <div class="max-w-7xl mx-auto flex justify-between items-center">
         <div class="text-2xl font-extrabold cursor-pointer flex items-center gap-2" @click="router.push('/dashboard')">
-          <span class="text-white drop-shadow-md">大帝</span><span class="text-cyan-400 drop-shadow-md">AI</span>
+          <span class="text-white drop-shadow-md">{{ siteName }}</span>
           <span class="text-xs px-2 py-0.5 rounded bg-white/10 text-gray-400 border border-white/5 ml-2">工单系统</span>
         </div>
         <div class="flex items-center gap-6">

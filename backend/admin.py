@@ -8,7 +8,8 @@ from pydantic import BaseModel
 from datetime import datetime, timezone, timedelta
 from typing import Optional, List, Any
 
-from backend.models import User, VideoOrder, Transaction, AIModel, engine
+import json
+from backend.models import User, VideoOrder, Transaction, AIModel, SystemConfig, engine
 from backend.auth import get_password_hash, verify_password, create_access_token, SECRET_KEY, ALGORITHM
 from backend.security import (
     is_ip_banned, get_ban_remaining_seconds, get_fail_count,
@@ -37,8 +38,19 @@ ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")  # 生产环境请设�
 ADMIN_PASSWORD_HASH = get_password_hash(ADMIN_PASSWORD)
 
 # 管理员登录失败限制
-ADMIN_MAX_FAIL = 5  # 最大失败次数
 _admin_fail_count = {}  # {ip: {"count": 0, "last": datetime}}
+
+def _get_admin_max_fail():
+    """从DB动态读取管理员最大失败次数"""
+    try:
+        with Session(engine) as s:
+            from sqlmodel import select as sql_select
+            cfg = s.exec(sql_select(SystemConfig).where(SystemConfig.key == "admin_max_fail")).first()
+            if cfg:
+                return int(json.loads(cfg.value))
+    except Exception:
+        pass
+    return 5
 
 # 创建路由
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -75,11 +87,10 @@ def check_admin_rate_limit(ip: str) -> bool:
     now = datetime.now()
     if ip in _admin_fail_count:
         data = _admin_fail_count[ip]
-        # 30分钟后重置
         if data["last"] and (now - data["last"]).total_seconds() > 1800:
             _admin_fail_count[ip] = {"count": 0, "last": None}
             return True
-        if data["count"] >= ADMIN_MAX_FAIL:
+        if data["count"] >= _get_admin_max_fail():
             return False
     return True
 
@@ -118,7 +129,7 @@ def admin_login(data: AdminLogin, request: Request):
         _admin_fail_count[client_ip]["count"] += 1
         _admin_fail_count[client_ip]["last"] = datetime.now()
         
-        remaining = ADMIN_MAX_FAIL - _admin_fail_count[client_ip]["count"]
+        remaining = _get_admin_max_fail() - _admin_fail_count[client_ip]["count"]
         raise HTTPException(status_code=401, detail=f"用户名或密码错误，剩余 {remaining} 次尝试")
     
     # 登录成功，清除失败计数
@@ -715,8 +726,6 @@ def get_fail_stats(admin=Depends(get_admin_user), session: Session = Depends(get
 
 
 # ============ 系统配置管理 ============
-from backend.models import SystemConfig
-import json
 
 # 默认配置定义（按分类组织）
 DEFAULT_CONFIG = {
@@ -743,9 +752,6 @@ DEFAULT_CONFIG = {
     # ---- 访问控制 ----
     "block_mobile_users": {"value": False, "description": "是否拦截手机端用户访问", "category": "access", "type": "boolean"},
     "block_mobile_message": {"value": "暂不支持移动端访问，请使用电脑浏览器", "description": "手机用户拦截提示语", "category": "access", "type": "string"},
-    # ---- 调度规则 ----
-    "prefer_series3_min_credits": {"value": 100, "description": "海螺账户积分≥此值时优先分配3系列模型", "category": "scheduling", "type": "number"},
-    "prefer_series3_enabled": {"value": True, "description": "是否启用积分优先分配3系列模型规则", "category": "scheduling", "type": "boolean"},
 }
 
 

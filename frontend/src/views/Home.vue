@@ -10,6 +10,7 @@ const userStore = useUserStore()
 const videoPrice23 = ref(0.99)
 const videoPrice31 = ref(0.99)
 
+const siteName = ref(localStorage.getItem('site_name') || '大帝AI')
 const isLoggedIn = computed(() => !!userStore.token)
 const user = computed(() => userStore.user)
 
@@ -140,7 +141,7 @@ const handleModelSeriesGenerate = (series) => {
       <!-- 中央Logo -->
       <div class="text-center mb-12">
         <div class="text-5xl md:text-7xl font-extrabold tracking-tight mb-4 flex justify-center items-center gap-2">
-          <span class="text-white drop-shadow-lg">大帝</span><span class="text-cyan-400 drop-shadow-[0_0_15px_rgba(34,211,238,0.5)]">AI</span>
+          <span class="text-white drop-shadow-lg">{{ siteName }}</span>
         </div>
         <p class="text-xl text-gray-200 mb-2 font-light tracking-wide drop-shadow-md">想象 · 输入 · 生成</p>
         <p class="text-sm text-gray-400 font-medium">使用先进的 AI 技术，将你的创意转化为专业品质的视频</p>
@@ -419,7 +420,7 @@ const handleModelSeriesGenerate = (series) => {
 
     <!-- Footer -->
     <footer class="w-full text-center py-6 text-gray-600 text-sm z-10">
-      © 2026 大帝AI · 由先进 AI 技术驱动
+      © 2026 {{ siteName }} · 由先进 AI 技术驱动
     </footer>
 
   </div>

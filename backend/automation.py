@@ -22,8 +22,23 @@ from backend.models import VerificationCode, VideoOrder, engine
 import os
 HAILUO_URL = "https://hailuoai.com/create/image-to-video"
 PHONE_NUMBER = os.getenv("HAILUO_PHONE", "17366935232")
-MAX_CONCURRENT_TASKS = 10  # 最大并发任务数
-POLL_INTERVAL = 5  # 轮询间隔（秒）
+
+def _get_automation_config(key, default):
+    """从DB动态读取自动化配置"""
+    try:
+        import json
+        from sqlmodel import Session, select
+        from backend.models import SystemConfig, engine
+        with Session(engine) as s:
+            cfg = s.exec(select(SystemConfig).where(SystemConfig.key == key)).first()
+            if cfg:
+                return type(default)(json.loads(cfg.value))
+    except Exception:
+        pass
+    return default
+
+MAX_CONCURRENT_TASKS = 10  # 默认值，运行时通过_get_automation_config动态读取
+POLL_INTERVAL = 5  # 默认值，运行时通过_get_automation_config动态读取
 
 # ============ 日志收集系统 ============
 from collections import deque
@@ -1522,8 +1537,8 @@ def automation_worker():
             
             automation_logger.success("🎉 登录成功！自动化服务就绪")
             automation_logger.info("📦 初始化订单处理系统...")
-            automation_logger.info(f"⚡ 最大并发任务数: {MAX_CONCURRENT_TASKS}")
-            automation_logger.info(f"⏱️  轮询间隔: {POLL_INTERVAL}秒")
+            automation_logger.info(f"⚡ 最大并发任务数: {_get_automation_config('default_max_concurrent', 10)}")
+            automation_logger.info(f"⏱️  轮询间隔: {_get_automation_config('task_poll_interval', 5)}秒")
             automation_logger.info(f"📱 使用手机号: {PHONE_NUMBER}")
             automation_logger.success("✅ 订单处理系统初始化完成")
             
@@ -1576,12 +1591,14 @@ def automation_worker():
                         automation_logger.warn(f"⚠️ 检查丢失订单失败: {str(e)[:100]}")
                     
                     # 2. 提交新订单（如果并发数未满）
-                    available_slots = MAX_CONCURRENT_TASKS - len(_generating_orders)
+                    max_tasks = _get_automation_config('default_max_concurrent', 10)
+                    poll_interval = _get_automation_config('task_poll_interval', 5)
+                    available_slots = max_tasks - len(_generating_orders)
                     if available_slots > 0:
                         automation_logger.info(f"📤 检查新订单提交 (可用槽位: {available_slots})")
                         submitted_count = 0
                         
-                        while len(_generating_orders) < MAX_CONCURRENT_TASKS:
+                        while len(_generating_orders) < max_tasks:
                             try:
                                 order_id = _order_queue.get_nowait()
                                 automation_logger.info(f"📝 取出订单: #{order_id}")
@@ -1634,7 +1651,7 @@ def automation_worker():
                             except Exception as e:
                                 automation_logger.warn(f"⚠️ 刷新页面失败: {e}")
                     else:
-                        automation_logger.info(f"⏸️  所有任务槽位已满 ({len(_generating_orders)}/{MAX_CONCURRENT_TASKS})")
+                        automation_logger.info(f"⏸️  所有任务槽位已满 ({len(_generating_orders)}/{max_tasks})")
                     
                     # 如果到这里没有异常，重置错误计数
                     if consecutive_errors > 0:
@@ -1642,8 +1659,8 @@ def automation_worker():
                         consecutive_errors = 0
                     
                     # 3. 等待下一轮轮询
-                    automation_logger.info(f"⏰ 等待{POLL_INTERVAL}秒进入下一轮循环...")
-                    time.sleep(POLL_INTERVAL)
+                    automation_logger.info(f"⏰ 等待{poll_interval}秒进入下一轮循环...")
+                    time.sleep(poll_interval)
                     
                 except Exception as loop_e:
                     consecutive_errors += 1
@@ -1651,7 +1668,7 @@ def automation_worker():
                     if consecutive_errors >= max_consecutive_errors:
                         automation_logger.error(f"🛑 连续失败 {consecutive_errors} 次，自动化服务停止")
                         break
-                    wait_time = POLL_INTERVAL * 2
+                    wait_time = _get_automation_config('task_poll_interval', 5) * 2
                     automation_logger.warn(f"⏰ 等待{wait_time}秒后重试...")
                     time.sleep(wait_time)
                 

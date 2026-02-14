@@ -424,7 +424,7 @@ const handleSubmit = async () => {
         <!-- Logo -->
         <div class="text-center mb-8">
           <div class="text-3xl font-extrabold mb-2 flex justify-center items-center gap-2">
-            <span class="text-white drop-shadow-md">大帝</span><span class="text-cyan-400 drop-shadow-md">AI</span>
+            <span class="text-white drop-shadow-md">{{ siteConfig.site_name }}</span>
           </div>
           <p class="text-gray-400 text-sm">
             {{ isLoginMode ? '登录开启你的 AI 创作之旅' : '注册即可免费体验 AI 创作' }}

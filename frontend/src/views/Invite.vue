@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { getCurrentUser, getInviteStats } from '../api'
 
 const router = useRouter()
+const siteName = ref(localStorage.getItem('site_name') || '大帝AI')
 const user = ref(null)
 const inviteData = ref(null)
 const loading = ref(true)
@@ -134,7 +135,7 @@ onMounted(loadData)
     <nav class="relative z-20 px-8 py-4 border-b border-white/10 bg-black/20 backdrop-blur-md">
       <div class="max-w-7xl mx-auto flex justify-between items-center">
         <div class="text-2xl font-extrabold cursor-pointer flex items-center gap-2" @click="router.push('/')">
-          <span class="text-white drop-shadow-md">大帝</span><span class="text-cyan-400 drop-shadow-md">AI</span>
+          <span class="text-white drop-shadow-md">{{ siteName }}</span>
         </div>
         <div class="flex items-center gap-6">
           <router-link to="/dashboard" class="text-sm text-gray-400 hover:text-white transition-colors">控制台</router-link>

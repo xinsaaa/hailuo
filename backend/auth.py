@@ -25,12 +25,27 @@ def get_password_hash(password: str) -> str:
     hashed = bcrypt.hashpw(truncated.encode('utf-8'), salt)
     return hashed.decode('utf-8')
 
+def _get_token_expire_hours():
+    """从DB动态读取Token过期时间"""
+    try:
+        import json
+        from sqlmodel import Session, select
+        from backend.models import SystemConfig, engine
+        with Session(engine) as s:
+            cfg = s.exec(select(SystemConfig).where(SystemConfig.key == "token_expire_hours")).first()
+            if cfg:
+                return int(json.loads(cfg.value))
+    except Exception:
+        pass
+    return 24
+
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
     if expires_delta:
         expire = datetime.utcnow() + expires_delta
     else:
-        expire = datetime.utcnow() + timedelta(minutes=15)
+        hours = _get_token_expire_hours()
+        expire = datetime.utcnow() + timedelta(hours=hours)
     to_encode.update({"exp": expire})
     encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
     return encoded_jwt

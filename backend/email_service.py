@@ -10,7 +10,7 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timedelta
 from sqlmodel import Session, select
-from backend.models import EmailVerifyCode, engine
+from backend.models import EmailVerifyCode, SystemConfig, engine
 
 # ============ SMTP 配置（从环境变量读取）============
 SMTP_HOST = os.getenv("SMTP_HOST", "smtp.qq.com")
@@ -19,8 +19,28 @@ SMTP_USER = os.getenv("SMTP_USER", "your-email@qq.com")  # 必须设置环境变
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "your-authorization-code")  # 必须设置环境变量
 SMTP_SENDER_NAME = os.getenv("SMTP_SENDER_NAME", "DadiAI")
 
-# 验证码有效期（分钟）
-CODE_EXPIRE_MINUTES = 5
+# 验证码有效期（分钟）- 动态从DB读取
+def _get_code_expire_minutes():
+    try:
+        import json
+        with Session(engine) as s:
+            cfg = s.exec(select(SystemConfig).where(SystemConfig.key == "code_expire_minutes")).first()
+            if cfg:
+                return int(json.loads(cfg.value))
+    except Exception:
+        pass
+    return 5
+
+def _get_site_name():
+    try:
+        import json
+        with Session(engine) as s:
+            cfg = s.exec(select(SystemConfig).where(SystemConfig.key == "site_name")).first()
+            if cfg:
+                return json.loads(cfg.value)
+    except Exception:
+        pass
+    return "大帝AI"
 
 # 验证码加密密钥（从环境变量获取）
 VERIFY_CODE_SECRET = os.getenv("SECRET_LAYER_1", "default_verify_secret_key")
@@ -120,7 +140,9 @@ def send_verification_code(email: str, purpose: str = "register") -> tuple[bool,
     返回: (是否成功, 验证码或错误信息)
     """
     code = generate_code()
-    expires_at = datetime.utcnow() + timedelta(minutes=CODE_EXPIRE_MINUTES)
+    code_expire = _get_code_expire_minutes()
+    site_name = _get_site_name()
+    expires_at = datetime.utcnow() + timedelta(minutes=code_expire)
     
     # 存储验证码到数据库
     with Session(engine) as session:
@@ -149,16 +171,16 @@ def send_verification_code(email: str, purpose: str = "register") -> tuple[bool,
     
     # 根据用途生成不同的邮件内容
     if purpose == "register":
-        subject = "【大帝AI】注册验证码"
+        subject = f"【{site_name}】注册验证码"
         action_text = "注册账号"
     else:
-        subject = "【大帝AI】重置密码验证码"
+        subject = f"【{site_name}】重置密码验证码"
         action_text = "重置密码"
     
     html_content = f"""
     <div style="max-width: 600px; margin: 0 auto; font-family: 'Microsoft YaHei', Arial, sans-serif;">
         <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; text-align: center; border-radius: 10px 10px 0 0;">
-            <h1 style="color: white; margin: 0; font-size: 24px;">大帝 AI</h1>
+            <h1 style="color: white; margin: 0; font-size: 24px;">{site_name}</h1>
             <p style="color: rgba(255,255,255,0.8); margin: 10px 0 0 0;">AI 视频创作平台</p>
         </div>
         <div style="background: #f8f9fa; padding: 30px; border: 1px solid #e9ecef;">
@@ -167,7 +189,7 @@ def send_verification_code(email: str, purpose: str = "register") -> tuple[bool,
                 <span style="font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #667eea;">{code}</span>
             </div>
             <p style="font-size: 14px; color: #666;">
-                验证码 {CODE_EXPIRE_MINUTES} 分钟内有效，请勿泄露给他人。<br>
+                验证码 {code_expire} 分钟内有效，请勿泄露给他人。<br>
                 如非本人操作，请忽略此邮件。
             </p>
         </div>

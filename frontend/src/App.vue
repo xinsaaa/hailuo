@@ -17,8 +17,11 @@ onMounted(async () => {
   try {
     const config = await getPublicConfig()
     if (config) {
-      // 设置标签页标题
-      if (config.site_name) document.title = config.site_name
+      // 设置标签页标题并缓存站点名称
+      if (config.site_name) {
+        document.title = config.site_name
+        localStorage.setItem('site_name', config.site_name)
+      }
       // 手机端拦截
       if (isMobile.value) {
         blockMobile.value = config.block_mobile_users === true
