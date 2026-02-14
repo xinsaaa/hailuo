@@ -350,6 +350,13 @@ export const closeTicket = async (ticketId) => {
     return response.data
 }
 
+// ============ Invite API ============
+
+export const getInviteStats = async () => {
+    const response = await api.get('/invite/stats')
+    return response.data
+}
+
 export const getPublicConfig = async () => {
     const response = await api.get('/config')
     return response.data

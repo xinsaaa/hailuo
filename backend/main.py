@@ -1386,6 +1386,34 @@ def user_close_ticket(
     return {"message": "工单已关闭"}
 
 
+# ============ 邀请系统 API ============
+
+@app.get("/api/invite/stats")
+def get_invite_stats(current_user: User = Depends(get_current_user), session: Session = Depends(get_session)):
+    """获取当前用户的邀请统计和邀请列表"""
+    # 查询被该用户邀请的人
+    invited_users = session.exec(
+        select(User).where(User.invited_by == current_user.id).order_by(User.created_at.desc())
+    ).all()
+    
+    invite_reward = 3.0  # 每次邀请奖励
+    
+    invite_list = []
+    for u in invited_users:
+        invite_list.append({
+            "username": u.username[:1] + "***" + u.username[-1:] if len(u.username) > 2 else u.username[:1] + "**",
+            "created_at": u.created_at.isoformat() if u.created_at else None,
+        })
+    
+    return {
+        "invite_code": current_user.invite_code,
+        "total_invited": len(invited_users),
+        "total_earnings": len(invited_users) * invite_reward,
+        "invite_reward": invite_reward,
+        "invite_list": invite_list,
+    }
+
+
 # ============ 静态文件服务 ============
 import os
 
