@@ -104,6 +104,11 @@ const routes = [
                 component: AdminMultiAccounts
             },
             {
+                path: 'settings',
+                name: '系统设置',
+                component: () => import('../views/admin/AdminSettings.vue')
+            },
+            {
                 path: '',
                 redirect: '/admin/dashboard'
             }

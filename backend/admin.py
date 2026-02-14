@@ -134,6 +134,25 @@ def admin_login(data: AdminLogin, request: Request):
     return {"access_token": access_token, "token_type": "bearer"}
 
 
+# ============ 修改管理员密码 ============
+
+class ChangePasswordRequest(BaseModel):
+    new_password: str
+
+@router.post("/change-password")
+def change_admin_password(data: ChangePasswordRequest, admin=Depends(get_admin_user)):
+    """修改管理员密码（运行时生效，重启后需通过环境变量持久化）"""
+    global ADMIN_PASSWORD, ADMIN_PASSWORD_HASH
+    
+    if len(data.new_password) < 6:
+        raise HTTPException(status_code=400, detail="密码长度不能少于6位")
+    
+    ADMIN_PASSWORD = data.new_password
+    ADMIN_PASSWORD_HASH = get_password_hash(data.new_password)
+    
+    return {"message": "密码修改成功，重启服务后请确保环境变量 ADMIN_PASSWORD 已更新"}
+
+
 # ============ 系统统计 ============
 
 @router.get("/stats")
@@ -699,33 +718,52 @@ def get_fail_stats(admin=Depends(get_admin_user), session: Session = Depends(get
 from backend.models import SystemConfig
 import json
 
-# 默认配置定义
+# 默认配置定义（按分类组织）
 DEFAULT_CONFIG = {
-    "bonus_rate": {"value": 0.2, "description": "充值赠送比例（满10元生效）"},
-    "bonus_min_amount": {"value": 10, "description": "享受赠送的最低充值金额（元）"},
-    "min_recharge": {"value": 0.01, "description": "最低充值金额（元）"},
-    "max_recharge": {"value": 10000, "description": "最高充值金额（元）"},
+    # ---- 充值设置 ----
+    "bonus_rate": {"value": 0.2, "description": "充值赠送比例（满最低金额生效）", "category": "recharge", "type": "number"},
+    "bonus_min_amount": {"value": 10, "description": "享受赠送的最低充值金额（元）", "category": "recharge", "type": "number"},
+    "min_recharge": {"value": 0.01, "description": "最低充值金额（元）", "category": "recharge", "type": "number"},
+    "max_recharge": {"value": 10000, "description": "最高充值金额（元）", "category": "recharge", "type": "number"},
+    # ---- 用户设置 ----
+    "register_bonus": {"value": 3.0, "description": "新用户注册赠送金额（元）", "category": "user", "type": "number"},
+    "invite_reward": {"value": 3.0, "description": "邀请奖励金额（双方各得，元）", "category": "user", "type": "number"},
+    "allow_register": {"value": True, "description": "是否开放新用户注册", "category": "user", "type": "boolean"},
+    # ---- 站点设置 ----
+    "site_name": {"value": "大帝AI", "description": "站点名称", "category": "site", "type": "string"},
+    "site_announcement": {"value": "", "description": "站点公告（为空则不显示）", "category": "site", "type": "string"},
+    # ---- 自动化设置 ----
+    "task_poll_interval": {"value": 5, "description": "任务轮询间隔（秒）", "category": "automation", "type": "number"},
+    "health_check_interval": {"value": 300, "description": "账号健康检查间隔（秒）", "category": "automation", "type": "number"},
+    "default_max_concurrent": {"value": 3, "description": "新账号默认最大并发任务数", "category": "automation", "type": "number"},
+    # ---- 安全设置 ----
+    "token_expire_hours": {"value": 24, "description": "用户Token过期时间（小时）", "category": "security", "type": "number"},
+    "admin_max_fail": {"value": 5, "description": "管理员登录最大失败次数", "category": "security", "type": "number"},
+    "code_expire_minutes": {"value": 5, "description": "邮箱验证码有效期（分钟）", "category": "security", "type": "number"},
 }
 
 
 class ConfigUpdate(BaseModel):
     key: str
-    value: float
+    value: any
 
 
 @router.get("/config")
 def get_all_config(admin=Depends(get_admin_user), session: Session = Depends(get_session)):
     """获取所有配置"""
     configs = session.exec(sql_select(SystemConfig)).all()
-    config_dict = {c.key: {"value": json.loads(c.value), "description": c.description} for c in configs}
+    config_dict = {c.key: json.loads(c.value) for c in configs}
     
-    # 合并默认配置
+    # 合并默认配置，保留category和type元信息
     result = {}
     for key, default in DEFAULT_CONFIG.items():
-        if key in config_dict:
-            result[key] = config_dict[key]
-        else:
-            result[key] = default
+        item = {
+            "value": config_dict.get(key, default["value"]),
+            "description": default["description"],
+            "category": default.get("category", "other"),
+            "type": default.get("type", "string"),
+        }
+        result[key] = item
     
     return {"configs": result}
 
