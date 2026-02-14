@@ -336,33 +336,7 @@ class MultiAccountManager:
                     print("[LOGIN] 未找到手机号输入框")
                     return False
             
-            # 5. 勾选用户协议
-            # 按钮结构: <button type="button" class="text-hl_text_00 mr-1.5 cursor-pointer rounded-full"><svg...></button>
-            try:
-                agree_btn = page.locator("button.cursor-pointer.rounded-full:has(svg)").first
-                await agree_btn.wait_for(state="visible", timeout=5000)
-                await agree_btn.click()
-                print(f"[LOGIN] 已勾选用户协议")
-            except:
-                # 兜底：直接用JS点击
-                clicked = await page.evaluate("""
-                    () => {
-                        const btns = document.querySelectorAll('button.rounded-full');
-                        for (const btn of btns) {
-                            if (btn.querySelector('svg') && btn.offsetParent !== null) {
-                                btn.click();
-                                return true;
-                            }
-                        }
-                        return false;
-                    }
-                """)
-                if clicked:
-                    print(f"[LOGIN] JS兜底勾选用户协议成功")
-                else:
-                    print(f"[LOGIN] 用户协议勾选失败（可能已勾选或无需勾选）")
-            
-            # 6. 点击获取验证码（与automation.py一致）
+            # 5. 点击获取验证码（不需要提前勾选协议，登录时会弹出“同意并登录”）
             # 截图：点击验证码前
             try:
                 await page.screenshot(path=f"debug_before_send_code_{account_id}.png")
@@ -443,32 +417,7 @@ class MultiAccountManager:
                     print("[LOGIN] 未找到验证码输入框")
                     return False
             
-            # 2. 勾选用户协议
-            try:
-                agree_btn = page.locator("button.cursor-pointer.rounded-full:has(svg)").first
-                await agree_btn.wait_for(state="visible", timeout=3000)
-                await agree_btn.click()
-                print(f"[LOGIN] 已勾选用户协议")
-            except:
-                # JS兜底
-                clicked = await page.evaluate("""
-                    () => {
-                        const btns = document.querySelectorAll('button.rounded-full');
-                        for (const btn of btns) {
-                            if (btn.querySelector('svg') && btn.offsetParent !== null) {
-                                btn.click();
-                                return true;
-                            }
-                        }
-                        return false;
-                    }
-                """)
-                if clicked:
-                    print(f"[LOGIN] JS兜底勾选用户协议成功")
-                else:
-                    print(f"[LOGIN] 用户协议勾选失败（可能已勾选）")
-            
-            # 3. 点击登录按钮（与automation.py一致：button.login-btn）
+            # 2. 点击登录按钮（与automation.py一致：button.login-btn）
             login_btn = page.locator("button.login-btn")
             try:
                 await login_btn.wait_for(state="visible", timeout=5000)
@@ -486,6 +435,15 @@ class MultiAccountManager:
                             break
                     except:
                         continue
+            
+            # 3. 点击登录后会弹出用户协议弹窗，点击“同意并登录”
+            try:
+                agree_login_btn = page.locator("button:has-text('同意并登录')").first
+                await agree_login_btn.wait_for(state="visible", timeout=5000)
+                await agree_login_btn.click()
+                print(f"[LOGIN] 已点击'同意并登录'")
+            except:
+                print(f"[LOGIN] 未弹出协议窗口（可能已同意）")
             
             # 4. 等待登录完成
             print(f"[LOGIN] 等待登录验证...")
