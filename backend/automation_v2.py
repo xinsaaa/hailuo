@@ -226,10 +226,10 @@ class HailuoAutomationV2:
     async def _scan_completed_videos(self, page, account_id: str):
         """扫描页面上已完成的视频 - 严格移植自V1的scan_for_completed_videos"""
         try:
-            # 确保页面在海螺AI上（V1每轮循环都检查页面存活）
+            # 确保页面在海螺AI的创建页面上（视频卡片只在这个页面有）
             try:
                 current_url = page.url
-                if not current_url or "hailuoai.com" not in current_url:
+                if not current_url or "/create" not in current_url:
                     await page.goto(HAILUO_URL, timeout=30000, wait_until="domcontentloaded")
                     await asyncio.sleep(3)
             except Exception as e:
