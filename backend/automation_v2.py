@@ -137,21 +137,18 @@ class HailuoAutomationV2:
                 poll_interval = _get_v2_config('task_poll_interval', 5)
 
                 # ========== 第1步: 扫描所有账号页面上已完成的视频（V1核心逻辑） ==========
+                # 必须先扫描，把海螺页面上已完成的视频标记completed，再去查pending
                 for account_id in list(self.manager.pages.keys()):
                     if account_id not in self.manager.accounts:
                         continue
-                    account = self.manager.accounts[account_id]
-                    # 跳过正在提交新订单的账号（current_tasks > 0 说明process_order还在跑）
-                    if account.current_tasks > 0:
-                        continue
                     if account_id not in self.manager._verified_accounts:
                         continue
-
+                    # 不跳过有任务的账号！V1也是每轮都扫描的
                     page = self.manager.pages[account_id]
                     try:
                         await self._scan_completed_videos(page, account_id)
                     except Exception as e:
-                        print(f"[AUTO-V2] 扫描账号 {account.display_name} 页面出错: {str(e)[:100]}")
+                        print(f"[AUTO-V2] 扫描账号页面出错: {str(e)[:100]}")
 
                 # ========== 第2步: 检查数据库中的待处理订单并分配 ==========
                 pending_orders = self.get_pending_orders()
@@ -342,6 +339,14 @@ class HailuoAutomationV2:
 
         page = self.manager.pages[account_id]
         order_id = order["id"]
+
+        # 先检查订单是否已经不是pending了（可能被扫描循环标记为completed）
+        with Session(engine) as session:
+            current_order = session.get(VideoOrder, order_id)
+            if current_order and current_order.status != "pending":
+                print(f"[AUTO-V2] 订单#{order_id}状态已变为{current_order.status}，跳过处理")
+                return
+
         prompt = order["prompt"]
         model_name = order.get("model_name", "Hailuo 2.3")
         first_frame_path = order.get("first_frame_image")
