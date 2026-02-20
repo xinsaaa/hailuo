@@ -289,22 +289,40 @@ class HailuoAutomationV2:
             print(f"[AUTO-V2] 扫描页面出错: {str(e)[:100]}")
 
     def _check_stuck_orders(self):
-        """检查卡在generating状态超过15分钟的订单，重置为pending重试"""
+        """检查卡在generating状态超久的订单 - 仅处理真正卡住的"""
         try:
             with Session(engine) as session:
                 from datetime import datetime, timedelta
-                cutoff = datetime.now() - timedelta(minutes=15)
+                # 只检查generating状态（不动processing，那是正在提交中的）
+                # 用updated_at判断，没有updated_at就用created_at + 30分钟（更保守）
+                cutoff = datetime.now() - timedelta(minutes=30)
                 stuck_orders = session.exec(
                     select(VideoOrder).where(
-                        VideoOrder.status.in_(["generating", "processing"]),
+                        VideoOrder.status == "generating",
                         VideoOrder.created_at < cutoff
                     )
                 ).all()
                 for order in stuck_orders:
-                    print(f"[AUTO-V2] ⚠️ 订单#{order.id}卡住超过15分钟，重置为pending")
-                    order.status = "pending"
-                    order.progress = 0
+                    # 再次确认不是刚被扫描到的（有进度的不算卡住）
+                    if order.progress and order.progress > 0:
+                        continue
+                    print(f"[AUTO-V2] ⚠️ 订单#{order.id}卡在generating超过30分钟且无进度，标记失败")
+                    order.status = "failed"
                     session.add(order)
+                    # 退款逻辑在update_order_status里，这里直接改DB需要手动退
+                    if order.cost and order.cost > 0:
+                        user = session.get(User, order.user_id)
+                        if user:
+                            user.balance += order.cost
+                            session.add(user)
+                            refund = Transaction(
+                                user_id=order.user_id,
+                                amount=order.cost,
+                                bonus=0,
+                                type="refund"
+                            )
+                            session.add(refund)
+                            print(f"[AUTO-V2] 💰 订单#{order.id}超时失败，已退回 ¥{order.cost}")
                 session.commit()
         except Exception as e:
             print(f"[AUTO-V2] 检查卡住订单出错: {str(e)[:80]}")
