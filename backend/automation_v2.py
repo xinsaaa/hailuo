@@ -223,6 +223,16 @@ class HailuoAutomationV2:
     async def _scan_completed_videos(self, page, account_id: str):
         """扫描页面上已完成的视频 - 严格移植自V1的scan_for_completed_videos"""
         try:
+            # 确保页面在海螺AI上（V1每轮循环都检查页面存活）
+            try:
+                current_url = page.url
+                if not current_url or "hailuoai.com" not in current_url:
+                    await page.goto(HAILUO_URL, timeout=30000, wait_until="domcontentloaded")
+                    await asyncio.sleep(3)
+            except Exception as e:
+                print(f"[AUTO-V2] 页面导航失败: {str(e)[:80]}")
+                return
+
             prompt_spans = await page.locator("span.prompt-plain-span").all()
             if not prompt_spans:
                 print(f"[AUTO-V2] 📭 账号{account_id}页面无视频卡片")
