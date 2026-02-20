@@ -298,30 +298,24 @@ class HailuoAutomationV2:
                     try:
                         share_btn = parent.locator("div.text-hl_text_00_legacy:has(svg path[d*='M7.84176'])").first
                         if await share_btn.is_visible():
-                            await share_btn.click()
-                            await asyncio.sleep(0.5)
+                            # 点击前注入剪贴板拦截（headless模式下clipboard API被禁止）
+                            await page.evaluate("""
+                                () => {
+                                    window.__interceptedClipboard = '';
+                                    const origWriteText = navigator.clipboard.writeText.bind(navigator.clipboard);
+                                    navigator.clipboard.writeText = async (text) => {
+                                        window.__interceptedClipboard = text;
+                                        try { await origWriteText(text); } catch(e) {}
+                                        return;
+                                    };
+                                }
+                            """)
 
-                            # 严格按V1的get_clipboard_content逻辑获取分享链接
-                            share_link = ""
-                            try:
-                                share_link = await page.evaluate("navigator.clipboard.readText()") or ""
-                            except Exception as clip_e:
-                                print(f"[AUTO-V2] 剪贴板读取失败(headless模式): {str(clip_e)[:60]}")
-                                # fallback: 从页面DOM获取分享链接（V1的备用方案）
-                                try:
-                                    share_link = await page.evaluate("""
-                                        () => {
-                                            const shareButtons = document.querySelectorAll('[data-share-url]');
-                                            if (shareButtons.length > 0) {
-                                                return shareButtons[shareButtons.length - 1].getAttribute('data-share-url');
-                                            }
-                                            return null;
-                                        }
-                                    """) or ""
-                                    if share_link:
-                                        print(f"[AUTO-V2] 📋 通过DOM获取到分享链接")
-                                except:
-                                    pass
+                            await share_btn.click()
+                            await asyncio.sleep(1)
+
+                            # 读取拦截到的剪贴板内容
+                            share_link = await page.evaluate("() => window.__interceptedClipboard || ''") or ""
 
                             if share_link and share_link.startswith("http") and share_link not in _processed_share_links:
                                 _processed_share_links.add(share_link)
