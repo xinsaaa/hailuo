@@ -849,11 +849,6 @@ def select_generation_model(page: Page, model_name: str = "Hailuo 2.3") -> bool:
             return select_model_from_popover(page, model_name)
         else:
             automation_logger.error("❌ 点击后未出现模型选择菜单")
-            try:
-                page.screenshot(path="debug_no_popover_after_click.png")
-                automation_logger.info("📸 保存调试截图: debug_no_popover_after_click.png")
-            except:
-                pass
             return False
     
     except Exception as e:

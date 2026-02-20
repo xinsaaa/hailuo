@@ -336,13 +336,7 @@ class MultiAccountManager:
                     print("[LOGIN] 未找到手机号输入框")
                     return False
             
-            # 5. 点击获取验证码（不需要提前勾选协议，登录时会弹出“同意并登录”）
-            # 截图：点击验证码前
-            try:
-                await page.screenshot(path=f"debug_before_send_code_{account_id}.png")
-                print(f"[DEBUG] 截图已保存: debug_before_send_code_{account_id}.png")
-            except Exception as e:
-                print(f"[DEBUG] 截图失败: {e}")
+            # 5. 点击获取验证码（不需要提前勾选协议，登录时会弹出"同意并登录"）
             
             get_code_btn = page.locator("button:has-text('获取验证码')").first
             try:
@@ -350,14 +344,8 @@ class MultiAccountManager:
                 await get_code_btn.click()
                 print(f"[LOGIN] 已点击获取验证码按钮")
                 
-                # 截图：点击验证码后
                 await page.wait_for_timeout(1000)
-                try:
-                    await page.screenshot(path=f"debug_after_send_code_{account_id}.png")
-                    print(f"[DEBUG] 截图已保存: debug_after_send_code_{account_id}.png")
-                except Exception as e:
-                    print(f"[DEBUG] 截图失败: {e}")
-                
+
                 return True
             except:
                 # 兜底
@@ -448,25 +436,12 @@ class MultiAccountManager:
             # 4. 等待登录完成
             print(f"[LOGIN] 等待登录验证...")
             await page.wait_for_timeout(3000)
-            
-            # 截图：点击登录后页面状态
-            try:
-                await page.screenshot(path=f"debug_after_login_click_{account_id}.png")
-                print(f"[DEBUG] 截图已保存: debug_after_login_click_{account_id}.png")
-            except Exception as e:
-                print(f"[DEBUG] 截图失败: {e}")
-            
+
             # 5. 验证登录结果：登录按钮消失 = 登录成功
             login_btn_check = page.locator("div.border-hl_line_00:has-text('登录')").first
             try:
                 await login_btn_check.wait_for(state="visible", timeout=5000)
                 # 登录按钮仍在 = 登录失败
-                # 截图：登录失败时的页面
-                try:
-                    await page.screenshot(path=f"debug_login_failed_{account_id}.png")
-                    print(f"[DEBUG] 登录失败截图: debug_login_failed_{account_id}.png")
-                except:
-                    pass
                 self.mark_account_logged_out(account_id)
                 print(f"[MULTI-ACCOUNT] 账号 {account.display_name} 登录验证失败 - 登录按钮仍存在")
                 return False
