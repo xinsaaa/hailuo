@@ -253,19 +253,33 @@ class HailuoAutomationV2:
             # 步骤4: 选择模型
             await self.select_model(page, model_name)
 
-            # 步骤5: 点击生成按钮（V1验证的选择器列表）
+            # 步骤5: 等待popover完全关闭后再找生成按钮
+            await asyncio.sleep(2)
+            # 确保没有popover遮挡
+            for pop_sel in [".ant-popover:not(.ant-popover-hidden)"]:
+                try:
+                    pop = page.locator(pop_sel).first
+                    if await pop.is_visible():
+                        await page.keyboard.press("Escape")
+                        await asyncio.sleep(1)
+                except:
+                    pass
+
+            # 点击生成按钮（V1验证的选择器 + 用户提供的实际HTML class）
             generate_btn = None
             for selector in ["button.new-color-btn-bg", "button:has-text('生成')", "button:has-text('开始生成')", "button[type='submit']"]:
                 try:
                     btn = page.locator(selector).first
-                    if await btn.is_visible():
+                    # 用count()检查元素是否存在，不依赖is_visible（可能被遮挡）
+                    if await btn.count() > 0:
                         generate_btn = btn
+                        print(f"[AUTO-V2] ✅ 找到生成按钮: {selector}")
                         break
                 except:
                     continue
 
             if generate_btn:
-                await generate_btn.click()
+                await generate_btn.click(force=True)
                 print(f"[AUTO-V2] ✅ 订单#{order_id}已提交生成")
                 self.update_order_status(order_id, "generating")
             else:
@@ -348,11 +362,24 @@ class HailuoAutomationV2:
                         await option.click()
                         await asyncio.sleep(1)
                         print(f"[AUTO-V2] ✅ 已选择模型: {text.strip()[:50]}")
+                        # 等待popover关闭，防止遮挡生成按钮
+                        await asyncio.sleep(1)
+                        try:
+                            await page.keyboard.press("Escape")
+                            await asyncio.sleep(0.5)
+                        except:
+                            pass
                         return
                 except:
                     continue
 
             print(f"[AUTO-V2] ⚠️ 未匹配到模型 {model_name}，使用默认")
+            # 关闭popover
+            try:
+                await page.keyboard.press("Escape")
+                await asyncio.sleep(0.5)
+            except:
+                pass
 
         except Exception as e:
             print(f"[AUTO-V2] 模型选择失败: {str(e)[:100]}")
