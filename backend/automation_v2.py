@@ -11,7 +11,7 @@ import time
 from typing import Dict, List, Optional, Any, Set
 from playwright.async_api import async_playwright, Browser, BrowserContext, Page
 from sqlmodel import Session, select
-from backend.models import VideoOrder, SystemConfig, engine
+from backend.models import VideoOrder, SystemConfig, User, Transaction, engine
 
 def _get_v2_config(key, default):
     try:
@@ -539,12 +539,29 @@ class HailuoAutomationV2:
             return False
     
     def update_order_status(self, order_id: int, status: str):
-        """更新订单状态"""
+        """更新订单状态，失败时自动退回余额"""
         with Session(engine) as session:
             order = session.get(VideoOrder, order_id)
             if order:
                 order.status = status
                 session.add(order)
+
+                # 失败订单自动退回余额
+                if status == "failed" and order.cost and order.cost > 0:
+                    user = session.get(User, order.user_id)
+                    if user:
+                        user.balance += order.cost
+                        session.add(user)
+                        # 记录退款交易
+                        refund = Transaction(
+                            user_id=order.user_id,
+                            amount=order.cost,
+                            bonus=0,
+                            type="refund"
+                        )
+                        session.add(refund)
+                        print(f"[AUTO-V2] 💰 订单#{order_id}失败，已退回 ¥{order.cost} 给用户#{order.user_id}")
+
                 session.commit()
     
     def update_order_result(self, order_id: int, video_url: str, status: str):

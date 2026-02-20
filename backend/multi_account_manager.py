@@ -528,69 +528,74 @@ class MultiAccountManager:
             return False
 
     async def get_account_credits(self, account_id: str) -> int:
-        """获取账号剩余积分 - 通过JS精确定位'升级'按钮旁边的积分数字"""
+        """获取账号剩余积分 - 基于用户提供的实际HTML结构"""
         if account_id not in self.pages:
             return -1
-        
+
         page = self.pages[account_id]
-        
+
         try:
             print(f"[MULTI-ACCOUNT] 🔍 获取账号 {account_id} 剩余积分...")
-            
+
             # 访问海螺AI主页
             await page.goto("https://hailuoai.com", timeout=15000)
             await page.wait_for_timeout(3000)
-            
-            # 使用JS精确定位：找到"升级"文字，向上遍历找到积分数字
+
+            # 基于实际HTML：火焰SVG(path d包含8.00048)的相邻span包含积分数字(如"20,000")
             credits = await page.evaluate("""
                 () => {
-                    // 方法1: 找到包含"升级"文字的span，然后向上找同级的积分数字
-                    const allSpans = document.querySelectorAll('span');
-                    for (const span of allSpans) {
-                        const text = span.textContent.trim();
-                        if (text === '升级') {
-                            // 向上遍历找到包含积分数字的容器
-                            let container = span.closest('.mb-2') || span.closest('.flex.w-full');
-                            // 尝试多层向上查找
-                            if (!container) {
-                                container = span.parentElement?.parentElement?.parentElement?.parentElement?.parentElement;
-                            }
-                            if (container) {
-                                // 在容器中查找纯数字的span
-                                const numberSpans = container.querySelectorAll('span');
-                                for (const ns of numberSpans) {
-                                    const numText = ns.textContent.trim();
-                                    if (/^\\d+$/.test(numText)) {
-                                        return parseInt(numText);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    
-                    // 方法2: 直接找火焰SVG图标旁边的数字
+                    // 方法1: 找火焰SVG图标，取相邻span的数字
                     const svgs = document.querySelectorAll('svg');
                     for (const svg of svgs) {
-                        // 海螺AI火焰图标的特征：包含特定path
                         const path = svg.querySelector('path');
                         if (path) {
                             const d = path.getAttribute('d') || '';
                             if (d.includes('8.00048') && d.includes('1.82032')) {
-                                // 找到火焰图标，查找相邻的数字span
-                                const parent = svg.closest('.relative') || svg.parentElement?.parentElement;
-                                if (parent) {
-                                    const spans = parent.querySelectorAll('span');
+                                // 找到火焰图标，在父级容器中找数字span
+                                const container = svg.closest('.relative') || svg.closest('.flex-col');
+                                if (container) {
+                                    const spans = container.querySelectorAll('span');
                                     for (const s of spans) {
                                         const t = s.textContent.trim();
-                                        if (/^\\d+$/.test(t)) {
-                                            return parseInt(t);
+                                        // 匹配纯数字或带逗号的数字(如 "20,000")
+                                        if (/^[\\d,]+$/.test(t) && /\\d/.test(t)) {
+                                            return parseInt(t.replace(/,/g, ''));
                                         }
+                                    }
+                                }
+                                // 也检查svg的下一个兄弟元素
+                                let sibling = svg.parentElement?.nextElementSibling;
+                                if (!sibling) sibling = svg.nextElementSibling;
+                                if (sibling) {
+                                    const t = sibling.textContent.trim();
+                                    if (/^[\\d,]+$/.test(t) && /\\d/.test(t)) {
+                                        return parseInt(t.replace(/,/g, ''));
                                     }
                                 }
                             }
                         }
                     }
-                    
+
+                    // 方法2: 找"尊享会员"或"升级"文字，向上找积分数字
+                    const allSpans = document.querySelectorAll('span');
+                    for (const span of allSpans) {
+                        const text = span.textContent.trim();
+                        if (text === '尊享会员' || text === '升级' || text.includes('会员')) {
+                            let container = span.closest('.flex-col') || span.closest('.flex');
+                            // 向上多层查找
+                            for (let i = 0; i < 5 && container; i++) {
+                                const numberSpans = container.querySelectorAll('span');
+                                for (const ns of numberSpans) {
+                                    const numText = ns.textContent.trim();
+                                    if (/^[\\d,]+$/.test(numText) && /\\d/.test(numText)) {
+                                        return parseInt(numText.replace(/,/g, ''));
+                                    }
+                                }
+                                container = container.parentElement;
+                            }
+                        }
+                    }
+
                     return -1;
                 }
             """)
