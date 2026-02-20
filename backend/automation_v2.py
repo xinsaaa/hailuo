@@ -131,13 +131,25 @@ class HailuoAutomationV2:
     async def task_processing_loop(self):
         """任务处理主循环 - 严格参照V1的automation_worker主循环"""
         print("[AUTO-V2] 📋 任务处理循环已启动")
+        loop_count = 0
 
         while self.is_running:
             try:
+                loop_count += 1
                 poll_interval = _get_v2_config('task_poll_interval', 5)
+
+                # 统计当前状态
+                generating_count = 0
+                with Session(engine) as session:
+                    generating_count = len(session.exec(
+                        select(VideoOrder).where(VideoOrder.status == "generating")
+                    ).all())
+
+                print(f"[AUTO-V2] 🔁 第{loop_count}次循环 | 活跃任务: {len(self.task_handlers)} | 生成中订单: {generating_count}")
 
                 # ========== 第1步: 扫描所有账号页面上已完成的视频（V1核心逻辑） ==========
                 # 必须先扫描，把海螺页面上已完成的视频标记completed，再去查pending
+                scanned_accounts = 0
                 for account_id in list(self.manager.pages.keys()):
                     if account_id not in self.manager.accounts:
                         continue
@@ -147,8 +159,11 @@ class HailuoAutomationV2:
                     page = self.manager.pages[account_id]
                     try:
                         await self._scan_completed_videos(page, account_id)
+                        scanned_accounts += 1
                     except Exception as e:
                         print(f"[AUTO-V2] 扫描账号页面出错: {str(e)[:100]}")
+
+                print(f"[AUTO-V2] 📹 已扫描 {scanned_accounts} 个账号页面")
 
                 # ========== 第2步: 检查数据库中的待处理订单并分配 ==========
                 pending_orders = self.get_pending_orders()
@@ -210,7 +225,12 @@ class HailuoAutomationV2:
         try:
             prompt_spans = await page.locator("span.prompt-plain-span").all()
             if not prompt_spans:
+                print(f"[AUTO-V2] 📭 账号{account_id}页面无视频卡片")
                 return
+
+            print(f"[AUTO-V2] 🔍 账号{account_id}页面发现 {len(prompt_spans)} 个视频卡片")
+            completed_count = 0
+            processing_count = 0
 
             for span in prompt_spans:
                 try:
@@ -228,6 +248,8 @@ class HailuoAutomationV2:
                         if not order or order.status == "completed" or order.status == "failed":
                             continue
 
+                    print(f"[AUTO-V2] 🎯 发现订单#{order_id} (状态: {order.status if order else '?'})")
+
                     # 找到父级视频卡片
                     parent = span.locator("xpath=ancestor::div[contains(@class, 'group/video-card')]").first
 
@@ -235,7 +257,9 @@ class HailuoAutomationV2:
                     try:
                         queue_hint = parent.locator("div:has-text('低速生成中')")
                         if await queue_hint.is_visible():
+                            print(f"[AUTO-V2] ⏳ 订单#{order_id}排队中")
                             self._update_order_progress(order_id, -1)
+                            processing_count += 1
                             continue
                     except:
                         pass
@@ -245,11 +269,13 @@ class HailuoAutomationV2:
                         progress = parent.locator(".ant-progress-text")
                         if await progress.is_visible():
                             progress_text = await progress.text_content() or "0%"
+                            print(f"[AUTO-V2] ⏳ 订单#{order_id}生成中 ({progress_text})")
                             try:
                                 val = int(progress_text.replace("%", "").strip())
                                 self._update_order_progress(order_id, val)
                             except:
                                 pass
+                            processing_count += 1
                             continue
                     except:
                         pass
@@ -272,8 +298,9 @@ class HailuoAutomationV2:
                                 _processed_share_links.add(share_link)
                                 self.update_order_result(order_id, share_link, "completed")
                                 print(f"[AUTO-V2] 🎉 订单#{order_id}完成! 链接: {share_link[:60]}")
+                                completed_count += 1
                             else:
-                                print(f"[AUTO-V2] ⚠️ 订单#{order_id}分享链接获取失败或重复")
+                                print(f"[AUTO-V2] ⚠️ 订单#{order_id}分享链接获取失败或重复: '{share_link[:40]}'")
                         else:
                             print(f"[AUTO-V2] ⚠️ 订单#{order_id}未找到分享按钮")
                     except Exception as e:
@@ -281,6 +308,9 @@ class HailuoAutomationV2:
 
                 except Exception:
                     continue
+
+            if completed_count > 0 or processing_count > 0:
+                print(f"[AUTO-V2] 📊 扫描结果: 完成{completed_count}个, 生成中{processing_count}个")
 
         except Exception as e:
             print(f"[AUTO-V2] 扫描页面出错: {str(e)[:100]}")
