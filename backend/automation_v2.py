@@ -129,29 +129,47 @@ class HailuoAutomationV2:
                 await asyncio.sleep(60)
         
     async def task_processing_loop(self):
-        """任务处理主循环"""
+        """任务处理主循环 - 严格参照V1的automation_worker主循环"""
         print("[AUTO-V2] 📋 任务处理循环已启动")
-        
+
         while self.is_running:
             try:
-                # 检查数据库中的待处理订单
+                poll_interval = _get_v2_config('task_poll_interval', 5)
+
+                # ========== 第1步: 扫描所有账号页面上已完成的视频（V1核心逻辑） ==========
+                for account_id in list(self.manager.pages.keys()):
+                    if account_id not in self.manager.accounts:
+                        continue
+                    account = self.manager.accounts[account_id]
+                    # 跳过正在提交新订单的账号（current_tasks > 0 说明process_order还在跑）
+                    if account.current_tasks > 0:
+                        continue
+                    if account_id not in self.manager._verified_accounts:
+                        continue
+
+                    page = self.manager.pages[account_id]
+                    try:
+                        await self._scan_completed_videos(page, account_id)
+                    except Exception as e:
+                        print(f"[AUTO-V2] 扫描账号 {account.display_name} 页面出错: {str(e)[:100]}")
+
+                # ========== 第2步: 检查数据库中的待处理订单并分配 ==========
                 pending_orders = self.get_pending_orders()
-                
+
                 if pending_orders:
                     print(f"[AUTO-V2] 发现 {len(pending_orders)} 个待处理订单")
-                    
-                    # 为每个订单分配账号并处理
+
                     for order in pending_orders:
                         account_id = self.manager.get_best_account_for_task()
                         if account_id:
-                            # 创建任务处理器
                             task = asyncio.create_task(
                                 self.process_order(account_id, order)
                             )
                             self.task_handlers[f"{account_id}_{order['id']}"] = task
                         else:
                             print(f"[AUTO-V2] 暂无可用账号处理订单 {order['id']}")
-                
+                            break  # 没有可用账号就不继续分配了
+
                 # 清理完成的任务
                 completed_tasks = [
                     task_id for task_id, task in self.task_handlers.items()
@@ -159,10 +177,12 @@ class HailuoAutomationV2:
                 ]
                 for task_id in completed_tasks:
                     del self.task_handlers[task_id]
-                
-                # 等待下一轮
-                await asyncio.sleep(_get_v2_config('task_poll_interval', 5))
-                
+
+                # ========== 第3步: 检查generating状态超时的订单 ==========
+                self._check_stuck_orders()
+
+                await asyncio.sleep(poll_interval)
+
             except Exception as e:
                 print(f"[AUTO-V2] 任务循环错误: {e}")
                 await asyncio.sleep(10)
@@ -187,7 +207,108 @@ class HailuoAutomationV2:
                 }
                 for o in orders
             ]
-    
+
+    async def _scan_completed_videos(self, page, account_id: str):
+        """扫描页面上已完成的视频 - 严格移植自V1的scan_for_completed_videos"""
+        try:
+            prompt_spans = await page.locator("span.prompt-plain-span").all()
+            if not prompt_spans:
+                return
+
+            for span in prompt_spans:
+                try:
+                    prompt_text = await span.text_content()
+                    if not prompt_text:
+                        continue
+
+                    order_id = extract_order_id_from_text(prompt_text)
+                    if not order_id:
+                        continue
+
+                    # 检查订单状态
+                    with Session(engine) as session:
+                        order = session.get(VideoOrder, order_id)
+                        if not order or order.status == "completed" or order.status == "failed":
+                            continue
+
+                    # 找到父级视频卡片
+                    parent = span.locator("xpath=ancestor::div[contains(@class, 'group/video-card')]").first
+
+                    # 检查排队状态
+                    try:
+                        queue_hint = parent.locator("div:has-text('低速生成中')")
+                        if await queue_hint.is_visible():
+                            self._update_order_progress(order_id, -1)
+                            continue
+                    except:
+                        pass
+
+                    # 检查进度条
+                    try:
+                        progress = parent.locator(".ant-progress-text")
+                        if await progress.is_visible():
+                            progress_text = await progress.text_content() or "0%"
+                            try:
+                                val = int(progress_text.replace("%", "").strip())
+                                self._update_order_progress(order_id, val)
+                            except:
+                                pass
+                            continue
+                    except:
+                        pass
+
+                    # 没有进度条也没有排队 = 生成完成，提取分享链接
+                    print(f"[AUTO-V2] ✅ 订单#{order_id}生成完成，提取分享链接")
+                    try:
+                        share_btn = parent.locator("div.text-hl_text_00_legacy:has(svg path[d*='M7.84176'])").first
+                        if await share_btn.is_visible():
+                            await share_btn.click()
+                            await asyncio.sleep(0.5)
+
+                            share_link = ""
+                            try:
+                                share_link = await page.evaluate("() => navigator.clipboard.readText()") or ""
+                            except:
+                                pass
+
+                            if share_link.startswith("http") and share_link not in _processed_share_links:
+                                _processed_share_links.add(share_link)
+                                self.update_order_result(order_id, share_link, "completed")
+                                print(f"[AUTO-V2] 🎉 订单#{order_id}完成! 链接: {share_link[:60]}")
+                            else:
+                                print(f"[AUTO-V2] ⚠️ 订单#{order_id}分享链接获取失败或重复")
+                        else:
+                            print(f"[AUTO-V2] ⚠️ 订单#{order_id}未找到分享按钮")
+                    except Exception as e:
+                        print(f"[AUTO-V2] 提取分享链接出错: {str(e)[:80]}")
+
+                except Exception:
+                    continue
+
+        except Exception as e:
+            print(f"[AUTO-V2] 扫描页面出错: {str(e)[:100]}")
+
+    def _check_stuck_orders(self):
+        """检查卡在generating状态超过15分钟的订单，重置为pending重试"""
+        try:
+            with Session(engine) as session:
+                from datetime import datetime, timedelta
+                cutoff = datetime.now() - timedelta(minutes=15)
+                stuck_orders = session.exec(
+                    select(VideoOrder).where(
+                        VideoOrder.status.in_(["generating", "processing"]),
+                        VideoOrder.created_at < cutoff
+                    )
+                ).all()
+                for order in stuck_orders:
+                    print(f"[AUTO-V2] ⚠️ 订单#{order.id}卡住超过15分钟，重置为pending")
+                    order.status = "pending"
+                    order.progress = 0
+                    session.add(order)
+                session.commit()
+        except Exception as e:
+            print(f"[AUTO-V2] 检查卡住订单出错: {str(e)[:80]}")
+
     async def process_order(self, account_id: str, order: dict):
         """处理单个订单 - 基于V1验证过的选择器和流程"""
         account = self.manager.accounts.get(account_id)
