@@ -150,7 +150,10 @@ class HailuoAutomationV2:
                 # ========== 第1步: 扫描所有账号页面上已完成的视频（V1核心逻辑） ==========
                 # 必须先扫描，把海螺页面上已完成的视频标记completed，再去查pending
                 scanned_accounts = 0
-                for account_id in list(self.manager.pages.keys()):
+                all_pages = list(self.manager.pages.keys())
+                all_verified = list(self.manager._verified_accounts)
+                print(f"[AUTO-V2] 📋 pages={all_pages}, verified={all_verified}")
+                for account_id in all_pages:
                     if account_id not in self.manager.accounts:
                         continue
                     if account_id not in self.manager._verified_accounts:
