@@ -493,39 +493,56 @@ class MultiAccountManager:
             return False
 
     async def check_login_status(self, account_id: str) -> bool:
-        """检查账号登录状态 - 参考automation.py的选择器和逻辑"""
+        """检查账号登录状态 - 不导航页面，避免打断正在进行的任务"""
         if account_id not in self.pages:
             return False
-        
+
         page = self.pages[account_id]
-        
+        account = self.accounts.get(account_id)
+
         try:
+            # 如果账号正在处理任务，跳过检查，视为在线
+            if account and account.current_tasks > 0:
+                print(f"[MULTI-ACCOUNT] ⏭️ 账号 {account_id} 正在处理任务，跳过登录检查")
+                return True
+
             print(f"[MULTI-ACCOUNT] 🔍 检查账号 {account_id} 登录状态...")
-            
-            # 访问海螺AI主页
-            await page.goto("https://hailuoai.com", timeout=15000)
-            await page.wait_for_timeout(2000)
-            
-            # 确认页面已加载到海螺AI
-            current_url = page.url
-            if "hailuoai.com" not in current_url:
-                print(f"[MULTI-ACCOUNT] ❌ 页面未加载到海螺AI: {current_url}")
-                return False
-            
-            # 核心判断：登录按钮存在 = 未登录，不存在 = 已登录
+
+            # 先检查页面是否还活着（不导航）
+            try:
+                current_url = page.url
+                if not current_url or current_url == "about:blank":
+                    # 页面空白，需要导航
+                    await page.goto("https://hailuoai.com", timeout=15000)
+                    await page.wait_for_timeout(2000)
+                elif "hailuoai.com" not in current_url:
+                    # 不在海螺AI页面，导航过去
+                    await page.goto("https://hailuoai.com", timeout=15000)
+                    await page.wait_for_timeout(2000)
+                else:
+                    # 已经在海螺AI页面，只刷新
+                    await page.reload(timeout=15000)
+                    await page.wait_for_timeout(2000)
+            except Exception as nav_e:
+                print(f"[MULTI-ACCOUNT] ⚠️ 页面导航失败 {account_id}: {str(nav_e)[:80]}")
+                # 导航失败不直接判定掉线，可能是临时网络问题
+                return account_id in self._verified_accounts  # 保持之前的状态
+
+            # 核心判断：登录按钮存在 = 未登录
             login_btn = page.locator("div.border-hl_line_00:has-text('登录')").first
             try:
-                await login_btn.wait_for(state="visible", timeout=10000)
+                await login_btn.wait_for(state="visible", timeout=5000)
                 print(f"[MULTI-ACCOUNT] ❌ 账号 {account_id} 发现登录按钮，未登录状态")
                 return False
             except:
                 # 登录按钮不存在 = 已登录
-                print(f"[MULTI-ACCOUNT] ✅ 账号 {account_id} 登录按钮不存在，确认已登录")
+                print(f"[MULTI-ACCOUNT] ✅ 账号 {account_id} 确认已登录")
                 return True
-            
+
         except Exception as e:
-            print(f"[MULTI-ACCOUNT] 检查登录状态失败 {account_id}: {e}")
-            return False
+            print(f"[MULTI-ACCOUNT] 检查登录状态异常 {account_id}: {str(e)[:80]}")
+            # 异常时保持之前的状态，不轻易判定掉线
+            return account_id in self._verified_accounts
 
     async def get_account_credits(self, account_id: str) -> int:
         """获取账号剩余积分 - 基于用户提供的实际HTML结构"""
