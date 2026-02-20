@@ -15,7 +15,7 @@ from backend.security import (
     is_ip_banned, get_ban_remaining_seconds, get_fail_count,
     record_fail, record_success
 )
-from backend.automation import start_automation_worker, _browser, _page
+from backend.automation_v2 import automation_v2, start_automation_v2, stop_automation_v2, get_automation_v2_status
 from jose import JWTError, jwt
 
 # 中国时区 UTC+8
@@ -439,28 +439,29 @@ from backend.automation import automation_logger
 
 @router.get("/automation/status")
 def get_automation_status(admin=Depends(get_admin_user)):
-    """获取自动化运行状态"""
-    from backend.automation import _browser, _page, _is_logged_in
-    
-    browser_running = _browser is not None
-    page_ready = _page is not None
-    logged_in = _is_logged_in
-    
-    # 更精确的状态判断
-    if browser_running and page_ready and logged_in:
+    """获取自动化运行状态（V2多账号版）"""
+    v2_status = get_automation_v2_status()
+
+    is_running = v2_status.get("is_running", False)
+    active_accounts = v2_status.get("active_accounts", 0)
+    total_accounts = v2_status.get("total_accounts", 0)
+    active_tasks = v2_status.get("active_tasks", 0)
+
+    # 兼容前端现有的 status 字段
+    if is_running and active_accounts > 0:
         status = "running"
-    elif browser_running and page_ready:
-        status = "connected"  # 浏览器连接但未登录
-    elif browser_running:
-        status = "starting"  # 浏览器启动中
+    elif is_running:
+        status = "starting"
     else:
         status = "stopped"
-    
+
     return {
-        "browser_running": browser_running,
-        "page_ready": page_ready,
-        "logged_in": logged_in,
-        "status": status
+        "status": status,
+        "is_running": is_running,
+        "total_accounts": total_accounts,
+        "active_accounts": active_accounts,
+        "active_tasks": active_tasks,
+        "accounts": v2_status.get("accounts", {})
     }
 
 
@@ -474,25 +475,33 @@ def get_automation_logs(limit: int = 50, admin=Depends(get_admin_user)):
     }
 
 @router.post("/automation/start")
-def start_automation(admin=Depends(get_admin_user)):
-    """启动自动化"""
-    if _browser is not None:
+async def start_automation(admin=Depends(get_admin_user)):
+    """启动自动化（V2多账号版）"""
+    if automation_v2.is_running:
         return {"message": "自动化已在运行中"}
-    
+
     try:
-        automation_logger.info("收到启动请求，正在初始化...")
-        start_automation_worker()
-        return {"message": "自动化启动成功"}
+        automation_logger.info("收到启动请求，正在初始化V2多账号系统...")
+        await start_automation_v2()
+        return {"message": "多账号自动化启动成功"}
     except Exception as e:
         automation_logger.error(f"启动失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"启动失败: {str(e)}")
 
 
 @router.post("/automation/stop")
-def stop_automation(admin=Depends(get_admin_user)):
-    """停止自动化（需要实现 stop 函数）"""
-    # TODO: 实现停止逻辑
-    return {"message": "暂未实现停止功能，请重启后端"}
+async def stop_automation(admin=Depends(get_admin_user)):
+    """停止自动化（V2多账号版）"""
+    if not automation_v2.is_running:
+        return {"message": "自动化未在运行"}
+
+    try:
+        await stop_automation_v2()
+        automation_logger.info("多账号自动化系统已停止")
+        return {"message": "多账号自动化已停止"}
+    except Exception as e:
+        automation_logger.error(f"停止失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"停止失败: {str(e)}")
 
 
 # ============ 安全管理 ============

@@ -1,12 +1,13 @@
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
-import { getAdminStats, getAutomationStatus, startAutomation, getAutomationLogs } from '../../api'
+import { getAdminStats, getAutomationStatus, startAutomation, stopAutomation, getAutomationLogs } from '../../api'
 
 const stats = ref(null)
 const automation = ref(null)
 const logs = ref([])
 const loading = ref(true)
 const logsLoading = ref(false)
+const actionLoading = ref(false)
 let logsInterval = null
 
 // Toast
@@ -51,12 +52,29 @@ const loadLogs = async () => {
 }
 
 const handleStartAutomation = async () => {
+    actionLoading.value = true
     try {
         await startAutomation()
+        toast('多账号自动化启动成功', 'success')
         await loadData()
         await loadLogs()
     } catch (err) {
         toast('启动失败: ' + (err.response?.data?.detail || err.message), 'error')
+    } finally {
+        actionLoading.value = false
+    }
+}
+
+const handleStopAutomation = async () => {
+    actionLoading.value = true
+    try {
+        await stopAutomation()
+        toast('自动化已停止', 'success')
+        await loadData()
+    } catch (err) {
+        toast('停止失败: ' + (err.response?.data?.detail || err.message), 'error')
+    } finally {
+        actionLoading.value = false
     }
 }
 
@@ -102,30 +120,46 @@ onUnmounted(() => {
   <div v-if="loading" class="text-white text-center py-20">加载中...</div>
   <div v-else class="space-y-6">
     
-    <!-- Automation Status -->
-    <div class="bg-gradient-to-r from-gray-800 to-gray-800/50 p-6 rounded-2xl border border-gray-700/50 shadow-xl flex items-center justify-between relative overflow-hidden group">
+    <!-- Automation Status (V2 多账号) -->
+    <div class="bg-gradient-to-r from-gray-800 to-gray-800/50 p-6 rounded-2xl border border-gray-700/50 shadow-xl relative overflow-hidden group">
         <div class="absolute inset-0 bg-gradient-to-r from-blue-500/5 to-purple-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
-        <div class="relative z-10">
-            <h3 class="text-lg font-bold text-white flex items-center gap-2">
-                <svg class="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
-                自动化服务状态
-            </h3>
-            <p class="text-sm text-gray-400 mt-1">负责处理视频生成队列的后台 Worker</p>
-        </div>
-        <div class="flex items-center gap-6 relative z-10">
-            <div class="flex items-center gap-3 bg-gray-900/50 px-4 py-2 rounded-full border border-gray-700/50">
-                <div class="w-2.5 h-2.5 rounded-full shadow-[0_0_10px_currentColor]" :class="automation?.status === 'running' ? 'bg-green-500 text-green-500' : 'bg-red-500 text-red-500'"></div>
-                <span class="text-sm font-semibold tracking-wide" :class="automation?.status === 'running' ? 'text-green-400' : 'text-red-400'">
-                    {{ automation?.status === 'running' ? 'RUNNING' : 'STOPPED' }}
-                </span>
+        <div class="flex items-center justify-between relative z-10">
+            <div>
+                <h3 class="text-lg font-bold text-white flex items-center gap-2">
+                    <svg class="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                    自动化服务状态
+                    <span class="text-xs font-normal text-gray-500 bg-gray-700/50 px-2 py-0.5 rounded">V2 多账号</span>
+                </h3>
+                <p class="text-sm text-gray-400 mt-1">多账号并行处理视频生成队列</p>
+                <div v-if="automation?.status === 'running'" class="flex items-center gap-4 mt-2 text-xs text-gray-400">
+                    <span>账号: <span class="text-blue-400">{{ automation?.active_accounts ?? 0 }}/{{ automation?.total_accounts ?? 0 }}</span></span>
+                    <span>任务: <span class="text-purple-400">{{ automation?.active_tasks ?? 0 }}</span></span>
+                </div>
             </div>
-            <button 
-                v-if="automation?.status !== 'running'"
-                @click="handleStartAutomation"
-                class="px-5 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white rounded-xl text-sm font-semibold shadow-lg shadow-blue-600/20 transform hover:-translate-y-0.5 transition-all duration-200"
-            >
-                启动服务
-            </button>
+            <div class="flex items-center gap-4">
+                <div class="flex items-center gap-3 bg-gray-900/50 px-4 py-2 rounded-full border border-gray-700/50">
+                    <div class="w-2.5 h-2.5 rounded-full shadow-[0_0_10px_currentColor]" :class="automation?.status === 'running' ? 'bg-green-500 text-green-500' : 'bg-red-500 text-red-500'"></div>
+                    <span class="text-sm font-semibold tracking-wide" :class="automation?.status === 'running' ? 'text-green-400' : 'text-red-400'">
+                        {{ automation?.status === 'running' ? 'RUNNING' : 'STOPPED' }}
+                    </span>
+                </div>
+                <button
+                    v-if="automation?.status !== 'running'"
+                    @click="handleStartAutomation"
+                    :disabled="actionLoading"
+                    class="px-5 py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 disabled:opacity-50 text-white rounded-xl text-sm font-semibold shadow-lg shadow-blue-600/20 transform hover:-translate-y-0.5 transition-all duration-200"
+                >
+                    {{ actionLoading ? '启动中...' : '启动服务' }}
+                </button>
+                <button
+                    v-else
+                    @click="handleStopAutomation"
+                    :disabled="actionLoading"
+                    class="px-5 py-2.5 bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 disabled:opacity-50 text-white rounded-xl text-sm font-semibold shadow-lg shadow-red-600/20 transform hover:-translate-y-0.5 transition-all duration-200"
+                >
+                    {{ actionLoading ? '停止中...' : '停止服务' }}
+                </button>
+            </div>
         </div>
     </div>
 
