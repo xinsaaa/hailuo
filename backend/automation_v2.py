@@ -298,24 +298,45 @@ class HailuoAutomationV2:
                     try:
                         share_btn = parent.locator("div.text-hl_text_00_legacy:has(svg path[d*='M7.84176'])").first
                         if await share_btn.is_visible():
-                            # 点击前注入剪贴板拦截（headless模式下clipboard API被禁止）
+                            # 注入全方位剪贴板拦截（覆盖所有复制方式）
                             await page.evaluate("""
                                 () => {
                                     window.__interceptedClipboard = '';
-                                    const origWriteText = navigator.clipboard.writeText.bind(navigator.clipboard);
-                                    navigator.clipboard.writeText = async (text) => {
-                                        window.__interceptedClipboard = text;
-                                        try { await origWriteText(text); } catch(e) {}
-                                        return;
+                                    // 方式1: 拦截 clipboard.writeText
+                                    if (navigator.clipboard && navigator.clipboard.writeText) {
+                                        const orig = navigator.clipboard.writeText.bind(navigator.clipboard);
+                                        navigator.clipboard.writeText = async (text) => {
+                                            window.__interceptedClipboard = text;
+                                            try { await orig(text); } catch(e) {}
+                                        };
+                                    }
+                                    // 方式2: 拦截 copy 事件
+                                    document.addEventListener('copy', (e) => {
+                                        const sel = window.getSelection();
+                                        if (sel && sel.toString()) {
+                                            window.__interceptedClipboard = sel.toString();
+                                        }
+                                    }, true);
+                                    // 方式3: 拦截 execCommand('copy')
+                                    const origExec = document.execCommand.bind(document);
+                                    document.execCommand = function(cmd, ...args) {
+                                        if (cmd === 'copy') {
+                                            const sel = window.getSelection();
+                                            if (sel && sel.toString()) {
+                                                window.__interceptedClipboard = sel.toString();
+                                            }
+                                        }
+                                        return origExec(cmd, ...args);
                                     };
                                 }
                             """)
 
                             await share_btn.click()
-                            await asyncio.sleep(1)
+                            await asyncio.sleep(1.5)
 
-                            # 读取拦截到的剪贴板内容
+                            # 读取拦截到的内容
                             share_link = await page.evaluate("() => window.__interceptedClipboard || ''") or ""
+                            print(f"[AUTO-V2] 📋 拦截到的内容: '{share_link[:60]}'")
 
                             if share_link and share_link.startswith("http") and share_link not in _processed_share_links:
                                 _processed_share_links.add(share_link)
