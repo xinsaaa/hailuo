@@ -371,13 +371,11 @@ class HailuoAutomationV2:
         try:
             with Session(engine) as session:
                 from datetime import datetime, timedelta
-                # 只检查generating状态（不动processing，那是正在提交中的）
-                # 用updated_at判断，没有updated_at就用created_at + 30分钟（更保守）
-                cutoff = datetime.now() - timedelta(minutes=30)
+                cutoff = datetime.utcnow() - timedelta(minutes=30)
                 stuck_orders = session.exec(
                     select(VideoOrder).where(
                         VideoOrder.status == "generating",
-                        VideoOrder.created_at < cutoff
+                        VideoOrder.updated_at < cutoff
                     )
                 ).all()
                 for order in stuck_orders:
@@ -489,6 +487,13 @@ class HailuoAutomationV2:
                         await asyncio.sleep(1)
                 except:
                     pass
+
+            # 点击生成按钮前检查是否暂停
+            if _get_v2_config('pause_generation', False):
+                print(f"[AUTO-V2] ⏸️ 订单#{order_id}已暂停（pause_generation开启），等待恢复...")
+                while _get_v2_config('pause_generation', False):
+                    await asyncio.sleep(5)
+                print(f"[AUTO-V2] ▶️ 订单#{order_id}恢复生成")
 
             # 点击生成按钮（V1验证的选择器 + 用户提供的实际HTML class）
             generate_btn = None
@@ -765,10 +770,12 @@ class HailuoAutomationV2:
     
     def update_order_status(self, order_id: int, status: str):
         """更新订单状态，失败时自动退回余额"""
+        from datetime import datetime
         with Session(engine) as session:
             order = session.get(VideoOrder, order_id)
             if order:
                 order.status = status
+                order.updated_at = datetime.utcnow()
                 session.add(order)
 
                 # 失败订单自动退回余额

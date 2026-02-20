@@ -333,6 +333,17 @@ async function saveAllSettings() {
       key => JSON.stringify(editedValues[key]) !== JSON.stringify(originalValues[key])
     )
 
+    // pause_generation 需要密码验证
+    if (changedKeys.includes('pause_generation')) {
+      const pwd = prompt('修改"暂停生成"需要输入操作密码：')
+      if (pwd !== '050601') {
+        alert('密码错误，操作取消')
+        editedValues['pause_generation'] = originalValues['pause_generation']
+        saving.value = false
+        return
+      }
+    }
+
     for (const key of changedKeys) {
       await api.patch('/admin/config', { key, value: editedValues[key] })
       originalValues[key] = editedValues[key]

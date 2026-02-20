@@ -53,20 +53,18 @@ def generate_code(length: int = 6) -> str:
 
 def encrypt_verification_code(code: str, email: str) -> str:
     """加密验证码，防止数据库泄露直接暴露验证码"""
-    # 使用HMAC-SHA256加密
-    message = f"{code}:{email}:{datetime.utcnow().isoformat()}"
+    message = f"{code}:{email}"
     signature = hmac.new(
-        VERIFY_CODE_SECRET.encode(), 
-        message.encode(), 
+        VERIFY_CODE_SECRET.encode(),
+        message.encode(),
         hashlib.sha256
     ).hexdigest()
-    return signature[:32]  # 取前32位作为加密后的验证码
+    return signature[:32]
 
 
 def verify_encrypted_code(plain_code: str, email: str, encrypted_code: str, created_at: datetime) -> bool:
     """验证加密的验证码"""
-    # 重新计算预期的加密值
-    message = f"{plain_code}:{email}:{created_at.isoformat()}"
+    message = f"{plain_code}:{email}"
     expected_signature = hmac.new(
         VERIFY_CODE_SECRET.encode(),
         message.encode(),

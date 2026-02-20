@@ -754,6 +754,7 @@ DEFAULT_CONFIG = {
     "task_poll_interval": {"value": 5, "description": "任务轮询间隔（秒）", "category": "automation", "type": "number"},
     "health_check_interval": {"value": 300, "description": "账号健康检查间隔（秒）", "category": "automation", "type": "number"},
     "default_max_concurrent": {"value": 3, "description": "新账号默认最大并发任务数", "category": "automation", "type": "number"},
+    "pause_generation": {"value": False, "description": "暂停生成（到点击生成按钮前停住）", "category": "automation", "type": "boolean"},
     # ---- 安全设置 ----
     "token_expire_hours": {"value": 24, "description": "用户Token过期时间（小时）", "category": "security", "type": "number"},
     "admin_max_fail": {"value": 5, "description": "管理员登录最大失败次数", "category": "security", "type": "number"},

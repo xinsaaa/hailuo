@@ -27,6 +27,7 @@ class VideoOrder(SQLModel, table=True):
     video_url: Optional[str] = None
     cost: float = Field(default=0.99)
     created_at: datetime = Field(default_factory=datetime.utcnow)
+    updated_at: datetime = Field(default_factory=datetime.utcnow)
     task_id: Optional[str] = None # External task ID from automation if applicable
     # 图片转视频功能
     first_frame_image: Optional[str] = None  # 首帧图片路径
