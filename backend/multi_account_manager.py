@@ -185,9 +185,9 @@ class MultiAccountManager:
         storage_state_file = storage_dir / "storage_state.json"
         context_options = {
             "viewport": {"width": 1280, "height": 720},
-            # 每个账号使用不同的User-Agent
             "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             "bypass_csp": True,
+            "permissions": ["clipboard-read", "clipboard-write"],
         }
         
         # 如果存在已保存的状态，加载它
