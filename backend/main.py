@@ -94,8 +94,10 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://152.32.213.113:8000",  # 后端集成前端服务
-        "http://152.32.213.113:5173",  # 开发模式备用
+        "http://dadiai.cn:8000",
+        "http://dadiai.cn:5173",
+        "http://152.32.213.113:8000",
+        "http://152.32.213.113:5173",
         "http://localhost:8000",
         "http://localhost:5173",
         "http://127.0.0.1:8000",

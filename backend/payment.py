@@ -8,13 +8,14 @@ from typing import Optional
 from urllib.parse import urlencode
 
 # ============ 配置 ============
-ZPAY_API_URL = "https://zpayz.cn/submit.php"
-ZPAY_PID = "2026010716484260"
-ZPAY_KEY = "lUpCQ3QrCmcAW8SNLCkXcHiILCybND5V"
+import os
+ZPAY_API_URL = os.getenv("ZPAY_API_URL", "https://zpayz.cn/submit.php")
+ZPAY_PID = os.getenv("ZPAY_PID", "2026010716484260")
+ZPAY_KEY = os.getenv("ZPAY_KEY", "lUpCQ3QrCmcAW8SNLCkXcHiILCybND5V")
 
-# 回调地址（需替换为实际服务器地址）
-ZPAY_NOTIFY_URL = "http://152.32.213.113:8000/api/pay/notify"
-ZPAY_RETURN_URL = "http://152.32.213.113:8000/recharge"
+# 回调地址（从环境变量读取，支持域名配置）
+ZPAY_NOTIFY_URL = os.getenv("ZPAY_NOTIFY_URL", "http://dadiai.cn:8000/api/pay/notify")
+ZPAY_RETURN_URL = os.getenv("ZPAY_RETURN_URL", "http://dadiai.cn:8000/recharge")
 
 
 def generate_sign(params: dict, key: str) -> str:
