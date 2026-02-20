@@ -48,6 +48,8 @@ class HailuoAutomationV2:
         self.manager = MultiAccountManager()
         self.is_running = False
         self.task_handlers: Dict[str, asyncio.Task] = {}
+        # 记录每个账号上有哪些未完成的订单ID
+        self._account_orders: Dict[str, Set[int]] = {}
         
     async def start(self):
         """启动多账号自动化系统"""
@@ -147,18 +149,18 @@ class HailuoAutomationV2:
 
                 print(f"[AUTO-V2] 🔁 第{loop_count}次循环 | 活跃任务: {len(self.task_handlers)} | 生成中订单: {generating_count}")
 
-                # ========== 第1步: 扫描所有账号页面上已完成的视频（V1核心逻辑） ==========
-                # 必须先扫描，把海螺页面上已完成的视频标记completed，再去查pending
+                # ========== 第1步: 扫描有未完成订单的账号页面 ==========
                 scanned_accounts = 0
                 all_pages = list(self.manager.pages.keys())
                 all_verified = list(self.manager._verified_accounts)
-                print(f"[AUTO-V2] 📋 pages={all_pages}, verified={all_verified}")
-                for account_id in all_pages:
-                    if account_id not in self.manager.accounts:
-                        continue
-                    if account_id not in self.manager._verified_accounts:
-                        continue
-                    # 不跳过有任务的账号！V1也是每轮都扫描的
+                # 只扫描有未完成订单的账号
+                accounts_with_orders = [aid for aid in all_pages
+                                        if aid in self.manager._verified_accounts
+                                        and aid in self.manager.accounts
+                                        and self._account_orders.get(aid)]
+                if accounts_with_orders:
+                    print(f"[AUTO-V2] 📋 需扫描账号: {accounts_with_orders}")
+                for account_id in accounts_with_orders:
                     page = self.manager.pages[account_id]
                     try:
                         await self._scan_completed_videos(page, account_id)
@@ -166,7 +168,8 @@ class HailuoAutomationV2:
                     except Exception as e:
                         print(f"[AUTO-V2] 扫描账号页面出错: {str(e)[:100]}")
 
-                print(f"[AUTO-V2] 📹 已扫描 {scanned_accounts} 个账号页面")
+                if scanned_accounts > 0:
+                    print(f"[AUTO-V2] 📹 已扫描 {scanned_accounts} 个账号页面")
 
                 # ========== 第2步: 检查数据库中的待处理订单并分配 ==========
                 pending_orders = self.get_pending_orders()
@@ -177,6 +180,10 @@ class HailuoAutomationV2:
                     for order in pending_orders:
                         account_id = self.manager.get_best_account_for_task()
                         if account_id:
+                            # 记录订单分配到哪个账号
+                            if account_id not in self._account_orders:
+                                self._account_orders[account_id] = set()
+                            self._account_orders[account_id].add(order['id'])
                             task = asyncio.create_task(
                                 self.process_order(account_id, order)
                             )
@@ -770,7 +777,6 @@ class HailuoAutomationV2:
                     if user:
                         user.balance += order.cost
                         session.add(user)
-                        # 记录退款交易
                         refund = Transaction(
                             user_id=order.user_id,
                             amount=order.cost,
@@ -781,7 +787,12 @@ class HailuoAutomationV2:
                         print(f"[AUTO-V2] 💰 订单#{order_id}失败，已退回 ¥{order.cost} 给用户#{order.user_id}")
 
                 session.commit()
-    
+
+        # 完成或失败时从账号订单映射中移除
+        if status in ("completed", "failed"):
+            for aid, oids in self._account_orders.items():
+                oids.discard(order_id)
+
     def update_order_result(self, order_id: int, video_url: str, status: str):
         """更新订单结果"""
         with Session(engine) as session:
@@ -791,6 +802,10 @@ class HailuoAutomationV2:
                 order.status = status
                 session.add(order)
                 session.commit()
+
+        # 完成时从账号订单映射中移除
+        for aid, oids in self._account_orders.items():
+            oids.discard(order_id)
     
     async def stop(self):
         """停止自动化系统"""
