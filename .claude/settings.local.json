@@ -9,7 +9,9 @@
       "Bash(python -c:*)",
       "Bash(git reset:*)",
       "Bash(npx vue-tsc:*)",
-      "Bash(findstr:*)"
+      "Bash(findstr:*)",
+      "Bash(git push:*)",
+      "Bash(sqlite3:*)"
     ]
   }
 }

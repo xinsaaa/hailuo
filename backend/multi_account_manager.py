@@ -483,21 +483,18 @@ class MultiAccountManager:
 
             print(f"[MULTI-ACCOUNT] 🔍 检查账号 {account_id} 登录状态...")
 
-            # 先检查页面是否还活着（不导航）
+            # 先检查页面是否还活着（尽量不导航，避免打断正在进行的任务）
             try:
                 current_url = page.url
                 if not current_url or current_url == "about:blank":
                     # 页面空白，需要导航
-                    await page.goto("https://hailuoai.com", timeout=15000)
+                    await page.goto("https://hailuoai.com/create/image-to-video", timeout=15000)
                     await page.wait_for_timeout(2000)
                 elif "hailuoai.com" not in current_url:
                     # 不在海螺AI页面，导航过去
-                    await page.goto("https://hailuoai.com", timeout=15000)
+                    await page.goto("https://hailuoai.com/create/image-to-video", timeout=15000)
                     await page.wait_for_timeout(2000)
-                else:
-                    # 已经在海螺AI页面，只刷新
-                    await page.reload(timeout=15000)
-                    await page.wait_for_timeout(2000)
+                # 已经在海螺AI页面，不reload，直接检查当前页面状态
             except Exception as nav_e:
                 print(f"[MULTI-ACCOUNT] ⚠️ 页面导航失败 {account_id}: {str(nav_e)[:80]}")
                 # 导航失败不直接判定掉线，可能是临时网络问题
@@ -520,7 +517,7 @@ class MultiAccountManager:
             return account_id in self._verified_accounts
 
     async def get_account_credits(self, account_id: str) -> int:
-        """获取账号剩余积分 - 基于用户提供的实际HTML结构"""
+        """获取账号剩余积分 - 直接在当前页面读取，不跳转"""
         if account_id not in self.pages:
             return -1
 
@@ -529,11 +526,7 @@ class MultiAccountManager:
         try:
             print(f"[MULTI-ACCOUNT] 🔍 获取账号 {account_id} 剩余积分...")
 
-            # 访问海螺AI主页
-            await page.goto("https://hailuoai.com", timeout=15000)
-            await page.wait_for_timeout(3000)
-
-            # 基于实际HTML：火焰SVG(path d包含8.00048)的相邻span包含积分数字(如"20,000")
+            # 直接在当前页面提取积分，不跳转（视频生成页面也能看到积分）
             credits = await page.evaluate("""
                 () => {
                     // 方法1: 找火焰SVG图标，取相邻span的数字
@@ -543,19 +536,16 @@ class MultiAccountManager:
                         if (path) {
                             const d = path.getAttribute('d') || '';
                             if (d.includes('8.00048') && d.includes('1.82032')) {
-                                // 找到火焰图标，在父级容器中找数字span
-                                const container = svg.closest('.relative') || svg.closest('.flex-col');
+                                const container = svg.closest('.relative') || svg.closest('.flex-col') || svg.closest('.flex');
                                 if (container) {
                                     const spans = container.querySelectorAll('span');
                                     for (const s of spans) {
                                         const t = s.textContent.trim();
-                                        // 匹配纯数字或带逗号的数字(如 "20,000")
                                         if (/^[\\d,]+$/.test(t) && /\\d/.test(t)) {
                                             return parseInt(t.replace(/,/g, ''));
                                         }
                                     }
                                 }
-                                // 也检查svg的下一个兄弟元素
                                 let sibling = svg.parentElement?.nextElementSibling;
                                 if (!sibling) sibling = svg.nextElementSibling;
                                 if (sibling) {
@@ -574,7 +564,6 @@ class MultiAccountManager:
                         const text = span.textContent.trim();
                         if (text === '尊享会员' || text === '升级' || text.includes('会员')) {
                             let container = span.closest('.flex-col') || span.closest('.flex');
-                            // 向上多层查找
                             for (let i = 0; i < 5 && container; i++) {
                                 const numberSpans = container.querySelectorAll('span');
                                 for (const ns of numberSpans) {
@@ -591,14 +580,14 @@ class MultiAccountManager:
                     return -1;
                 }
             """)
-            
+
             if credits >= 0:
                 print(f"[MULTI-ACCOUNT] ✅ 账号 {account_id} 剩余积分: {credits}")
             else:
                 print(f"[MULTI-ACCOUNT] ❌ 账号 {account_id} 无法获取积分信息")
-            
+
             return credits
-            
+
         except Exception as e:
             print(f"[MULTI-ACCOUNT] 获取积分失败 {account_id}: {e}")
             return -1
