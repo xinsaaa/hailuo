@@ -20,6 +20,11 @@ const emailCodeLoading = ref(false)
 const emailCodeCountdown = ref(0)
 const loading = ref(false)
 
+// 注册成功礼物盒特效
+const showGiftBox = ref(false)
+const giftBoxOpened = ref(false)
+const giftParticles = ref([])
+
 // 验证码相关（5参数加密）
 const captchaRef = ref(null)
 const captchaVerified = ref(false)
@@ -383,7 +388,32 @@ const handleSubmit = async () => {
       )
     }
     userStore.login(null, result.access_token)
-    router.push('/dashboard')
+
+    // 注册成功：显示礼物盒特效
+    if (!isLoginMode.value) {
+      showGiftBox.value = true
+      // 1秒后自动开箱
+      setTimeout(() => {
+        giftBoxOpened.value = true
+        // 生成粒子
+        const colors = ['#06b6d4', '#8b5cf6', '#f59e0b', '#ec4899', '#10b981', '#3b82f6']
+        giftParticles.value = Array.from({ length: 30 }, (_, i) => ({
+          id: i,
+          x: (Math.random() - 0.5) * 300,
+          y: -(Math.random() * 200 + 50),
+          rotate: Math.random() * 720 - 360,
+          scale: Math.random() * 0.5 + 0.5,
+          color: colors[Math.floor(Math.random() * colors.length)],
+          delay: Math.random() * 0.3
+        }))
+        // 3秒后跳转
+        setTimeout(() => {
+          router.push('/dashboard')
+        }, 3000)
+      }, 800)
+    } else {
+      router.push('/dashboard')
+    }
   } catch (err) {
     const detail = err.response?.data?.detail || '操作失败，请重试'
     showAlert(detail)
@@ -568,6 +598,67 @@ const handleSubmit = async () => {
         </div>
       </div>
     </div>
+
+    <!-- 注册成功礼物盒特效 -->
+    <Transition name="gift-overlay">
+      <div v-if="showGiftBox" class="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm">
+        <div class="relative flex flex-col items-center">
+          <!-- 粒子效果 -->
+          <div v-for="p in giftParticles" :key="p.id"
+            class="absolute w-3 h-3 rounded-full"
+            :style="{
+              backgroundColor: p.color,
+              transform: giftBoxOpened ? `translate(${p.x}px, ${p.y}px) rotate(${p.rotate}deg) scale(${p.scale})` : 'translate(0, 0) scale(0)',
+              opacity: giftBoxOpened ? 0 : 1,
+              transition: `all 1.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) ${p.delay}s`,
+              boxShadow: `0 0 6px ${p.color}`
+            }"
+          ></div>
+
+          <!-- 礼物盒 -->
+          <div class="relative" :class="giftBoxOpened ? 'gift-opened' : 'gift-idle'">
+            <!-- 盒盖 -->
+            <div class="relative z-10 transition-all duration-700"
+              :class="giftBoxOpened ? '-translate-y-16 -rotate-12 opacity-0 scale-75' : ''">
+              <div class="w-32 h-10 bg-gradient-to-b from-purple-400 to-purple-600 rounded-t-lg border-2 border-purple-300/50 shadow-lg shadow-purple-500/30">
+                <div class="absolute inset-x-0 top-0 h-full flex items-center justify-center">
+                  <div class="w-8 h-full bg-yellow-400/80 rounded-sm"></div>
+                </div>
+                <!-- 蝴蝶结 -->
+                <div class="absolute -top-4 left-1/2 -translate-x-1/2 flex items-center">
+                  <div class="w-5 h-4 bg-yellow-400 rounded-full -mr-1 rotate-[-20deg] shadow-md"></div>
+                  <div class="w-3 h-3 bg-yellow-500 rounded-full z-10"></div>
+                  <div class="w-5 h-4 bg-yellow-400 rounded-full -ml-1 rotate-[20deg] shadow-md"></div>
+                </div>
+              </div>
+            </div>
+            <!-- 盒身 -->
+            <div class="w-32 h-24 bg-gradient-to-b from-purple-500 to-purple-700 rounded-b-lg border-2 border-t-0 border-purple-400/50 shadow-xl shadow-purple-500/40 flex items-center justify-center">
+              <div class="absolute inset-y-0 left-1/2 -translate-x-1/2 w-8 bg-yellow-400/60"></div>
+            </div>
+            <!-- 光芒 -->
+            <div v-if="giftBoxOpened" class="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-4">
+              <div class="w-40 h-40 bg-gradient-radial from-yellow-300/60 via-yellow-400/20 to-transparent rounded-full animate-ping-slow"></div>
+            </div>
+          </div>
+
+          <!-- 金额文字 -->
+          <Transition name="gift-text">
+            <div v-if="giftBoxOpened" class="mt-8 text-center">
+              <div class="text-5xl font-black bg-gradient-to-r from-yellow-300 via-yellow-400 to-amber-400 bg-clip-text text-transparent drop-shadow-[0_0_20px_rgba(251,191,36,0.5)] animate-bounce-slow">
+                ¥3.00
+              </div>
+              <div class="mt-3 text-lg text-white/90 font-medium tracking-wide">
+                🎉 注册礼金已到账
+              </div>
+              <div class="mt-1 text-sm text-gray-400">
+                即将进入创作中心...
+              </div>
+            </div>
+          </Transition>
+        </div>
+      </div>
+    </Transition>
   </div>
 </template>
 
@@ -581,5 +672,60 @@ const handleSubmit = async () => {
 .toast-leave-to {
   opacity: 0;
   transform: translate(-50%, -20px);
+}
+
+/* 礼物盒特效 */
+.gift-overlay-enter-active {
+  transition: all 0.5s ease;
+}
+.gift-overlay-leave-active {
+  transition: all 0.8s ease;
+}
+.gift-overlay-enter-from {
+  opacity: 0;
+}
+.gift-overlay-leave-to {
+  opacity: 0;
+}
+
+.gift-idle {
+  animation: gift-wobble 1.5s ease-in-out infinite;
+}
+
+.gift-opened {
+  animation: none;
+}
+
+@keyframes gift-wobble {
+  0%, 100% { transform: rotate(-2deg) scale(1); }
+  25% { transform: rotate(2deg) scale(1.03); }
+  50% { transform: rotate(-1deg) scale(1.05); }
+  75% { transform: rotate(1deg) scale(1.02); }
+}
+
+.gift-text-enter-active {
+  transition: all 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.gift-text-enter-from {
+  opacity: 0;
+  transform: translateY(30px) scale(0.5);
+}
+
+.animate-bounce-slow {
+  animation: bounce-slow 1s ease-in-out infinite;
+}
+
+@keyframes bounce-slow {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+
+.animate-ping-slow {
+  animation: ping-slow 1.5s ease-out infinite;
+}
+
+@keyframes ping-slow {
+  0% { transform: translate(-50%, -50%) scale(0.5); opacity: 0.8; }
+  100% { transform: translate(-50%, -50%) scale(2); opacity: 0; }
 }
 </style>
