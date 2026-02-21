@@ -8,6 +8,7 @@ import json
 import os
 import re
 import time
+import aiohttp
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any, Set
 from playwright.async_api import async_playwright, Browser, BrowserContext, Page
@@ -55,6 +56,33 @@ def extract_order_id_from_text(text: str) -> Optional[int]:
 # 去重集合（限制大小防内存泄漏）
 _processed_share_links: Set[str] = set()
 _MAX_SHARE_LINKS = 500
+
+# 视频下载目录
+VIDEOS_DIR = os.path.join(os.path.dirname(__file__), "..", "videos")
+os.makedirs(VIDEOS_DIR, exist_ok=True)
+
+
+async def download_video(video_url: str, order_id: int) -> Optional[str]:
+    """下载视频到本地，返回本地文件名。失败返回None"""
+    filename = f"order_{order_id}.mp4"
+    filepath = os.path.join(VIDEOS_DIR, filename)
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(video_url, timeout=aiohttp.ClientTimeout(total=120)) as resp:
+                if resp.status != 200:
+                    print(f"[DOWNLOAD] ❌ 下载失败 HTTP {resp.status}: {video_url[:80]}")
+                    return None
+                with open(filepath, 'wb') as f:
+                    async for chunk in resp.content.iter_chunked(1024 * 64):
+                        f.write(chunk)
+        size_mb = os.path.getsize(filepath) / (1024 * 1024)
+        print(f"[DOWNLOAD] ✅ 订单#{order_id} 下载完成 ({size_mb:.1f}MB): {filename}")
+        return filename
+    except Exception as e:
+        print(f"[DOWNLOAD] ❌ 订单#{order_id} 下载异常: {str(e)[:80]}")
+        if os.path.exists(filepath):
+            os.remove(filepath)
+        return None
 
 
 class HailuoAutomationV2:
@@ -379,12 +407,41 @@ class HailuoAutomationV2:
                     except:
                         pass
 
-                    # 没有进度条也没有排队 = 生成完成，提取分享链接
-                    print(f"[AUTO-V2] ✅ 订单#{order_id}生成完成，提取分享链接")
+                    # 没有进度条也没有排队 = 生成完成，提取视频
+                    print(f"[AUTO-V2] ✅ 订单#{order_id}生成完成，提取视频")
                     try:
+                        # 先尝试从视频卡片提取mp4直链
+                        video_src = None
+                        try:
+                            video_el = parent.locator("video source, video").first
+                            if await video_el.is_visible(timeout=2000):
+                                video_src = await video_el.evaluate("""
+                                    el => {
+                                        if (el.tagName === 'SOURCE') return el.src;
+                                        if (el.tagName === 'VIDEO') return el.src || (el.querySelector('source') && el.querySelector('source').src) || '';
+                                        return '';
+                                    }
+                                """)
+                        except Exception:
+                            pass
+
+                        # 如果没找到video标签，尝试从页面网络请求中提取
+                        if not video_src:
+                            try:
+                                video_src = await page.evaluate("""
+                                    (parentEl) => {
+                                        const video = parentEl.querySelector('video');
+                                        if (video) return video.src || video.currentSrc || '';
+                                        return '';
+                                    }
+                                """, await parent.element_handle())
+                            except Exception:
+                                pass
+
+                        # 同时获取分享链接作为备用
+                        share_link = ""
                         share_btn = parent.locator("div.text-hl_text_00_legacy:has(svg path[d*='M7.84176'])").first
                         if await share_btn.is_visible():
-                            # 注入剪贴板拦截（防重复注入）
                             await page.evaluate("""
                                 () => {
                                     if (window.__clipboardInterceptorInstalled) return;
@@ -415,29 +472,40 @@ class HailuoAutomationV2:
                                     };
                                 }
                             """)
-                            # 清空上次拦截内容
                             await page.evaluate("() => { window.__interceptedClipboard = ''; }")
-
                             await share_btn.click()
                             await asyncio.sleep(1.5)
-
                             share_link = await page.evaluate("() => window.__interceptedClipboard || ''") or ""
-                            print(f"[AUTO-V2] 📋 拦截到的内容: '{share_link[:60]}'")
 
-                            if share_link and share_link.startswith("http") and share_link not in _processed_share_links:
-                                # 限制集合大小防内存泄漏
-                                if len(_processed_share_links) > _MAX_SHARE_LINKS:
-                                    _processed_share_links.clear()
-                                _processed_share_links.add(share_link)
-                                self.update_order_result(order_id, share_link, "completed")
-                                print(f"[AUTO-V2] 🎉 订单#{order_id}完成! 链接: {share_link[:60]}")
-                                completed_count += 1
-                            else:
-                                print(f"[AUTO-V2] ⚠️ 订单#{order_id}分享链接获取失败或重复: '{share_link[:40]}'")
+                        # 去重检查
+                        dedup_key = video_src or share_link
+                        if not dedup_key or dedup_key in _processed_share_links:
+                            print(f"[AUTO-V2] ⚠️ 订单#{order_id}无法提取视频或重复")
+                            continue
+                        if len(_processed_share_links) > _MAX_SHARE_LINKS:
+                            _processed_share_links.clear()
+                        _processed_share_links.add(dedup_key)
+
+                        # 尝试下载视频到服务器
+                        local_filename = None
+                        if video_src and video_src.startswith("http"):
+                            print(f"[AUTO-V2] 📥 订单#{order_id} 开始下载视频...")
+                            local_filename = await download_video(video_src, order_id)
+
+                        if local_filename:
+                            # 下载成功，存本地路径
+                            self.update_order_result(order_id, f"/videos/{local_filename}", "completed")
+                            print(f"[AUTO-V2] 🎉 订单#{order_id}完成! 本地视频: {local_filename}")
+                        elif share_link and share_link.startswith("http"):
+                            # 下载失败，回退到分享链接
+                            self.update_order_result(order_id, share_link, "completed")
+                            print(f"[AUTO-V2] 🎉 订单#{order_id}完成! 分享链接: {share_link[:60]}")
                         else:
-                            print(f"[AUTO-V2] ⚠️ 订单#{order_id}未找到分享按钮")
+                            print(f"[AUTO-V2] ⚠️ 订单#{order_id}视频提取失败")
+                            continue
+                        completed_count += 1
                     except Exception as e:
-                        print(f"[AUTO-V2] 提取分享链接出错: {str(e)[:80]}")
+                        print(f"[AUTO-V2] 提取视频出错: {str(e)[:80]}")
 
                 except Exception:
                     continue

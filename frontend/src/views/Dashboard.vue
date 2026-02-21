@@ -135,6 +135,20 @@ const showToast = ref(false)
 const toastMessage = ref('')
 const toastType = ref('info')
 
+// 视频播放弹窗
+const showVideoPlayer = ref(false)
+const currentVideoUrl = ref('')
+
+const playVideo = (url) => {
+  currentVideoUrl.value = url
+  showVideoPlayer.value = true
+}
+
+const closeVideoPlayer = () => {
+  showVideoPlayer.value = false
+  currentVideoUrl.value = ''
+}
+
 const formattedBalance = computed(() => {
   return user.value ? user.value.balance.toFixed(2) : '0.00'
 })
@@ -717,16 +731,36 @@ const handleLogout = () => {
                         <div class="w-1.5 h-1.5 bg-purple-400 rounded-full shadow-[0_0_5px_rgba(192,132,252,0.8)]"></div>
                         <span class="text-xs text-gray-300">{{ order.model_name }}</span>
                       </div>
-                      <a v-if="order.status === 'completed' && order.video_url" 
-                         :href="order.video_url" 
-                         target="_blank"
-                         class="px-3 py-1 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 text-xs rounded-full border border-cyan-500/20 hover:border-cyan-500/40 transition-all flex items-center gap-1.5 group/btn">
-                         <svg class="w-3 h-3 transition-transform group-hover/btn:scale-110" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
-                           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                         </svg>
-                         <span class="font-bold">观看视频</span>
-                      </a>
+                      <!-- 本地视频：播放+下载 -->
+                      <template v-if="order.status === 'completed' && order.video_url">
+                        <button v-if="order.video_url.startsWith('/videos/')"
+                          @click="playVideo(order.video_url)"
+                          class="px-3 py-1 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 text-xs rounded-full border border-cyan-500/20 hover:border-cyan-500/40 transition-all flex items-center gap-1.5 group/btn">
+                          <svg class="w-3 h-3 transition-transform group-hover/btn:scale-110" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                          </svg>
+                          <span class="font-bold">播放</span>
+                        </button>
+                        <a v-if="order.video_url.startsWith('/videos/')"
+                          :href="order.video_url" :download="`video_${order.id}.mp4`"
+                          class="px-3 py-1 bg-green-500/10 hover:bg-green-500/20 text-green-400 text-xs rounded-full border border-green-500/20 hover:border-green-500/40 transition-all flex items-center gap-1.5 group/btn">
+                          <svg class="w-3 h-3 transition-transform group-hover/btn:scale-110" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                          </svg>
+                          <span class="font-bold">下载</span>
+                        </a>
+                        <!-- 外部链接回退 -->
+                        <a v-if="!order.video_url.startsWith('/videos/')"
+                          :href="order.video_url" target="_blank"
+                          class="px-3 py-1 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 text-xs rounded-full border border-cyan-500/20 hover:border-cyan-500/40 transition-all flex items-center gap-1.5 group/btn">
+                          <svg class="w-3 h-3 transition-transform group-hover/btn:scale-110" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                          </svg>
+                          <span class="font-bold">观看视频</span>
+                        </a>
+                      </template>
                       <button v-if="order.status === 'failed'"
                         @click="retryOrder(order)"
                         class="px-3 py-1 bg-orange-500/10 hover:bg-orange-500/20 text-orange-400 text-xs rounded-full border border-orange-500/20 hover:border-orange-500/40 transition-all flex items-center gap-1.5">
@@ -794,6 +828,21 @@ const handleLogout = () => {
               <button @click="showInsufficientModal = false; router.push('/recharge')" class="flex-1 py-2.5 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white rounded-xl text-sm font-bold transition-all shadow-lg shadow-cyan-900/30">去充值</button>
             </div>
           </div>
+        </div>
+      </div>
+    </Transition>
+
+    <!-- 视频播放弹窗 -->
+    <Transition name="modal">
+      <div v-if="showVideoPlayer" class="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm" @click.self="closeVideoPlayer">
+        <div class="relative w-full max-w-3xl mx-4">
+          <button @click="closeVideoPlayer" class="absolute -top-10 right-0 text-white/70 hover:text-white transition-colors text-sm flex items-center gap-1">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+            关闭
+          </button>
+          <video :src="currentVideoUrl" controls autoplay class="w-full rounded-xl shadow-2xl" style="max-height: 80vh;"></video>
         </div>
       </div>
     </Transition>

@@ -1478,6 +1478,11 @@ def get_invite_stats(current_user: User = Depends(get_current_user), session: Se
 # ============ 静态文件服务 ============
 import os
 
+# 视频文件目录
+videos_dir = os.path.join(os.path.dirname(__file__), "..", "videos")
+os.makedirs(videos_dir, exist_ok=True)
+app.mount("/videos", StaticFiles(directory=videos_dir), name="videos")
+
 # 检查前端构建目录是否存在
 frontend_dist_path = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist")
 if os.path.exists(frontend_dist_path):
