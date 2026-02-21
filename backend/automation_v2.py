@@ -409,16 +409,22 @@ class HailuoAutomationV2:
                         await download_btn.click()
                         await asyncio.sleep(1)
 
-                        # 4. 确保两个水印开关都关闭（aria-checked="false"）
+                        # 4. 开启去水印开关（aria-checked="false" → "true"）
                         watermark_switches = page.locator("button.ant-switch.hl-brand-switch")
                         switch_count = await watermark_switches.count()
                         for i in range(switch_count):
                             sw = watermark_switches.nth(i)
-                            checked = await sw.get_attribute("aria-checked")
-                            if checked == "false":
-                                await sw.click()
-                                await asyncio.sleep(0.3)
-                                print(f"[AUTO-V2] 🔄 订单#{order_id} 开启去水印开关 {i+1}")
+                            try:
+                                if not await sw.is_visible(timeout=2000):
+                                    continue
+                                checked = await sw.get_attribute("aria-checked")
+                                if checked == "false":
+                                    await sw.scroll_into_view_if_needed()
+                                    await sw.click(force=True)
+                                    await asyncio.sleep(0.3)
+                                    print(f"[AUTO-V2] 🔄 订单#{order_id} 开启去水印开关 {i+1}")
+                            except Exception:
+                                pass
 
                         # 5. 点击无水印下载按钮（class含cl_hl_H9_M的那个）
                         async with page.expect_download(timeout=60000) as download_info:
