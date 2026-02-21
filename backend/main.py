@@ -563,33 +563,28 @@ def register(user: UserCreateWithCaptcha, request: Request, session: Session = D
         record_fail(client_ip)
         raise HTTPException(status_code=400, detail="验证码验证失败")
     
-    # 验证邮箱验证码
-    valid, msg = verify_email_code(user.email, user.email_code, "register")
-    if not valid:
-        raise HTTPException(status_code=400, detail=msg)
-    
     # 验证用户名格式
     username_valid, username_msg = validate_username(user.username)
     if not username_valid:
         record_fail(client_ip)
         raise HTTPException(status_code=400, detail=username_msg)
-    
+
     # 使用优化的批量冲突检查，减少数据库查询次数
     conflicts = db_manager.check_user_conflicts(
-        session, user.username, user.email, 
+        session, user.username, user.email,
         user.device_fingerprint or "", client_ip
     )
-    
+
     if conflicts["username_exists"]:
         raise HTTPException(status_code=400, detail="用户名已存在")
-    
+
     if conflicts["email_exists"]:
         raise HTTPException(status_code=400, detail="该邮箱已被注册")
-    
+
     if conflicts["ip_registered"]:
         record_fail(client_ip)
         raise HTTPException(status_code=400, detail="当前网络环境已注册过账号，请勿重复注册")
-    
+
     if user.device_fingerprint and conflicts["device_registered"]:
         record_fail(client_ip)
         raise HTTPException(status_code=400, detail="该设备已注册过账号，每个设备只能注册一个账号")
@@ -616,7 +611,12 @@ def register(user: UserCreateWithCaptcha, request: Request, session: Session = D
     # 读取动态配置
     register_bonus = get_config_value(session, "register_bonus", 3.0)
     invite_reward = get_config_value(session, "invite_reward", 3.0)
-    
+
+    # 所有前置检查通过后，最后验证邮箱验证码（避免验证码被提前消费）
+    valid, msg = verify_email_code(user.email, user.email_code, "register")
+    if not valid:
+        raise HTTPException(status_code=400, detail=msg)
+
     # 创建用户（余额使用动态配置）
     hashed_password = get_password_hash(user.password)
     new_user = User(
