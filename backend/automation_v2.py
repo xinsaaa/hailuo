@@ -437,23 +437,35 @@ class HailuoAutomationV2:
             print(f"[AUTO-V2] 扫描页面出错: {str(e)[:100]}")
 
     def _check_stuck_orders(self):
-        """检查卡在generating状态超久的订单 - 仅处理真正卡住的"""
+        """检查卡在generating/processing状态超久的订单 - 仅处理真正卡住的"""
         try:
-            # 先查出卡住的订单ID
             stuck_order_ids = []
             with Session(engine) as session:
-                cutoff = datetime.utcnow() - timedelta(minutes=30)
-                stuck_orders = session.exec(
+                cutoff_generating = datetime.utcnow() - timedelta(minutes=30)
+                cutoff_processing = datetime.utcnow() - timedelta(minutes=10)
+
+                # 检查generating超时（30分钟无进度）
+                stuck_generating = session.exec(
                     select(VideoOrder).where(
                         VideoOrder.status == "generating",
-                        VideoOrder.updated_at < cutoff
+                        VideoOrder.updated_at < cutoff_generating
                     )
                 ).all()
-                for order in stuck_orders:
-                    # 有进度的不算卡住
+                for order in stuck_generating:
                     if order.progress and order.progress > 0:
                         continue
                     print(f"[AUTO-V2] ⚠️ 订单#{order.id}卡在generating超过30分钟且无进度，标记失败")
+                    stuck_order_ids.append(order.id)
+
+                # 检查processing超时（10分钟）
+                stuck_processing = session.exec(
+                    select(VideoOrder).where(
+                        VideoOrder.status == "processing",
+                        VideoOrder.updated_at < cutoff_processing
+                    )
+                ).all()
+                for order in stuck_processing:
+                    print(f"[AUTO-V2] ⚠️ 订单#{order.id}卡在processing超过10分钟，标记失败")
                     stuck_order_ids.append(order.id)
 
             # 统一走update_order_status处理退款，避免双重退款
@@ -551,8 +563,14 @@ class HailuoAutomationV2:
                         await page.keyboard.press("Delete")
                         await page.keyboard.type(prompt_with_id, delay=10)
                         print(f"[AUTO-V2] ✅ 提示词填写完成")
+                    else:
+                        print(f"[AUTO-V2] ❌ 提示词输入框不可见")
+                        self.update_order_status(order_id, "failed")
+                        return
                 except Exception as e:
-                    print(f"[AUTO-V2] ⚠️ 填写提示词失败: {str(e)[:100]}")
+                    print(f"[AUTO-V2] ❌ 填写提示词失败: {str(e)[:100]}")
+                    self.update_order_status(order_id, "failed")
+                    return
 
             # 步骤4: 选择模型
             await self.select_model(page, model_name)
