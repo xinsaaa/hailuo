@@ -405,36 +405,30 @@ class HailuoAutomationV2:
                             _processed_share_links.discard(dedup_key)
                             continue
 
-                        # 3. 点击下载按钮，弹出设置面板
-                        await download_btn.click()
+                        # 3. 悬停下载按钮，出现去水印开关
+                        await download_btn.hover()
                         await asyncio.sleep(1)
 
-                        # 4. 开启去水印开关（aria-checked="false" → "true"）
-                        watermark_switches = page.locator("button.ant-switch.hl-brand-switch")
-                        switch_count = await watermark_switches.count()
-                        for i in range(switch_count):
-                            sw = watermark_switches.nth(i)
-                            try:
-                                if not await sw.is_visible(timeout=2000):
-                                    continue
-                                checked = await sw.get_attribute("aria-checked")
-                                if checked == "false":
-                                    await sw.scroll_into_view_if_needed()
-                                    await sw.click(force=True)
-                                    await asyncio.sleep(0.3)
-                                    print(f"[AUTO-V2] 🔄 订单#{order_id} 开启去水印开关 {i+1}")
-                            except Exception:
-                                pass
+                        # 4. 尝试勾选去水印开关（尽力而为，不阻塞下载）
+                        try:
+                            watermark_switches = page.locator("button.ant-switch.hl-brand-switch")
+                            switch_count = await watermark_switches.count()
+                            for i in range(switch_count):
+                                sw = watermark_switches.nth(i)
+                                try:
+                                    checked = await sw.get_attribute("aria-checked")
+                                    if checked == "false":
+                                        await sw.click(force=True, timeout=3000)
+                                        await asyncio.sleep(0.3)
+                                        print(f"[AUTO-V2] 🔄 订单#{order_id} 开启去水印开关 {i+1}")
+                                except Exception:
+                                    pass
+                        except Exception:
+                            pass
 
-                        # 5. 点击无水印下载按钮（class含cl_hl_H9_M的那个）
+                        # 5. 点击下载按钮，直接触发下载
                         async with page.expect_download(timeout=60000) as download_info:
-                            confirm_btn = page.locator("button.cl_hl_H9_M:has-text('下载')").first
-                            if await confirm_btn.is_visible(timeout=3000):
-                                await confirm_btn.click()
-                            else:
-                                print(f"[AUTO-V2] ⚠️ 订单#{order_id} 未找到无水印下载按钮")
-                                _processed_share_links.discard(f"order_{order_id}")
-                                continue
+                            await download_btn.click()
 
                         download = await download_info.value
                         # 6. 保存到本地videos目录
