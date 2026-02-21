@@ -633,12 +633,10 @@ def register(user: UserCreateWithCaptcha, request: Request, session: Session = D
     session.commit()
     session.refresh(new_user)
     
-    # 如果有邀请人，给双方发放动态奖励
+    # 如果有邀请人，给邀请人发放奖励
     if inviter:
         inviter.balance += invite_reward
         session.add(inviter)
-        new_user.balance += invite_reward
-        session.add(new_user)
         session.commit()
     
     record_success(client_ip)
