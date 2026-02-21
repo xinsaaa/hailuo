@@ -265,6 +265,10 @@ class HailuoAutomationV2:
                 # ========== 第3步: 检查generating状态超时的订单 ==========
                 self._check_stuck_orders()
 
+                # ========== 第4步: 空闲时后台刷新账号积分 ==========
+                if generating_count == 0 and len(self.task_handlers) == 0:
+                    await self._refresh_account_credits()
+
                 # 动态轮询间隔：有活跃任务时短间隔，空闲时渐进拉长
                 if generating_count > 0 or len(self.task_handlers) > 0:
                     self._idle_count = 0
@@ -480,6 +484,41 @@ class HailuoAutomationV2:
         except Exception as e:
             print(f"[AUTO-V2] 检查卡住订单出错: {str(e)[:80]}")
 
+    async def _refresh_account_credits(self):
+        """空闲时后台刷新账号积分缓存（每5分钟一次），不影响任务提交"""
+        now = asyncio.get_event_loop().time()
+        last_refresh = getattr(self, '_last_credits_refresh', 0)
+        if now - last_refresh < 300:  # 5分钟间隔
+            return
+        self._last_credits_refresh = now
+
+        for account_id in list(self.manager.pages.keys()):
+            account = self.manager.accounts.get(account_id)
+            if not account or account_id not in self.manager._verified_accounts:
+                continue
+            # 只在账号空闲时检查，不打断正在工作的账号
+            if account.current_tasks > 0:
+                continue
+            page = self.manager.pages.get(account_id)
+            if not page:
+                continue
+            try:
+                # 刷新页面获取最新积分
+                await page.reload(timeout=15000, wait_until="domcontentloaded")
+                await asyncio.sleep(3)
+                credits = await self.manager.get_account_credits(account_id)
+                if not hasattr(self, '_account_credits'):
+                    self._account_credits = {}
+                self._account_credits[account_id] = credits
+                if credits == 0:
+                    account.is_active = False
+                    print(f"[AUTO-V2] ⚠️ 账号 {account.display_name} 积分为0，已禁用")
+                elif credits > 0 and not account.is_active:
+                    account.is_active = True
+                    print(f"[AUTO-V2] ✅ 账号 {account.display_name} 积分恢复({credits})，已重新启用")
+            except Exception as e:
+                print(f"[AUTO-V2] 刷新积分失败 {account_id}: {str(e)[:80]}")
+
     async def process_order(self, account_id: str, order: dict):
         """处理单个订单 - 基于V1验证过的选择器和流程"""
         account = self.manager.accounts.get(account_id)
@@ -531,22 +570,10 @@ class HailuoAutomationV2:
                     self.update_order_status(order_id, "failed")
                     return
 
-            # 根据视频类型导航到不同页面（刷新页面以获取最新积分）
+            # 根据视频类型导航到不同页面
             target_url = HAILUO_TEXT_URL if is_text_mode else HAILUO_URL
             await page.goto(target_url, timeout=30000, wait_until="domcontentloaded")
             await asyncio.sleep(5)
-
-            # 检查海螺积分是否充足
-            credits = await self.manager.get_account_credits(account_id)
-            if credits == 0:
-                print(f"[AUTO-V2] ❌ 账号 {account_id} 积分为0，跳过该账号")
-                self.update_order_status(order_id, "pending")  # 退回pending让其他账号处理
-                account.current_tasks = max(0, account.current_tasks - 1)
-                self._processing_order_ids.discard(order_id)
-                # 临时禁用该账号避免反复分配
-                account.is_active = False
-                print(f"[AUTO-V2] ⚠️ 已暂时禁用积分为0的账号 {account.display_name}")
-                return
 
             # 关闭可能的弹窗
             await self._dismiss_popup(page)
