@@ -265,11 +265,15 @@ class HailuoAutomationV2:
                 # ========== 第3步: 检查generating状态超时的订单 ==========
                 self._check_stuck_orders()
 
-                # 没有任何活跃任务时拉长轮询间隔，减少资源消耗
-                if generating_count == 0 and len(self.task_handlers) == 0:
-                    await asyncio.sleep(poll_interval * 3)
-                else:
+                # 动态轮询间隔：有活跃任务时短间隔，空闲时渐进拉长
+                if generating_count > 0 or len(self.task_handlers) > 0:
+                    self._idle_count = 0
                     await asyncio.sleep(poll_interval)
+                else:
+                    self._idle_count = getattr(self, '_idle_count', 0) + 1
+                    # 空闲时渐进：15s -> 30s -> 45s -> 60s（封顶）
+                    idle_interval = min(poll_interval * 3 + self._idle_count * 15, 60)
+                    await asyncio.sleep(idle_interval)
 
             except Exception as e:
                 print(f"[AUTO-V2] 任务循环错误: {e}")
@@ -527,10 +531,22 @@ class HailuoAutomationV2:
                     self.update_order_status(order_id, "failed")
                     return
 
-            # 根据视频类型导航到不同页面
+            # 根据视频类型导航到不同页面（刷新页面以获取最新积分）
             target_url = HAILUO_TEXT_URL if is_text_mode else HAILUO_URL
             await page.goto(target_url, timeout=30000, wait_until="domcontentloaded")
             await asyncio.sleep(5)
+
+            # 检查海螺积分是否充足
+            credits = await self.manager.get_account_credits(account_id)
+            if credits == 0:
+                print(f"[AUTO-V2] ❌ 账号 {account_id} 积分为0，跳过该账号")
+                self.update_order_status(order_id, "pending")  # 退回pending让其他账号处理
+                account.current_tasks = max(0, account.current_tasks - 1)
+                self._processing_order_ids.discard(order_id)
+                # 临时禁用该账号避免反复分配
+                account.is_active = False
+                print(f"[AUTO-V2] ⚠️ 已暂时禁用积分为0的账号 {account.display_name}")
+                return
 
             # 关闭可能的弹窗
             await self._dismiss_popup(page)
