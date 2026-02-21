@@ -420,15 +420,15 @@ class HailuoAutomationV2:
                                 await asyncio.sleep(0.3)
                                 print(f"[AUTO-V2] 🔄 订单#{order_id} 关闭水印开关 {i+1}")
 
-                        # 5. 等待下载触发，用Playwright拦截下载事件
+                        # 5. 点击无水印下载按钮（class含cl_hl_H9_M的那个）
                         async with page.expect_download(timeout=60000) as download_info:
-                            # 找到面板中的确认下载按钮（通常是面板底部的按钮）
-                            confirm_btn = page.locator("button:has-text('下载'), button:has-text('确认'), button:has-text('保存')").first
+                            confirm_btn = page.locator("button.cl_hl_H9_M:has-text('下载')").first
                             if await confirm_btn.is_visible(timeout=3000):
                                 await confirm_btn.click()
                             else:
-                                # 有些情况关闭水印后自动开始下载，等一下
-                                print(f"[AUTO-V2] ⏳ 订单#{order_id} 等待下载开始...")
+                                print(f"[AUTO-V2] ⚠️ 订单#{order_id} 未找到无水印下载按钮")
+                                _processed_share_links.discard(f"order_{order_id}")
+                                continue
 
                         download = await download_info.value
                         # 6. 保存到本地videos目录
