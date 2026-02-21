@@ -430,7 +430,7 @@ class HailuoAutomationV2:
                                 # 有些情况关闭水印后自动开始下载，等一下
                                 print(f"[AUTO-V2] ⏳ 订单#{order_id} 等待下载开始...")
 
-                        download = download_info.value
+                        download = await download_info.value
                         # 6. 保存到本地videos目录
                         filename = f"order_{order_id}.mp4"
                         filepath = os.path.join(VIDEOS_DIR, filename)
