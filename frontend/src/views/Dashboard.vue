@@ -31,6 +31,9 @@ const availableModels = ref([])
 const selectedModel = ref(null)
 const showModelSelector = ref(false)
 
+// 视频模式切换：文生视频 / 图生视频
+const videoMode = ref('image') // 'text' 或 'image'
+
 // 首尾帧图片上传状态
 const firstFrameImage = ref(null)
 const lastFrameImage = ref(null)
@@ -197,22 +200,36 @@ const handleCreateOrder = async () => {
     showNotification('请输入视频描述', 'error')
     return
   }
-  
+
   if (!selectedModel.value) {
     showNotification('请选择生成模型', 'error')
     return
   }
-  
+
+  // 图生视频模式必须上传首帧图片
+  if (videoMode.value === 'image' && !firstFrameImage.value) {
+    showNotification('图生视频模式请上传首帧图片', 'error')
+    return
+  }
+
   const modelPrice = selectedModel.value?.price || 0.99
   if (!user.value || user.value.balance < modelPrice) {
     showBalanceInsufficient(modelPrice)
     return
   }
-  
+
   loading.value = true
-  
+
+  const videoType = videoMode.value === 'text' ? 'text_to_video' : 'image_to_video'
+
   try {
-    await createOrder(prompt.value, selectedModel.value.name, firstFrameImage.value, lastFrameImage.value)
+    await createOrder(
+      prompt.value,
+      selectedModel.value.name,
+      videoMode.value === 'image' ? firstFrameImage.value : null,
+      videoMode.value === 'image' ? lastFrameImage.value : null,
+      videoType
+    )
     showNotification('订单提交成功！AI 正在为您生成...', 'success')
     prompt.value = ''
     // 清理图片状态
@@ -510,7 +527,29 @@ const handleLogout = () => {
                   </div>
                 </div>
               </div>
-              
+
+              <!-- 文生视频/图生视频切换 -->
+              <div class="flex items-center gap-1 p-1 bg-black/30 rounded-xl border border-white/10 w-fit">
+                <button
+                  @click="videoMode = 'text'"
+                  class="px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200"
+                  :class="videoMode === 'text'
+                    ? 'bg-gradient-to-r from-cyan-500/80 to-blue-500/80 text-white shadow-lg shadow-cyan-900/30'
+                    : 'text-gray-400 hover:text-white hover:bg-white/5'"
+                >
+                  文生视频
+                </button>
+                <button
+                  @click="videoMode = 'image'"
+                  class="px-4 py-2 text-sm font-medium rounded-lg transition-all duration-200"
+                  :class="videoMode === 'image'
+                    ? 'bg-gradient-to-r from-purple-500/80 to-pink-500/80 text-white shadow-lg shadow-purple-900/30'
+                    : 'text-gray-400 hover:text-white hover:bg-white/5'"
+                >
+                  图生视频
+                </button>
+              </div>
+
               <div class="relative group">
                 <div class="absolute -inset-0.5 bg-gradient-to-r from-cyan-500/20 to-purple-500/20 rounded-2xl blur opacity-0 group-hover:opacity-100 transition duration-500"></div>
                 <textarea 
@@ -528,8 +567,8 @@ const handleLogout = () => {
                 </div>
               </div>
               
-              <!-- 首尾帧上传区域 -->
-              <div class="mt-6 grid grid-cols-2 gap-6">
+              <!-- 首尾帧上传区域（仅图生视频模式显示） -->
+              <div v-if="videoMode === 'image'" class="mt-6 grid grid-cols-2 gap-6">
                 <!-- 首帧上传 -->
                 <div class="relative">
                   <input 
@@ -552,7 +591,7 @@ const handleLogout = () => {
                           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                         </svg>
                       </div>
-                      <span class="text-xs text-gray-400 font-medium group-hover:text-gray-300">上传首帧（可选）</span>
+                      <span class="text-xs text-gray-400 font-medium group-hover:text-gray-300">上传首帧（必传）</span>
                     </div>
                     <div v-else class="relative h-28 rounded-2xl overflow-hidden group shadow-lg border border-white/10">
                       <img :src="firstFramePreview" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />

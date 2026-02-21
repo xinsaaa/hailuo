@@ -33,6 +33,7 @@ class VideoOrder(SQLModel, table=True):
     first_frame_image: Optional[str] = None  # 首帧图片路径
     last_frame_image: Optional[str] = None   # 尾帧图片路径
     model_name: Optional[str] = Field(default="Hailuo 2.3")  # 用户选择的生成模型
+    video_type: Optional[str] = Field(default="image_to_video")  # image_to_video 或 text_to_video
 
 class Transaction(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)

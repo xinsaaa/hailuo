@@ -39,6 +39,7 @@ def _get_v2_config(key, default):
 from backend.multi_account_manager import MultiAccountManager, AccountConfig
 
 HAILUO_URL = "https://hailuoai.com/create/image-to-video"
+HAILUO_TEXT_URL = "https://hailuoai.com/create/text-to-video"
 
 # ============ V1移植的工具函数 ============
 
@@ -291,6 +292,7 @@ class HailuoAutomationV2:
                     "first_frame_image": getattr(o, 'first_frame_image', None),
                     "last_frame_image": getattr(o, 'last_frame_image', None),
                     "user_id": o.user_id,
+                    "video_type": getattr(o, 'video_type', 'image_to_video'),
                 }
                 for o in orders
             ]
@@ -487,10 +489,12 @@ class HailuoAutomationV2:
 
         prompt = order["prompt"]
         model_name = order.get("model_name", "Hailuo 2.3")
+        video_type = order.get("video_type", "image_to_video")
         first_frame_path = order.get("first_frame_image")
         last_frame_path = order.get("last_frame_image")
+        is_text_mode = video_type == "text_to_video"
 
-        print(f"[AUTO-V2] 账号 {account.display_name} 开始处理订单 {order_id}")
+        print(f"[AUTO-V2] 账号 {account.display_name} 开始处理订单 {order_id} ({'文生视频' if is_text_mode else '图生视频'})")
         account.current_tasks += 1
 
         try:
@@ -511,28 +515,31 @@ class HailuoAutomationV2:
                     self.update_order_status(order_id, "failed")
                     return
 
-            # 导航到图生视频页面（V1验证的URL）
-            await page.goto(HAILUO_URL, timeout=30000, wait_until="domcontentloaded")
+            # 根据视频类型导航到不同页面
+            target_url = HAILUO_TEXT_URL if is_text_mode else HAILUO_URL
+            await page.goto(target_url, timeout=30000, wait_until="domcontentloaded")
             await asyncio.sleep(5)
 
             # 关闭可能的弹窗
             await self._dismiss_popup(page)
 
-            # 步骤1: 上传首帧图片
-            if first_frame_path:
-                print(f"[AUTO-V2] 📤 上传首帧图片: {first_frame_path}")
-                if not await self._upload_first_frame(page, first_frame_path):
-                    print(f"[AUTO-V2] ❌ 首帧图片上传失败")
-                    self.update_order_status(order_id, "failed")
-                    return
+            # 图生视频模式：上传首尾帧图片
+            if not is_text_mode:
+                # 步骤1: 上传首帧图片
+                if first_frame_path:
+                    print(f"[AUTO-V2] 📤 上传首帧图片: {first_frame_path}")
+                    if not await self._upload_first_frame(page, first_frame_path):
+                        print(f"[AUTO-V2] ❌ 首帧图片上传失败")
+                        self.update_order_status(order_id, "failed")
+                        return
 
-            # 步骤2: 上传尾帧图片
-            if last_frame_path:
-                print(f"[AUTO-V2] 📤 上传尾帧图片: {last_frame_path}")
-                await self._switch_to_last_frame_mode(page)
-                await self._upload_last_frame(page, last_frame_path)
+                # 步骤2: 上传尾帧图片
+                if last_frame_path:
+                    print(f"[AUTO-V2] 📤 上传尾帧图片: {last_frame_path}")
+                    await self._switch_to_last_frame_mode(page)
+                    await self._upload_last_frame(page, last_frame_path)
 
-            # 步骤3: 填写提示词（V1的Slate编辑器方式）
+            # 填写提示词（两种模式输入框选择器相同）
             if prompt and prompt.strip():
                 prompt_with_id = add_tracking_id(prompt, order_id)
                 try:

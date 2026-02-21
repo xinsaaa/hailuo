@@ -1068,11 +1068,20 @@ def get_payment_status(
 async def create_order(
     prompt: str = Form(...),
     model_name: str = Form("Hailuo 2.3"),
+    video_type: str = Form("image_to_video"),
     first_frame_image: Optional[UploadFile] = File(None),
     last_frame_image: Optional[UploadFile] = File(None),
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_session)
 ):
+    # 校验video_type
+    if video_type not in ("image_to_video", "text_to_video"):
+        raise HTTPException(status_code=400, detail="无效的视频类型")
+
+    # 图生视频必须上传首帧图片
+    if video_type == "image_to_video" and not first_frame_image:
+        raise HTTPException(status_code=400, detail="图生视频模式必须上传首帧图片")
+
     # 根据用户选择的模型获取价格
     model = session.exec(select(AIModel).where(AIModel.name == model_name)).first()
     cost = model.price if model and model.price else 0.99
@@ -1124,6 +1133,7 @@ async def create_order(
         video_url=None,
         cost=cost,
         model_name=model_name,
+        video_type=video_type,
         first_frame_image=first_frame_path,
         last_frame_image=last_frame_path
     )
