@@ -147,7 +147,9 @@ class HailuoAutomationV2:
                         select(VideoOrder).where(VideoOrder.status == "generating")
                     ).all())
 
-                print(f"[AUTO-V2] 🔁 第{loop_count}次循环 | 活跃任务: {len(self.task_handlers)} | 生成中订单: {generating_count}")
+                # 有任务或每20次循环才打印状态，避免空循环刷屏
+                if generating_count > 0 or len(self.task_handlers) > 0 or loop_count % 20 == 1:
+                    print(f"[AUTO-V2] 🔁 第{loop_count}次循环 | 活跃任务: {len(self.task_handlers)} | 生成中订单: {generating_count}")
 
                 # ========== 第1步: 扫描有未完成订单的账号页面 ==========
                 scanned_accounts = 0
@@ -203,7 +205,11 @@ class HailuoAutomationV2:
                 # ========== 第3步: 检查generating状态超时的订单 ==========
                 self._check_stuck_orders()
 
-                await asyncio.sleep(poll_interval)
+                # 没有任何活跃任务时拉长轮询间隔，减少资源消耗
+                if generating_count == 0 and len(self.task_handlers) == 0:
+                    await asyncio.sleep(poll_interval * 3)
+                else:
+                    await asyncio.sleep(poll_interval)
 
             except Exception as e:
                 print(f"[AUTO-V2] 任务循环错误: {e}")
