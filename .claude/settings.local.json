@@ -12,7 +12,9 @@
       "Bash(findstr:*)",
       "Bash(git push:*)",
       "Bash(sqlite3:*)",
-      "Bash(npx vite build:*)"
+      "Bash(npx vite build:*)",
+      "Bash(python -m pip list:*)",
+      "Bash(dir:*)"
     ]
   }
 }
