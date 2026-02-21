@@ -419,7 +419,16 @@ class HailuoAutomationV2:
                                     checked = await sw.get_attribute("aria-checked")
                                     if checked == "false":
                                         await sw.click(force=True, timeout=3000)
-                                        await asyncio.sleep(0.3)
+                                        await asyncio.sleep(0.5)
+                                        # 检测协议弹窗，点击同意
+                                        agree_btn = page.locator("button:has-text('同意')").first
+                                        try:
+                                            if await agree_btn.is_visible(timeout=2000):
+                                                await agree_btn.click()
+                                                await asyncio.sleep(0.5)
+                                                print(f"[AUTO-V2] 📋 订单#{order_id} 同意去水印协议")
+                                        except Exception:
+                                            pass
                                         print(f"[AUTO-V2] 🔄 订单#{order_id} 开启去水印开关 {i+1}")
                                 except Exception:
                                     pass
