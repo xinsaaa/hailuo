@@ -8,17 +8,31 @@ import json
 import os
 import re
 import time
+from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any, Set
 from playwright.async_api import async_playwright, Browser, BrowserContext, Page
 from sqlmodel import Session, select
 from backend.models import VideoOrder, SystemConfig, User, Transaction, engine
 
+# 配置缓存，避免每次都查数据库
+_config_cache: Dict[str, Any] = {}
+_config_cache_time: float = 0
+
 def _get_v2_config(key, default):
+    global _config_cache, _config_cache_time
+    now = time.time()
+    # 缓存10秒
+    if now - _config_cache_time > 10:
+        try:
+            with Session(engine) as s:
+                configs = s.exec(select(SystemConfig)).all()
+                _config_cache = {c.key: c.value for c in configs}
+                _config_cache_time = now
+        except Exception:
+            pass
     try:
-        with Session(engine) as s:
-            cfg = s.exec(select(SystemConfig).where(SystemConfig.key == key)).first()
-            if cfg:
-                return type(default)(json.loads(cfg.value))
+        if key in _config_cache:
+            return type(default)(json.loads(_config_cache[key]))
     except Exception:
         pass
     return default
@@ -37,19 +51,25 @@ def extract_order_id_from_text(text: str) -> Optional[int]:
     match = re.search(r'\[#ORD(\d+)\]', text)
     return int(match.group(1)) if match else None
 
-# 去重集合
+# 去重集合（限制大小防内存泄漏）
 _processed_share_links: Set[str] = set()
+_MAX_SHARE_LINKS = 500
 
 
 class HailuoAutomationV2:
     """海螺AI自动化 V2版本 - 支持多账号"""
-    
+
     def __init__(self):
         self.manager = MultiAccountManager()
         self.is_running = False
         self.task_handlers: Dict[str, asyncio.Task] = {}
         # 记录每个账号上有哪些未完成的订单ID
         self._account_orders: Dict[str, Set[int]] = {}
+        # 正在处理中的订单ID，防止重复分配
+        self._processing_order_ids: Set[int] = set()
+        # 核心循环任务引用，用于监控和重启
+        self._loop_task: Optional[asyncio.Task] = None
+        self._health_task: Optional[asyncio.Task] = None
         
     async def start(self):
         """启动多账号自动化系统"""
@@ -99,11 +119,14 @@ class HailuoAutomationV2:
             
             # 启动任务处理循环
             print("[AUTO-V2] 启动任务处理循环...")
-            asyncio.create_task(self.task_processing_loop())
-            
+            self._loop_task = asyncio.create_task(self.task_processing_loop())
+
             # 启动账号健康检查循环
             print("[AUTO-V2] 启动账号健康检查循环...")
-            asyncio.create_task(self.account_health_check_loop())
+            self._health_task = asyncio.create_task(self.account_health_check_loop())
+
+            # 启动监控循环，自动重启死掉的核心任务
+            asyncio.create_task(self._watchdog_loop())
             
             print("[AUTO-V2] 🎉 多账号自动化系统启动成功！")
             
@@ -111,6 +134,25 @@ class HailuoAutomationV2:
             print(f"[AUTO-V2] ❌ 系统启动失败: {e}")
             self.is_running = False  # 确保启动失败时重置状态
             raise
+
+    async def _watchdog_loop(self):
+        """监控核心任务，死掉自动重启"""
+        while self.is_running:
+            try:
+                await asyncio.sleep(30)
+                if not self.is_running:
+                    break
+                if self._loop_task and self._loop_task.done():
+                    exc = self._loop_task.exception() if not self._loop_task.cancelled() else None
+                    print(f"[AUTO-V2] ⚠️ 任务处理循环已死亡{f': {exc}' if exc else ''}，正在重启...")
+                    self._loop_task = asyncio.create_task(self.task_processing_loop())
+                if self._health_task and self._health_task.done():
+                    exc = self._health_task.exception() if not self._health_task.cancelled() else None
+                    print(f"[AUTO-V2] ⚠️ 健康检查循环已死亡{f': {exc}' if exc else ''}，正在重启...")
+                    self._health_task = asyncio.create_task(self.account_health_check_loop())
+            except Exception as e:
+                print(f"[AUTO-V2] 监控循环错误: {e}")
+                await asyncio.sleep(10)
 
     async def account_health_check_loop(self):
         """账号健康检查循环"""
@@ -154,16 +196,18 @@ class HailuoAutomationV2:
                 # ========== 第1步: 扫描有未完成订单的账号页面 ==========
                 scanned_accounts = 0
                 all_pages = list(self.manager.pages.keys())
-                all_verified = list(self.manager._verified_accounts)
-                # 只扫描有未完成订单的账号
+                # 只扫描有未完成订单且当前没有正在提交任务的账号
                 accounts_with_orders = [aid for aid in all_pages
                                         if aid in self.manager._verified_accounts
                                         and aid in self.manager.accounts
-                                        and self._account_orders.get(aid)]
+                                        and self._account_orders.get(aid)
+                                        and self.manager.accounts[aid].current_tasks == 0]
                 if accounts_with_orders:
                     print(f"[AUTO-V2] 📋 需扫描账号: {accounts_with_orders}")
                 for account_id in accounts_with_orders:
-                    page = self.manager.pages[account_id]
+                    page = self.manager.pages.get(account_id)
+                    if not page:
+                        continue
                     try:
                         await self._scan_completed_videos(page, account_id)
                         scanned_accounts += 1
@@ -180,8 +224,12 @@ class HailuoAutomationV2:
                     print(f"[AUTO-V2] 发现 {len(pending_orders)} 个待处理订单")
 
                     for order in pending_orders:
+                        # 防止重复分配
+                        if order['id'] in self._processing_order_ids:
+                            continue
                         account_id = self.manager.get_best_account_for_task()
                         if account_id:
+                            self._processing_order_ids.add(order['id'])
                             # 记录订单分配到哪个账号
                             if account_id not in self._account_orders:
                                 self._account_orders[account_id] = set()
@@ -194,13 +242,24 @@ class HailuoAutomationV2:
                             print(f"[AUTO-V2] 暂无可用账号处理订单 {order['id']}")
                             break  # 没有可用账号就不继续分配了
 
-                # 清理完成的任务
+                # 清理完成的任务，回收异常信息
                 completed_tasks = [
                     task_id for task_id, task in self.task_handlers.items()
                     if task.done()
                 ]
                 for task_id in completed_tasks:
-                    del self.task_handlers[task_id]
+                    task = self.task_handlers.pop(task_id)
+                    # 回收异常信息，避免"Task exception was never retrieved"
+                    if not task.cancelled():
+                        exc = task.exception()
+                        if exc:
+                            print(f"[AUTO-V2] ⚠️ 任务{task_id}异常: {exc}")
+                    # 从processing集合中移除对应的order_id
+                    try:
+                        oid = int(task_id.split('_')[-1])
+                        self._processing_order_ids.discard(oid)
+                    except (ValueError, IndexError):
+                        pass
 
                 # ========== 第3步: 检查generating状态超时的订单 ==========
                 self._check_stuck_orders()
@@ -311,11 +370,12 @@ class HailuoAutomationV2:
                     try:
                         share_btn = parent.locator("div.text-hl_text_00_legacy:has(svg path[d*='M7.84176'])").first
                         if await share_btn.is_visible():
-                            # 注入全方位剪贴板拦截（覆盖所有复制方式）
+                            # 注入剪贴板拦截（防重复注入）
                             await page.evaluate("""
                                 () => {
+                                    if (window.__clipboardInterceptorInstalled) return;
+                                    window.__clipboardInterceptorInstalled = true;
                                     window.__interceptedClipboard = '';
-                                    // 方式1: 拦截 clipboard.writeText
                                     if (navigator.clipboard && navigator.clipboard.writeText) {
                                         const orig = navigator.clipboard.writeText.bind(navigator.clipboard);
                                         navigator.clipboard.writeText = async (text) => {
@@ -323,14 +383,12 @@ class HailuoAutomationV2:
                                             try { await orig(text); } catch(e) {}
                                         };
                                     }
-                                    // 方式2: 拦截 copy 事件
                                     document.addEventListener('copy', (e) => {
                                         const sel = window.getSelection();
                                         if (sel && sel.toString()) {
                                             window.__interceptedClipboard = sel.toString();
                                         }
                                     }, true);
-                                    // 方式3: 拦截 execCommand('copy')
                                     const origExec = document.execCommand.bind(document);
                                     document.execCommand = function(cmd, ...args) {
                                         if (cmd === 'copy') {
@@ -343,15 +401,19 @@ class HailuoAutomationV2:
                                     };
                                 }
                             """)
+                            # 清空上次拦截内容
+                            await page.evaluate("() => { window.__interceptedClipboard = ''; }")
 
                             await share_btn.click()
                             await asyncio.sleep(1.5)
 
-                            # 读取拦截到的内容
                             share_link = await page.evaluate("() => window.__interceptedClipboard || ''") or ""
                             print(f"[AUTO-V2] 📋 拦截到的内容: '{share_link[:60]}'")
 
                             if share_link and share_link.startswith("http") and share_link not in _processed_share_links:
+                                # 限制集合大小防内存泄漏
+                                if len(_processed_share_links) > _MAX_SHARE_LINKS:
+                                    _processed_share_links.clear()
                                 _processed_share_links.add(share_link)
                                 self.update_order_result(order_id, share_link, "completed")
                                 print(f"[AUTO-V2] 🎉 订单#{order_id}完成! 链接: {share_link[:60]}")
@@ -375,8 +437,9 @@ class HailuoAutomationV2:
     def _check_stuck_orders(self):
         """检查卡在generating状态超久的订单 - 仅处理真正卡住的"""
         try:
+            # 先查出卡住的订单ID
+            stuck_order_ids = []
             with Session(engine) as session:
-                from datetime import datetime, timedelta
                 cutoff = datetime.utcnow() - timedelta(minutes=30)
                 stuck_orders = session.exec(
                     select(VideoOrder).where(
@@ -385,27 +448,17 @@ class HailuoAutomationV2:
                     )
                 ).all()
                 for order in stuck_orders:
-                    # 再次确认不是刚被扫描到的（有进度的不算卡住）
+                    # 有进度的不算卡住
                     if order.progress and order.progress > 0:
                         continue
                     print(f"[AUTO-V2] ⚠️ 订单#{order.id}卡在generating超过30分钟且无进度，标记失败")
-                    order.status = "failed"
-                    session.add(order)
-                    # 退款逻辑在update_order_status里，这里直接改DB需要手动退
-                    if order.cost and order.cost > 0:
-                        user = session.get(User, order.user_id)
-                        if user:
-                            user.balance += order.cost
-                            session.add(user)
-                            refund = Transaction(
-                                user_id=order.user_id,
-                                amount=order.cost,
-                                bonus=0,
-                                type="refund"
-                            )
-                            session.add(refund)
-                            print(f"[AUTO-V2] 💰 订单#{order.id}超时失败，已退回 ¥{order.cost}")
-                session.commit()
+                    stuck_order_ids.append(order.id)
+
+            # 统一走update_order_status处理退款，避免双重退款
+            for oid in stuck_order_ids:
+                self.update_order_status(oid, "failed")
+                self._processing_order_ids.discard(oid)
+
         except Exception as e:
             print(f"[AUTO-V2] 检查卡住订单出错: {str(e)[:80]}")
 
@@ -417,12 +470,12 @@ class HailuoAutomationV2:
             self.update_order_status(order["id"], "failed")
             return
 
-        if account_id not in self.manager.pages:
+        page = self.manager.pages.get(account_id)
+        if not page:
             print(f"[AUTO-V2] ❌ 账号 {account.display_name} 没有可用的页面")
             self.update_order_status(order["id"], "failed")
             return
 
-        page = self.manager.pages[account_id]
         order_id = order["id"]
 
         # 先检查订单是否已经不是pending了（可能被扫描循环标记为completed）
@@ -438,10 +491,25 @@ class HailuoAutomationV2:
         last_frame_path = order.get("last_frame_image")
 
         print(f"[AUTO-V2] 账号 {account.display_name} 开始处理订单 {order_id}")
+        account.current_tasks += 1
 
         try:
-            account.current_tasks += 1
             self.update_order_status(order_id, "processing")
+
+            # 检查页面是否还活着
+            try:
+                _ = page.url
+            except Exception:
+                print(f"[AUTO-V2] ⚠️ 账号 {account_id} 页面已崩溃，尝试恢复...")
+                try:
+                    await self.manager.create_account_context(account_id)
+                    page = self.manager.pages.get(account_id)
+                    if not page:
+                        raise Exception("页面恢复失败")
+                except Exception as re_err:
+                    print(f"[AUTO-V2] ❌ 页面恢复失败: {re_err}")
+                    self.update_order_status(order_id, "failed")
+                    return
 
             # 导航到图生视频页面（V1验证的URL）
             await page.goto(HAILUO_URL, timeout=30000, wait_until="domcontentloaded")
@@ -532,7 +600,8 @@ class HailuoAutomationV2:
             print(f"[AUTO-V2] 账号 {account.display_name} 处理订单 {order_id} 出错: {e}")
             self.update_order_status(order_id, "failed")
         finally:
-            account.current_tasks -= 1
+            account.current_tasks = max(0, account.current_tasks - 1)
+            self._processing_order_ids.discard(order_id)
     
     async def select_model(self, page: Page, model_name: str):
         """选择指定的AI模型 - 移植自V1的popover方式"""
@@ -775,17 +844,18 @@ class HailuoAutomationV2:
             return False
     
     def update_order_status(self, order_id: int, status: str):
-        """更新订单状态，失败时自动退回余额"""
-        from datetime import datetime
+        """更新订单状态，失败时自动退回余额（防重复退款）"""
         with Session(engine) as session:
             order = session.get(VideoOrder, order_id)
             if order:
+                # 防重复退款：已经是failed的不再退
+                already_failed = order.status == "failed"
                 order.status = status
                 order.updated_at = datetime.utcnow()
                 session.add(order)
 
-                # 失败订单自动退回余额
-                if status == "failed" and order.cost and order.cost > 0:
+                # 失败订单自动退回余额（仅首次标记为failed时退）
+                if status == "failed" and not already_failed and order.cost and order.cost > 0:
                     user = session.get(User, order.user_id)
                     if user:
                         user.balance += order.cost
@@ -805,6 +875,7 @@ class HailuoAutomationV2:
         if status in ("completed", "failed"):
             for aid, oids in self._account_orders.items():
                 oids.discard(order_id)
+            self._processing_order_ids.discard(order_id)
 
     def update_order_result(self, order_id: int, video_url: str, status: str):
         """更新订单结果"""
@@ -813,12 +884,14 @@ class HailuoAutomationV2:
             if order:
                 order.video_url = video_url
                 order.status = status
+                order.updated_at = datetime.utcnow()
                 session.add(order)
                 session.commit()
 
         # 完成时从账号订单映射中移除
         for aid, oids in self._account_orders.items():
             oids.discard(order_id)
+        self._processing_order_ids.discard(order_id)
     
     async def stop(self):
         """停止自动化系统"""
