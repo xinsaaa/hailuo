@@ -415,10 +415,10 @@ class HailuoAutomationV2:
                         for i in range(switch_count):
                             sw = watermark_switches.nth(i)
                             checked = await sw.get_attribute("aria-checked")
-                            if checked == "true":
+                            if checked == "false":
                                 await sw.click()
                                 await asyncio.sleep(0.3)
-                                print(f"[AUTO-V2] 🔄 订单#{order_id} 关闭水印开关 {i+1}")
+                                print(f"[AUTO-V2] 🔄 订单#{order_id} 开启去水印开关 {i+1}")
 
                         # 5. 点击无水印下载按钮（class含cl_hl_H9_M的那个）
                         async with page.expect_download(timeout=60000) as download_info:
