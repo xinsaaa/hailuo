@@ -228,7 +228,11 @@ class HailuoAutomationV2:
                         # 防止重复分配
                         if order['id'] in self._processing_order_ids:
                             continue
-                        account_id = self.manager.get_best_account_for_task()
+                        model_name = order.get('model_name', '')
+                        account_id = self.manager.get_best_account_for_task(
+                            model_name=model_name,
+                            account_credits=getattr(self, '_account_credits', {})
+                        )
                         if account_id:
                             self._processing_order_ids.add(order['id'])
                             # 记录订单分配到哪个账号
@@ -510,12 +514,8 @@ class HailuoAutomationV2:
                 if not hasattr(self, '_account_credits'):
                     self._account_credits = {}
                 self._account_credits[account_id] = credits
-                if credits == 0:
-                    account.is_active = False
-                    print(f"[AUTO-V2] ⚠️ 账号 {account.display_name} 积分为0，已禁用")
-                elif credits > 0 and not account.is_active:
-                    account.is_active = True
-                    print(f"[AUTO-V2] ✅ 账号 {account.display_name} 积分恢复({credits})，已重新启用")
+                if credits >= 0:
+                    print(f"[AUTO-V2] 💰 账号 {account.display_name} 积分: {credits}")
             except Exception as e:
                 print(f"[AUTO-V2] 刷新积分失败 {account_id}: {str(e)[:80]}")
 

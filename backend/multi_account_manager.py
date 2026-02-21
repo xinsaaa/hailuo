@@ -621,38 +621,53 @@ class MultiAccountManager:
             print(f"[MULTI-ACCOUNT] 检查存储状态失败 {account_id}: {e}")
             return False
     
-    def get_best_account_for_task(self, task_priority: int = 5) -> Optional[str]:
-        """智能选择最适合执行任务的账号"""
+    def get_best_account_for_task(self, task_priority: int = 5, model_name: str = "", account_credits: dict = None) -> Optional[str]:
+        """智能选择最适合执行任务的账号
+
+        model_name: 模型名称，3系列模型需要积分
+        account_credits: 账号积分缓存 {account_id: credits}
+        """
         available_accounts = []
-        
+        is_model_v3 = model_name.startswith("Hailuo 3") or "3." in model_name
+        if account_credits is None:
+            account_credits = {}
+
         for account_id, account in self.accounts.items():
-            if (account.is_active and 
+            if (account.is_active and
                 account.current_tasks < account.max_concurrent and
                 account_id in self._verified_accounts):  # 必须已登录
-                
+
                 # 计算账号负载率
                 load_rate = account.current_tasks / account.max_concurrent if account.max_concurrent > 0 else 0
-                
+
                 # 计算综合评分 (优先级 + 负载反向 + 任务匹配度)
                 score = account.priority * 10 - load_rate * 100
-                
+
                 # 高优先级任务匹配高优先级账号
                 if task_priority >= 8 and account.priority >= 8:
                     score += 20
                 elif task_priority <= 3 and account.priority <= 5:
                     score += 10
-                
+
+                # 3系列模型：积分充足的账号大幅加分，积分为0的降权
+                if is_model_v3:
+                    credits = account_credits.get(account_id, -1)
+                    if credits > 0:
+                        score += 50  # 有积分的账号优先
+                    elif credits == 0:
+                        score -= 200  # 积分为0的账号几乎不分配
+
                 available_accounts.append((account_id, account, score, load_rate))
-        
+
         if not available_accounts:
             return None
-        
+
         # 按评分排序，评分高的优先
         available_accounts.sort(key=lambda x: -x[2])
-        
+
         best_account = available_accounts[0]
-        print(f"[SCHEDULER] 选择账号 {best_account[1].display_name} (负载: {best_account[3]:.1%}, 评分: {best_account[2]:.1f})")
-        
+        print(f"[SCHEDULER] 选择账号 {best_account[1].display_name} (负载: {best_account[3]:.1%}, 评分: {best_account[2]:.1f}{', 3系列模型' if is_model_v3 else ''})")
+
         return best_account[0]
 
     async def auto_check_and_recover_accounts(self):
