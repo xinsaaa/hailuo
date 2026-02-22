@@ -436,20 +436,46 @@ class HailuoAutomationV2:
                             pass
 
                         # 5. 点击下载按钮，直接触发下载
-                        async with page.expect_download(timeout=60000) as download_info:
-                            await download_btn.click()
+                        try:
+                            async with page.expect_download(timeout=60000) as download_info:
+                                await download_btn.click()
 
-                        download = await download_info.value
-                        # 6. 保存到本地videos目录
-                        filename = f"order_{order_id}.mp4"
-                        filepath = os.path.join(VIDEOS_DIR, filename)
-                        await download.save_as(filepath)
-                        size_mb = os.path.getsize(filepath) / (1024 * 1024)
-                        print(f"[AUTO-V2] 📥 订单#{order_id} 下载完成 ({size_mb:.1f}MB)")
+                            download = await download_info.value
+                            # 6. 保存到本地videos目录
+                            filename = f"order_{order_id}.mp4"
+                            filepath = os.path.join(VIDEOS_DIR, filename)
+                            await download.save_as(filepath)
+                            size_mb = os.path.getsize(filepath) / (1024 * 1024)
+                            print(f"[AUTO-V2] 📥 订单#{order_id} 下载完成 ({size_mb:.1f}MB)")
 
-                        self.update_order_result(order_id, f"/videos/{filename}", "completed")
-                        print(f"[AUTO-V2] 🎉 订单#{order_id}完成! 本地视频: {filename}")
-                        completed_count += 1
+                            self.update_order_result(order_id, f"/videos/{filename}", "completed")
+                            print(f"[AUTO-V2] 🎉 订单#{order_id}完成! 本地视频: {filename}")
+                            completed_count += 1
+                        except Exception as download_err:
+                            print(f"[AUTO-V2] ⚠️ 订单#{order_id} 下载失败: {str(download_err)[:80]}")
+                            # 下载失败，尝试复制分享链接给用户
+                            try:
+                                await parent.hover()
+                                await asyncio.sleep(0.5)
+                                share_btn = parent.locator("div.text-hl_text_00_legacy:has(svg path[d*='M7.84176'])").first
+                                if await share_btn.is_visible(timeout=3000):
+                                    await share_btn.click()
+                                    await asyncio.sleep(0.5)
+                                    share_link = await page.evaluate("() => navigator.clipboard.readText()") or ""
+                                    if share_link.startswith("http"):
+                                        self.update_order_result(order_id, share_link, "completed")
+                                        print(f"[AUTO-V2] 🔗 订单#{order_id} 已保存分享链接: {share_link}")
+                                        print(f"[AUTO-V2] 💡 订单#{order_id} 视频下载失败，用户可通过链接手动下载，或发工单处理")
+                                        completed_count += 1
+                                    else:
+                                        print(f"[AUTO-V2] ❌ 订单#{order_id} 获取分享链接失败")
+                                        _processed_share_links.discard(dedup_key)
+                                else:
+                                    print(f"[AUTO-V2] ❌ 订单#{order_id} 未找到分享按钮")
+                                    _processed_share_links.discard(dedup_key)
+                            except Exception as share_err:
+                                print(f"[AUTO-V2] ❌ 订单#{order_id} 获取分享链接也失败: {str(share_err)[:60]}")
+                                _processed_share_links.discard(dedup_key)
 
                     except Exception as e:
                         print(f"[AUTO-V2] 下载视频出错 订单#{order_id}: {str(e)[:100]}")
