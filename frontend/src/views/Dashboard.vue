@@ -34,6 +34,17 @@ const showModelSelector = ref(false)
 // 视频模式切换：文生视频 / 图生视频
 const videoMode = ref('image') // 'text' 或 'image'
 
+// 分辨率和时长选择
+const resolution = ref('768p') // '768p' 或 '1080p'
+const duration = ref('6s') // '6s' 或 '10s'
+
+// 1080p只能选6s
+watch(resolution, (val) => {
+  if (val === '1080p') {
+    duration.value = '6s'
+  }
+})
+
 // 首尾帧图片上传状态
 const firstFrameImage = ref(null)
 const lastFrameImage = ref(null)
@@ -242,7 +253,9 @@ const handleCreateOrder = async () => {
       selectedModel.value.name,
       videoMode.value === 'image' ? firstFrameImage.value : null,
       videoMode.value === 'image' ? lastFrameImage.value : null,
-      videoType
+      videoType,
+      resolution.value,
+      duration.value
     )
     showNotification('订单提交成功！AI 正在为您生成...', 'success')
     prompt.value = ''
@@ -562,6 +575,54 @@ const handleLogout = () => {
                 >
                   图生视频
                 </button>
+              </div>
+
+              <!-- 分辨率和时长选择 -->
+              <div class="flex items-center gap-4">
+                <!-- 分辨率 -->
+                <div class="flex items-center gap-2">
+                  <span class="text-gray-400 text-sm">分辨率</span>
+                  <div class="flex items-center gap-1 p-1 bg-black/30 rounded-xl border border-white/10">
+                    <button
+                      @click="resolution = '768p'"
+                      class="px-3 py-1.5 text-sm font-medium rounded-lg transition-all duration-200"
+                      :class="resolution === '768p'
+                        ? 'bg-gradient-to-r from-cyan-500/80 to-blue-500/80 text-white shadow-lg shadow-cyan-900/30'
+                        : 'text-gray-400 hover:text-white hover:bg-white/5'"
+                    >768p</button>
+                    <button
+                      @click="resolution = '1080p'"
+                      class="px-3 py-1.5 text-sm font-medium rounded-lg transition-all duration-200"
+                      :class="resolution === '1080p'
+                        ? 'bg-gradient-to-r from-cyan-500/80 to-blue-500/80 text-white shadow-lg shadow-cyan-900/30'
+                        : 'text-gray-400 hover:text-white hover:bg-white/5'"
+                    >1080p</button>
+                  </div>
+                </div>
+                <!-- 时长 -->
+                <div class="flex items-center gap-2">
+                  <span class="text-gray-400 text-sm">时长</span>
+                  <div class="flex items-center gap-1 p-1 bg-black/30 rounded-xl border border-white/10">
+                    <button
+                      @click="duration = '6s'"
+                      class="px-3 py-1.5 text-sm font-medium rounded-lg transition-all duration-200"
+                      :class="duration === '6s'
+                        ? 'bg-gradient-to-r from-purple-500/80 to-pink-500/80 text-white shadow-lg shadow-purple-900/30'
+                        : 'text-gray-400 hover:text-white hover:bg-white/5'"
+                    >6秒</button>
+                    <button
+                      @click="duration = '10s'"
+                      :disabled="resolution === '1080p'"
+                      class="px-3 py-1.5 text-sm font-medium rounded-lg transition-all duration-200"
+                      :class="duration === '10s' && resolution !== '1080p'
+                        ? 'bg-gradient-to-r from-purple-500/80 to-pink-500/80 text-white shadow-lg shadow-purple-900/30'
+                        : resolution === '1080p'
+                          ? 'text-gray-600 cursor-not-allowed'
+                          : 'text-gray-400 hover:text-white hover:bg-white/5'"
+                    >10秒</button>
+                  </div>
+                  <span v-if="resolution === '1080p'" class="text-gray-500 text-xs">1080p仅支持6秒</span>
+                </div>
               </div>
 
               <div class="relative group">

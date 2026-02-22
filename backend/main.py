@@ -1067,6 +1067,8 @@ async def create_order(
     prompt: str = Form(...),
     model_name: str = Form("Hailuo 2.3"),
     video_type: str = Form("image_to_video"),
+    resolution: str = Form("768p"),
+    duration: str = Form("6s"),
     first_frame_image: Optional[UploadFile] = File(None),
     last_frame_image: Optional[UploadFile] = File(None),
     current_user: User = Depends(get_current_user),
@@ -1075,6 +1077,14 @@ async def create_order(
     # 校验video_type
     if video_type not in ("image_to_video", "text_to_video"):
         raise HTTPException(status_code=400, detail="无效的视频类型")
+
+    # 校验分辨率和秒数
+    if resolution not in ("768p", "1080p"):
+        raise HTTPException(status_code=400, detail="无效的分辨率，仅支持768p和1080p")
+    if duration not in ("6s", "10s"):
+        raise HTTPException(status_code=400, detail="无效的时长，仅支持6s和10s")
+    if resolution == "1080p" and duration == "10s":
+        raise HTTPException(status_code=400, detail="1080p分辨率仅支持6秒")
 
     # 图生视频必须上传首帧图片
     if video_type == "image_to_video" and not first_frame_image:
@@ -1132,6 +1142,8 @@ async def create_order(
         cost=cost,
         model_name=model_name,
         video_type=video_type,
+        resolution=resolution,
+        duration=duration,
         first_frame_image=first_frame_path,
         last_frame_image=last_frame_path
     )

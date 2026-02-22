@@ -187,11 +187,13 @@ export const confirmPayment = async (params) => {
     return response.data
 }
 
-export const createOrder = async (prompt, model_name, firstFrameImage, lastFrameImage, videoType = 'image_to_video') => {
+export const createOrder = async (prompt, model_name, firstFrameImage, lastFrameImage, videoType = 'image_to_video', resolution = '768p', duration = '6s') => {
     const formData = new FormData();
     formData.append('prompt', prompt);
     formData.append('model_name', model_name || "Hailuo 2.3");
     formData.append('video_type', videoType);
+    formData.append('resolution', resolution);
+    formData.append('duration', duration);
 
     if (firstFrameImage) {
         formData.append('first_frame_image', firstFrameImage);
