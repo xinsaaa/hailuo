@@ -891,7 +891,6 @@ const handleLogout = () => {
                   </div>
                 </div>
               </div>
-            </div>
 
               <!-- 底部反馈入口 -->
               <div v-if="orders.length > 0" class="mt-6 text-center">
@@ -902,6 +901,7 @@ const handleLogout = () => {
                   遇到问题？提交工单反馈
                 </router-link>
               </div>
+            </div>
           </div>
     </div>
     
