@@ -163,6 +163,13 @@ const getDownloadFilename = (order) => {
   return `${name}_${order.id}.mp4`
 }
 
+const getVideoUrl = (url) => {
+  const token = localStorage.getItem('token')
+  if (!token || !url) return url
+  const sep = url.includes('?') ? '&' : '?'
+  return `${url}${sep}token=${token}`
+}
+
 const closeVideoPlayer = () => {
   showVideoPlayer.value = false
   currentVideoUrl.value = ''
@@ -803,7 +810,7 @@ const handleLogout = () => {
                       <!-- 本地视频：播放+下载 -->
                       <template v-if="order.status === 'completed' && order.video_url">
                         <button v-if="order.video_url.startsWith('/videos/')"
-                          @click="playVideo(order.video_url)"
+                          @click="playVideo(getVideoUrl(order.video_url))"
                           class="px-3 py-1 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 text-xs rounded-full border border-cyan-500/20 hover:border-cyan-500/40 transition-all flex items-center gap-1.5 group/btn">
                           <svg class="w-3 h-3 transition-transform group-hover/btn:scale-110" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
@@ -812,7 +819,7 @@ const handleLogout = () => {
                           <span class="font-bold">播放</span>
                         </button>
                         <a v-if="order.video_url.startsWith('/videos/')"
-                          :href="order.video_url" :download="getDownloadFilename(order)"
+                          :href="getVideoUrl(order.video_url)" :download="getDownloadFilename(order)"
                           class="px-3 py-1 bg-green-500/10 hover:bg-green-500/20 text-green-400 text-xs rounded-full border border-green-500/20 hover:border-green-500/40 transition-all flex items-center gap-1.5 group/btn">
                           <svg class="w-3 h-3 transition-transform group-hover/btn:scale-110" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>

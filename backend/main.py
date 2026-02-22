@@ -1487,13 +1487,51 @@ def get_invite_stats(current_user: User = Depends(get_current_user), session: Se
     }
 
 
-# ============ 静态文件服务 ============
+# ============ 视频文件服务（鉴权） ============
 import os
+from fastapi.responses import FileResponse
 
 # 视频文件目录
 videos_dir = os.path.join(os.path.dirname(__file__), "..", "videos")
 os.makedirs(videos_dir, exist_ok=True)
-app.mount("/videos", StaticFiles(directory=videos_dir), name="videos")
+
+@app.get("/videos/{filename}")
+async def serve_video(filename: str, token: Optional[str] = None, session: Session = Depends(get_session)):
+    """只有下单用户和管理员能访问视频，支持query参数token鉴权"""
+    # 鉴权：从query参数或header获取token
+    if not token:
+        raise HTTPException(status_code=401, detail="未登录")
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        username = payload.get("sub")
+        if not username:
+            raise HTTPException(status_code=401, detail="无效token")
+        user = session.exec(select(User).where(User.username == username)).first()
+        if not user:
+            raise HTTPException(status_code=401, detail="用户不存在")
+    except JWTError:
+        raise HTTPException(status_code=401, detail="无效token")
+
+    # 从文件名提取订单ID（格式: order_123.mp4）
+    order_id = None
+    if filename.startswith("order_") and filename.endswith(".mp4"):
+        try:
+            order_id = int(filename.replace("order_", "").replace(".mp4", ""))
+        except ValueError:
+            pass
+
+    if order_id:
+        order = session.get(VideoOrder, order_id)
+        if not order:
+            raise HTTPException(status_code=404, detail="订单不存在")
+        if order.user_id != user.id and not user.is_admin:
+            raise HTTPException(status_code=403, detail="无权访问此视频")
+
+    filepath = os.path.join(videos_dir, filename)
+    if not os.path.isfile(filepath):
+        raise HTTPException(status_code=404, detail="视频文件不存在")
+
+    return FileResponse(filepath, media_type="video/mp4", filename=filename)
 
 # 检查前端构建目录是否存在
 frontend_dist_path = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist")
