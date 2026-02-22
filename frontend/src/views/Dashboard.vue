@@ -410,7 +410,12 @@ const handleLogout = () => {
           <span class="text-white drop-shadow-md">{{ siteName }}</span>
         </div>
         <div class="flex items-center gap-6">
-          <router-link to="/tickets" class="text-sm text-gray-400 hover:text-white transition-colors">工单</router-link>
+          <router-link to="/tickets" class="flex items-center gap-1.5 px-3 py-1.5 text-sm text-amber-400/90 hover:text-amber-300 bg-amber-500/10 hover:bg-amber-500/15 border border-amber-500/20 hover:border-amber-500/30 rounded-lg transition-all">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/>
+            </svg>
+            工单反馈
+          </router-link>
           <router-link to="/invite" class="text-sm text-gray-400 hover:text-white transition-colors">邀请</router-link>
 
           <div class="flex items-center gap-3 bg-black/40 p-1 pr-4 rounded-xl border border-white/10 backdrop-blur-sm shadow-inner">
@@ -845,6 +850,14 @@ const handleLogout = () => {
                         </svg>
                         <span class="font-bold">重试</span>
                       </button>
+                      <router-link v-if="order.status === 'failed'"
+                        :to="`/tickets?order_id=${order.id}&prompt=${encodeURIComponent(order.prompt?.substring(0, 30) || '')}`"
+                        class="px-3 py-1 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 text-xs rounded-full border border-amber-500/20 hover:border-amber-500/40 transition-all flex items-center gap-1.5 group/btn">
+                        <svg class="w-3 h-3 transition-transform group-hover/btn:scale-110" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/>
+                        </svg>
+                        <span class="font-bold">反馈</span>
+                      </router-link>
                     </div>
                   </div>
                   <div>
@@ -879,11 +892,17 @@ const handleLogout = () => {
                 </div>
               </div>
             </div>
+
+              <!-- 底部反馈入口 -->
+              <div v-if="orders.length > 0" class="mt-6 text-center">
+                <router-link to="/tickets" class="inline-flex items-center gap-2 px-4 py-2 text-sm text-gray-400 hover:text-amber-400 bg-white/5 hover:bg-amber-500/10 border border-white/10 hover:border-amber-500/20 rounded-xl transition-all">
+                  <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                  </svg>
+                  遇到问题？提交工单反馈
+                </router-link>
+              </div>
           </div>
-
-          
-
-      </div>
     </div>
     
     <!-- 余额不足弹窗 -->
