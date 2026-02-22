@@ -656,7 +656,7 @@ class HailuoAutomationV2:
             # 根据视频类型导航到不同页面
             target_url = HAILUO_TEXT_URL if is_text_mode else HAILUO_URL
             await page.goto(target_url, timeout=30000, wait_until="domcontentloaded")
-            await asyncio.sleep(5)
+            await asyncio.sleep(2)
 
             # 关闭可能的弹窗
             await self._dismiss_popup(page)
@@ -684,7 +684,7 @@ class HailuoAutomationV2:
                     text_input = page.locator("#video-create-textarea")
                     if await text_input.is_visible(timeout=5000):
                         await text_input.click(force=True, timeout=5000)
-                        await asyncio.sleep(0.5)
+                        await asyncio.sleep(0.3)
                         await page.keyboard.press("Control+A")
                         await page.keyboard.press("Delete")
                         await page.keyboard.type(prompt_with_id, delay=10)
@@ -707,39 +707,39 @@ class HailuoAutomationV2:
                 settings_btn = page.locator("div.cursor-pointer:has(span:text('768p')), div.cursor-pointer:has(span:text('1080p'))").first
                 if await settings_btn.is_visible(timeout=3000):
                     await settings_btn.click()
-                    await asyncio.sleep(0.8)
+                    await asyncio.sleep(0.5)
 
                     # 选择分辨率
                     res_btn = page.locator(f"div.cursor-pointer:has(div:text('{resolution}'))").first
                     if await res_btn.is_visible(timeout=2000):
                         await res_btn.click()
-                        await asyncio.sleep(0.3)
+                        await asyncio.sleep(0.2)
                         print(f"[AUTO-V2] ✅ 订单#{order_id} 选择分辨率: {resolution}")
 
                     # 选择秒数
                     dur_btn = page.locator(f"div.cursor-pointer:has(div:text('{duration}'))").first
                     if await dur_btn.is_visible(timeout=2000):
                         await dur_btn.click()
-                        await asyncio.sleep(0.3)
+                        await asyncio.sleep(0.2)
                         print(f"[AUTO-V2] ✅ 订单#{order_id} 选择时长: {duration}")
 
                     # 点击空白处关闭设置面板
                     await page.mouse.click(10, 10)
-                    await asyncio.sleep(0.5)
+                    await asyncio.sleep(0.3)
                 else:
                     print(f"[AUTO-V2] ⚠️ 订单#{order_id} 未找到分辨率设置按钮，使用默认值")
             except Exception as e:
                 print(f"[AUTO-V2] ⚠️ 订单#{order_id} 设置分辨率/秒数失败: {str(e)[:60]}")
 
             # 步骤5: 等待popover完全关闭后再找生成按钮
-            await asyncio.sleep(2)
+            await asyncio.sleep(0.5)
             # 确保没有popover遮挡
             for pop_sel in [".ant-popover:not(.ant-popover-hidden)"]:
                 try:
                     pop = page.locator(pop_sel).first
                     if await pop.is_visible():
                         await page.keyboard.press("Escape")
-                        await asyncio.sleep(1)
+                        await asyncio.sleep(0.5)
                 except:
                     pass
 
