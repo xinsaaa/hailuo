@@ -776,6 +776,7 @@ const handleLogout = () => {
                     {{ loading ? '正在提交...' : '立即生成' }}
                   </button>
                 </div>
+                <p class="text-center text-xs text-gray-500 mt-3">皆为官网正品算力，品质保障</p>
               </div>
             </div>
           </div>
