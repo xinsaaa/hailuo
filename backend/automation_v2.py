@@ -335,6 +335,43 @@ class HailuoAutomationV2:
             completed_count = 0
             processing_count = 0
 
+            # 预处理：找任意一个卡片预勾选去水印开关（只需一次）
+            try:
+                any_card = page.locator("div[class*='group/video-card']").first
+                if await any_card.is_visible(timeout=3000):
+                    await any_card.hover()
+                    await asyncio.sleep(0.8)
+                    pre_dl_btn = any_card.locator("button:has(svg path[d*='M2 9.26074'])").first
+                    if await pre_dl_btn.is_visible(timeout=2000):
+                        await pre_dl_btn.hover()
+                        await asyncio.sleep(0.8)
+                        pre_switches = page.locator("button.ant-switch.hl-brand-switch")
+                        pre_count = await pre_switches.count()
+                        for i in range(pre_count):
+                            sw = pre_switches.nth(i)
+                            try:
+                                checked = await sw.get_attribute("aria-checked")
+                                if checked == "false":
+                                    await sw.click(force=True, timeout=3000)
+                                    await asyncio.sleep(0.5)
+                                    agree_btn = page.locator("button:has-text('同意')").first
+                                    try:
+                                        if await agree_btn.is_visible(timeout=2000):
+                                            await agree_btn.click()
+                                            await asyncio.sleep(0.5)
+                                            print(f"[AUTO-V2] 📋 预勾选: 同意去水印协议")
+                                    except Exception:
+                                        pass
+                                    print(f"[AUTO-V2] 🔄 预勾选: 开启去水印开关 {i+1}")
+                            except Exception:
+                                pass
+                        # 点击空白处关闭悬浮面板
+                        await page.mouse.click(10, 10)
+                        await asyncio.sleep(0.5)
+                print(f"[AUTO-V2] ✅ 去水印开关预勾选完成")
+            except Exception as e:
+                print(f"[AUTO-V2] ⚠️ 预勾选去水印开关失败: {str(e)[:60]}")
+
             for span in prompt_spans:
                 try:
                     prompt_text = await span.text_content()
