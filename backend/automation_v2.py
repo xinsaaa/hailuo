@@ -440,7 +440,31 @@ class HailuoAutomationV2:
                         # 2. 找到下载按钮（带下载箭头SVG的button）
                         download_btn = parent.locator("button:has(svg path[d*='M2 9.26074'])").first
                         if not await download_btn.is_visible(timeout=3000):
-                            print(f"[AUTO-V2] ⚠️ 订单#{order_id}未找到下载按钮")
+                            # 兜底：尝试从video标签src直接下载
+                            print(f"[AUTO-V2] ⚠️ 订单#{order_id}未找到下载按钮，尝试从video标签直接下载")
+                            try:
+                                video_el = parent.locator("video").first
+                                video_src = await video_el.get_attribute("src", timeout=3000)
+                                if video_src and video_src.startswith("http"):
+                                    import httpx
+                                    filename = f"order_{order_id}.mp4"
+                                    filepath = os.path.join(VIDEOS_DIR, filename)
+                                    async with httpx.AsyncClient(timeout=120, follow_redirects=True) as client:
+                                        resp = await client.get(video_src)
+                                        if resp.status_code == 200:
+                                            with open(filepath, "wb") as vf:
+                                                vf.write(resp.content)
+                                            size_mb = os.path.getsize(filepath) / (1024 * 1024)
+                                            print(f"[AUTO-V2] 📥 订单#{order_id} 从video src直接下载完成 ({size_mb:.1f}MB)")
+                                            self.update_order_result(order_id, f"/videos/{filename}", "completed")
+                                            completed_count += 1
+                                            continue
+                                        else:
+                                            print(f"[AUTO-V2] ❌ 订单#{order_id} video src下载失败: HTTP {resp.status_code}")
+                                else:
+                                    print(f"[AUTO-V2] ❌ 订单#{order_id} video标签无有效src: {video_src}")
+                            except Exception as ve:
+                                print(f"[AUTO-V2] ❌ 订单#{order_id} video src兜底失败: {str(ve)[:60]}")
                             _processed_share_links.discard(dedup_key)
                             continue
 
