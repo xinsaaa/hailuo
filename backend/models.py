@@ -153,3 +153,27 @@ engine = create_engine(sqlite_url)
 
 def create_db_and_tables():
     SQLModel.metadata.create_all(engine)
+    # 自动迁移：给已有表添加缺失的列
+    _auto_migrate()
+
+def _auto_migrate():
+    """检查并添加缺失的列（SQLite ALTER TABLE ADD COLUMN）"""
+    import sqlite3
+    conn = sqlite3.connect(sqlite_file_name)
+    cursor = conn.cursor()
+    # 获取videoorder表现有列
+    cursor.execute("PRAGMA table_info(videoorder)")
+    existing_cols = {row[1] for row in cursor.fetchall()}
+    migrations = [
+        ("videoorder", "resolution", "TEXT DEFAULT '768p'"),
+        ("videoorder", "duration", "TEXT DEFAULT '6s'"),
+    ]
+    for table, col, col_type in migrations:
+        if col not in existing_cols:
+            try:
+                cursor.execute(f"ALTER TABLE {table} ADD COLUMN {col} {col_type}")
+                print(f"[DB迁移] 添加列 {table}.{col}")
+            except Exception as e:
+                print(f"[DB迁移] 跳过 {table}.{col}: {e}")
+    conn.commit()
+    conn.close()
