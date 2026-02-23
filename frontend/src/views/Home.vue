@@ -9,6 +9,10 @@ const router = useRouter()
 const userStore = useUserStore()
 const videoPrice23 = ref(0.99)
 const videoPrice31 = ref(0.99)
+const modelsList = ref([])
+
+const has23Series = computed(() => modelsList.value.some(m => m.id.includes('2_0') || m.id.includes('2_3') || m.id.includes('hailuo_1_0')))
+const has31Series = computed(() => modelsList.value.some(m => m.id.includes('3_1') || m.id.includes('beta_3')))
 
 const siteName = ref(localStorage.getItem('site_name') || '大帝AI')
 const isLoggedIn = computed(() => !!userStore.token)
@@ -33,6 +37,7 @@ const loadConfig = async () => {
         try {
             const modelsData = await getAvailableModels()
             if (modelsData && modelsData.models && modelsData.models.length > 0) {
+                modelsList.value = modelsData.models
                 const models23 = modelsData.models.filter(m => m.id.includes('2_0') || m.id.includes('2_3') || m.id.includes('hailuo_1_0'))
                 const models31 = modelsData.models.filter(m => m.id.includes('3_1') || m.id.includes('beta_3'))
                 if (models23.length > 0) {
@@ -151,7 +156,7 @@ const handleModelSeriesGenerate = (series) => {
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 w-full max-w-6xl">
         
         <!-- 海螺AI卡片 -->
-        <div class="group relative md:col-start-2 lg:col-start-auto">
+        <div v-if="has23Series" class="group relative md:col-start-2 lg:col-start-auto">
           <!-- 发光边框 - 优化为单色简约光晕 -->
           <div class="absolute -inset-0.5 bg-gradient-to-b from-cyan-500/20 to-blue-500/5 rounded-3xl blur opacity-20 group-hover:opacity-60 transition-opacity duration-700"></div>
           
@@ -200,7 +205,7 @@ const handleModelSeriesGenerate = (series) => {
         </div>
         
         <!-- 海螺 AI 3.1模型 -->
-        <div class="group relative hover:opacity-100 transition-all duration-500 md:col-start-2 md:row-start-2 lg:col-start-auto lg:row-start-auto">
+        <div v-if="has31Series" class="group relative hover:opacity-100 transition-all duration-500 md:col-start-2 md:row-start-2 lg:col-start-auto lg:row-start-auto">
           <div class="absolute -inset-0.5 bg-gradient-to-br from-purple-500/10 to-pink-500/10 rounded-3xl opacity-50 group-hover:opacity-100 transition-all"></div>
           
           <div class="relative bg-white/5 border border-white/5 border-t-white/10 rounded-2xl p-6 shadow-xl h-full backdrop-blur-3xl transition-all duration-500 hover:bg-white/10 hover:border-white/10 hover:-translate-y-1">
