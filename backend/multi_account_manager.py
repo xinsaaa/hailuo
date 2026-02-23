@@ -21,6 +21,7 @@ class AccountConfig:
     is_active: bool = True   # 是否启用
     max_concurrent: int = 3  # 最大并发任务数
     current_tasks: int = 0   # 当前任务数
+    series: str = "2.3"      # 绑定的模型系列 ("2.3" 或 "3.1")
 
 
 class MultiAccountManager:
@@ -158,7 +159,8 @@ class MultiAccountManager:
                     "priority": acc.priority,
                     "is_active": acc.is_active,
                     "max_concurrent": acc.max_concurrent,
-                    "current_tasks": 0
+                    "current_tasks": 0,
+                    "series": acc.series
                 }
                 for acc in accounts
             ]
@@ -629,13 +631,15 @@ class MultiAccountManager:
         """
         available_accounts = []
         is_model_v3 = model_name.startswith("Hailuo 3") or "3." in model_name
+        required_series = "3.1" if is_model_v3 else "2.3"
         if account_credits is None:
             account_credits = {}
 
         for account_id, account in self.accounts.items():
             if (account.is_active and
                 account.current_tasks < account.max_concurrent and
-                account_id in self._verified_accounts):  # 必须已登录
+                account_id in self._verified_accounts and
+                account.series == required_series):  # 必须已登录且系列匹配
 
                 # 计算账号负载率
                 load_rate = account.current_tasks / account.max_concurrent if account.max_concurrent > 0 else 0

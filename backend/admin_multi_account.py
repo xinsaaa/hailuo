@@ -17,6 +17,7 @@ class AccountCreateRequest(BaseModel):
     display_name: str
     priority: int = 5
     max_concurrent: int = 3
+    series: str = "2.3"
 
 
 class AccountUpdateRequest(BaseModel):
@@ -24,6 +25,7 @@ class AccountUpdateRequest(BaseModel):
     priority: Optional[int] = None
     max_concurrent: Optional[int] = None
     is_active: Optional[bool] = None
+    series: Optional[str] = None
 
 
 @router.get("/list")
@@ -43,7 +45,8 @@ def list_accounts(admin=Depends(get_admin_user)):
             "max_concurrent": account.max_concurrent,
             "current_tasks": account.current_tasks,
             "is_logged_in": status.get("is_logged_in", False),
-            "utilization": status.get("utilization", 0)
+            "utilization": status.get("utilization", 0),
+            "series": account.series
         })
     
     return {
@@ -69,7 +72,8 @@ async def create_account(data: AccountCreateRequest, admin=Depends(get_admin_use
         "priority": data.priority,
         "max_concurrent": data.max_concurrent,
         "is_active": True,
-        "current_tasks": 0
+        "current_tasks": 0,
+        "series": data.series
     })
     
     return {"message": "账号创建成功", "account_id": data.account_id}
@@ -96,6 +100,8 @@ async def update_account(
         account.max_concurrent = data.max_concurrent
     if data.is_active is not None:
         await toggle_account(account_id, data.is_active)
+    if data.series is not None:
+        account.series = data.series
     
     # 保存配置到文件（toggle_account内部会保存，但其他字段修改也需要保存）
     accounts_list = list(automation_v2.manager.accounts.values())

@@ -156,9 +156,9 @@ const handleModelSeriesGenerate = (series) => {
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 w-full max-w-6xl">
         
         <!-- 海螺AI卡片 -->
-        <div v-if="has23Series" class="group relative md:col-start-2 lg:col-start-auto">
+        <div :class="['group relative md:col-start-2 lg:col-start-auto', { 'opacity-60': !has23Series }]">
           <!-- 发光边框 - 优化为单色简约光晕 -->
-          <div class="absolute -inset-0.5 bg-gradient-to-b from-cyan-500/20 to-blue-500/5 rounded-3xl blur opacity-20 group-hover:opacity-60 transition-opacity duration-700"></div>
+          <div v-if="has23Series" class="absolute -inset-0.5 bg-gradient-to-b from-cyan-500/20 to-blue-500/5 rounded-3xl blur opacity-20 group-hover:opacity-60 transition-opacity duration-700"></div>
           
           <div class="relative bg-white/5 border border-white/5 border-t-white/20 rounded-2xl p-6 shadow-2xl h-full cursor-pointer transition-all duration-500 hover:scale-[1.02] hover:-translate-y-1 backdrop-blur-3xl hover:bg-white/10 hover:shadow-cyan-500/10">
             <!-- 顶部标签 -->
@@ -197,16 +197,19 @@ const handleModelSeriesGenerate = (series) => {
             
             <!-- 生成按钮 -->
             <div>
-              <button @click.stop="handleModelSeriesGenerate('2.3')" class="w-full py-3.5 bg-white text-black hover:bg-gray-50 rounded-xl font-bold text-sm transition-all duration-300 shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-95">
+              <button v-if="has23Series" @click.stop="handleModelSeriesGenerate('2.3')" class="w-full py-3.5 bg-white text-black hover:bg-gray-50 rounded-xl font-bold text-sm transition-all duration-300 shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-95">
                 使用2.3系列生成
+              </button>
+              <button v-else class="w-full py-3.5 bg-gray-700 text-gray-500 rounded-xl font-bold text-sm cursor-not-allowed">
+                暂未开放
               </button>
             </div>
           </div>
         </div>
         
         <!-- 海螺 AI 3.1模型 -->
-        <div v-if="has31Series" class="group relative hover:opacity-100 transition-all duration-500 md:col-start-2 md:row-start-2 lg:col-start-auto lg:row-start-auto">
-          <div class="absolute -inset-0.5 bg-gradient-to-br from-purple-500/10 to-pink-500/10 rounded-3xl opacity-50 group-hover:opacity-100 transition-all"></div>
+        <div :class="['group relative transition-all duration-500 md:col-start-2 md:row-start-2 lg:col-start-auto lg:row-start-auto', has31Series ? 'hover:opacity-100' : 'opacity-60']">
+          <div v-if="has31Series" class="absolute -inset-0.5 bg-gradient-to-br from-purple-500/10 to-pink-500/10 rounded-3xl opacity-50 group-hover:opacity-100 transition-all"></div>
           
           <div class="relative bg-white/5 border border-white/5 border-t-white/10 rounded-2xl p-6 shadow-xl h-full backdrop-blur-3xl transition-all duration-500 hover:bg-white/10 hover:border-white/10 hover:-translate-y-1">
             <div class="flex justify-between items-center mb-4">
@@ -244,8 +247,11 @@ const handleModelSeriesGenerate = (series) => {
             
             <!-- 生成按钮 -->
             <div>
-              <button @click.stop="handleModelSeriesGenerate('3.1')" class="w-full py-3.5 bg-white text-black hover:bg-gray-50 rounded-xl font-bold text-sm transition-all duration-300 shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-95">
+              <button v-if="has31Series" @click.stop="handleModelSeriesGenerate('3.1')" class="w-full py-3.5 bg-white text-black hover:bg-gray-50 rounded-xl font-bold text-sm transition-all duration-300 shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-95">
                 使用3.1系列生成
+              </button>
+              <button v-else class="w-full py-3.5 bg-gray-700 text-gray-500 rounded-xl font-bold text-sm cursor-not-allowed">
+                暂未开放
               </button>
             </div>
           </div>

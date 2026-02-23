@@ -132,7 +132,13 @@
               <tr v-for="account in accounts" :key="account.account_id" class="hover:bg-gray-700/30">
                 <td class="px-6 py-4 whitespace-nowrap">
                   <div>
-                    <div class="text-sm font-medium text-white">{{ account.display_name }}</div>
+                    <div class="text-sm font-medium text-white flex items-center gap-2">
+                      {{ account.display_name }}
+                      <span class="px-1.5 py-0.5 text-[10px] font-bold rounded"
+                        :class="account.series === '3.1' ? 'bg-purple-500/20 text-purple-400 border border-purple-500/30' : 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30'">
+                        {{ account.series || '2.3' }}系列
+                      </span>
+                    </div>
                     <div class="text-sm text-gray-400">{{ account.phone_number }}</div>
                     <div class="text-xs text-gray-500">ID: {{ account.account_id }}</div>
                   </div>
@@ -207,7 +213,14 @@
                     >
                       {{ account.is_active ? '禁用' : '启用' }}
                     </button>
-                    <button 
+                    <button
+                      @click="toggleSeries(account)"
+                      class="px-3 py-1 rounded text-xs transition-colors"
+                      :class="account.series === '3.1' ? 'bg-purple-600 hover:bg-purple-700 text-white' : 'bg-cyan-600 hover:bg-cyan-700 text-white'"
+                    >
+                      {{ account.series || '2.3' }}系列
+                    </button>
+                    <button
                       @click="editAccount(account)"
                       class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-xs transition-colors"
                     >
@@ -258,6 +271,14 @@
               <label class="block text-sm font-medium text-gray-300 mb-2">最大并发数</label>
               <input v-model.number="newAccount.max_concurrent" type="number" min="1" max="10" required
                 class="w-full px-3 py-2 bg-gray-700 border border-gray-600 text-white rounded-lg focus:ring-blue-500 focus:border-blue-500">
+            </div>
+            <div>
+              <label class="block text-sm font-medium text-gray-300 mb-2">模型系列</label>
+              <select v-model="newAccount.series"
+                class="w-full px-3 py-2 bg-gray-700 border border-gray-600 text-white rounded-lg focus:ring-blue-500 focus:border-blue-500">
+                <option value="2.3">2.3系列</option>
+                <option value="3.1">3.1系列</option>
+              </select>
             </div>
           </div>
           <div class="flex justify-end space-x-3 mt-6">
@@ -394,7 +415,8 @@ const newAccount = reactive({
   phone_number: '',
   display_name: '',
   priority: 5,
-  max_concurrent: 3
+  max_concurrent: 3,
+  series: '2.3'
 })
 
 // 获取系统状态
@@ -477,7 +499,8 @@ const addAccount = async () => {
       phone_number: '',
       display_name: '',
       priority: 5,
-      max_concurrent: 3
+      max_concurrent: 3,
+      series: '2.3'
     })
     await refreshAccounts()
     alert('账号添加成功')
@@ -619,6 +642,17 @@ const toggleAccount = async (accountId, isActive) => {
     await refreshAccounts()
   } catch (error) {
     alert('操作失败: ' + error.response?.data?.detail)
+  }
+}
+
+// 切换账号系列
+const toggleSeries = async (account) => {
+  const newSeries = account.series === '3.1' ? '2.3' : '3.1'
+  try {
+    await api.put(`/admin/accounts/${account.account_id}`, { series: newSeries })
+    await refreshAccounts()
+  } catch (error) {
+    alert('切换系列失败: ' + (error.response?.data?.detail || error.message))
   }
 }
 
