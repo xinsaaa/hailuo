@@ -33,6 +33,7 @@ async def app_exception_handler(request: Request, exc: AppException) -> JSONResp
         content={
             "error": exc.__class__.__name__,
             "message": exc.message,
+            "detail": exc.message,
             "request_id": request_id,
             "details": exc.details,
             "timestamp": datetime.utcnow().isoformat() + "Z"
@@ -44,12 +45,18 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     """处理 FastAPI 验证异常"""
     request_id = get_request_id()
     
-    # 提取字段级错误
+    # 提取字段级错误，生成友好提示
     field_errors = {}
     for error in exc.errors():
         field = ".".join(str(loc) for loc in error["loc"] if loc != "body")
         field_errors[field] = error["msg"]
-    
+
+    # 生成用户友好的错误信息
+    friendly_messages = []
+    for field, msg in field_errors.items():
+        friendly_messages.append(f"{field}: {msg}")
+    friendly_msg = "; ".join(friendly_messages) if friendly_messages else "输入数据格式不正确"
+
     # 记录验证错误
     app_logger.warning(
         "Validation error",
@@ -57,12 +64,13 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         method=request.method,
         field_errors=field_errors,
     )
-    
+
     return JSONResponse(
         status_code=status.HTTP_400_BAD_REQUEST,
         content={
             "error": "ValidationError",
-            "message": "Invalid input data",
+            "message": friendly_msg,
+            "detail": friendly_msg,
             "request_id": request_id,
             "details": {"field_errors": field_errors},
             "timestamp": datetime.utcnow().isoformat() + "Z"
@@ -87,6 +95,7 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException) 
         content={
             "error": "HTTPException",
             "message": exc.detail,
+            "detail": exc.detail,
             "request_id": request_id,
             "timestamp": datetime.utcnow().isoformat() + "Z"
         }
@@ -116,6 +125,7 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
         content={
             "error": "InternalServerError",
             "message": error_detail,
+            "detail": error_detail,
             "request_id": request_id,
             "timestamp": datetime.utcnow().isoformat() + "Z"
         }

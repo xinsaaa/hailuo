@@ -15,7 +15,8 @@
       "Bash(npx vite build:*)",
       "Bash(python -m pip list:*)",
       "Bash(dir:*)",
-      "Bash(awk:*)"
+      "Bash(awk:*)",
+      "Bash(npm run build)"
     ]
   }
 }

@@ -311,7 +311,7 @@ const handleSendEmailCode = async () => {
       }
     }, 1000)
   } catch (err) {
-    showAlert(err.response?.data?.detail || '发送失败，请稍后重试')
+    showAlert(err.response?.data?.detail || err.response?.data?.message || err.friendlyMessage || '发送失败，请稍后重试')
   } finally {
     emailCodeLoading.value = false
   }
@@ -415,7 +415,8 @@ const handleSubmit = async () => {
       router.push('/dashboard')
     }
   } catch (err) {
-    const detail = err.response?.data?.detail || '操作失败，请重试'
+    const data = err.response?.data
+    const detail = data?.detail || data?.message || err.friendlyMessage || '操作失败，请重试'
     showAlert(detail)
     // 重新加载验证码
     await loadCaptcha()
