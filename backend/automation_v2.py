@@ -318,12 +318,14 @@ class HailuoAutomationV2:
     async def _scan_completed_videos(self, page, account_id: str):
         """扫描页面上已完成的视频 - 严格移植自V1的scan_for_completed_videos"""
         try:
-            # 确保页面在海螺AI的创建页面上（视频卡片只在这个页面有）
+            # 确保页面在海螺AI的创建页面上，并刷新以获取最新状态
             try:
                 current_url = page.url
                 if not current_url or "/create" not in current_url:
                     await page.goto(HAILUO_URL, timeout=30000, wait_until="domcontentloaded")
-                    await asyncio.sleep(3)
+                else:
+                    await page.reload(timeout=30000, wait_until="domcontentloaded")
+                await asyncio.sleep(3)
             except Exception as e:
                 print(f"[AUTO-V2] 页面导航失败: {str(e)[:80]}")
                 return
@@ -549,6 +551,17 @@ class HailuoAutomationV2:
 
             if completed_count > 0 or processing_count > 0:
                 print(f"[AUTO-V2] 📊 扫描结果: 完成{completed_count}个, 生成中{processing_count}个")
+
+            # 清理_account_orders中已完成/失败的订单，避免无意义的重复扫描
+            if account_id in self._account_orders:
+                done_ids = set()
+                for oid in self._account_orders[account_id]:
+                    with Session(engine) as session:
+                        o = session.get(VideoOrder, oid)
+                        if o and o.status in ("completed", "failed"):
+                            done_ids.add(oid)
+                if done_ids:
+                    self._account_orders[account_id] -= done_ids
 
         except Exception as e:
             print(f"[AUTO-V2] 扫描页面出错: {str(e)[:100]}")
