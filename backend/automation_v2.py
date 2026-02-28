@@ -566,73 +566,37 @@ class HailuoAutomationV2:
                                 await dl_trigger.hover()
                                 await asyncio.sleep(1.0)
 
-                                # 3. 在浮窗里找水印开关，确保去水印开启（aria-checked="true" = 去水印）
-                                # ant-dropdown 浮窗挂在 body 下，用 page 级别查找
-                                switches = await page.locator(
-                                    ".ant-dropdown:not(.ant-dropdown-hidden) button[role='switch'].hl-brand-switch"
+                                # 3. 在浮窗里确认两个水印开关都已开启，未开则点击
+                                # 浮窗结构：.ant-dropdown > div > 两个开关行 > button.cl_hl_H9_M（下载按钮）
+                                # 用当前卡片所在 dropdown 定位，避免跨卡片选错
+                                dropdown_locator = page.locator(".ant-dropdown:not(.ant-dropdown-hidden)").first
+                                switches = await dropdown_locator.locator(
+                                    "button[role='switch'].hl-brand-switch"
                                 ).all()
-                                if not switches:
-                                    # fallback：直接找所有可见的 switch
-                                    switches = await page.locator(
-                                        "button[role='switch'].hl-brand-switch"
-                                    ).all()
                                 for sw in switches:
-                                    if not await sw.is_visible():
-                                        continue
-                                    checked = await sw.get_attribute("aria-checked")
-                                    if checked == "false":
-                                        await sw.click()
-                                        await asyncio.sleep(0.5)
-                                        # 点击水印开关后可能弹出确认弹窗，点击同意
-                                        for confirm_sel in [
-                                            ".ant-modal-confirm .ant-btn-primary",
-                                            ".ant-modal-footer .ant-btn-primary",
-                                            ".ant-modal button.ant-btn-primary",
-                                            "button:has-text('同意')",
-                                            "button:has-text('确认')",
-                                            "button:has-text('确定')",
-                                            "button:has-text('OK')",
-                                        ]:
-                                            try:
-                                                confirm_btn = page.locator(confirm_sel).first
-                                                if await confirm_btn.is_visible(timeout=800):
-                                                    await confirm_btn.click()
-                                                    print(f"[AUTO-V2] 订单#{order_id} 点击水印确认弹窗")
-                                                    await asyncio.sleep(0.5)
-                                                    break
-                                            except:
-                                                pass
+                                    try:
+                                        if not await sw.is_visible(timeout=500):
+                                            continue
+                                        checked = await sw.get_attribute("aria-checked")
+                                        if checked == "false":
+                                            await sw.click()
+                                            await asyncio.sleep(0.5)
+                                            print(f"[AUTO-V2] 订单#{order_id} 点击水印开关")
+                                    except:
+                                        pass
 
-                                # 4. 在浮窗里找真正触发下载的按钮并点击
-                                # 先打印浮窗 HTML 帮助调试
-                                try:
-                                    dropdown_html = await page.evaluate("""
-                                        () => {
-                                            const els = document.querySelectorAll('.ant-dropdown');
-                                            let info = [];
-                                            els.forEach((el, i) => {
-                                                info.push(`[${i}] hidden=${el.classList.contains('ant-dropdown-hidden')} html=${el.outerHTML.slice(0,400)}`);
-                                            });
-                                            return info.join('\\n') || '未找到 .ant-dropdown';
-                                        }
-                                    """)
-                                    print(f"[AUTO-V2] 浮窗HTML: {dropdown_html}")
-                                except Exception as dbg_err:
-                                    print(f"[AUTO-V2] 调试HTML失败: {dbg_err}")
-
-                                # 找可见浮窗内的下载按钮，尝试多个选择器
+                                # 4. 找浮窗内的"下载"按钮（class 含 cl_hl_H9_M，文字为"下载"）
+                                # 必须限定在当前可见浮窗内，防止多卡片时选错
                                 dropdown_dl_btn = None
                                 for btn_sel in [
-                                    ".ant-dropdown:not(.ant-dropdown-hidden) button.text-hl_text_00_legacy",
-                                    ".ant-dropdown:not(.ant-dropdown-hidden) button",
-                                    "[class*='dropdown'] button.text-hl_text_00_legacy",
-                                    "[class*='dropdown'] button",
+                                    "button.cl_hl_H9_M",
+                                    "button:has-text('下载')",
                                 ]:
                                     try:
-                                        candidate = page.locator(btn_sel).last
+                                        candidate = dropdown_locator.locator(btn_sel).first
                                         if await candidate.is_visible(timeout=1500):
                                             dropdown_dl_btn = candidate
-                                            print(f"[AUTO-V2] 找到下载按钮: {btn_sel}")
+                                            print(f"[AUTO-V2] 找到浮窗下载按钮: {btn_sel}")
                                             break
                                     except:
                                         pass
