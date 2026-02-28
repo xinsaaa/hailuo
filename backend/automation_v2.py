@@ -578,24 +578,14 @@ class HailuoAutomationV2:
                                 await dl_trigger.hover()
                                 await asyncio.sleep(1.0)
 
-                                # 3. 在浮窗里确认两个水印开关都已开启，未开则点击
-                                # 浮窗结构：.ant-dropdown > div > 两个开关行 > button.cl_hl_H9_M（下载按钮）
-                                # 用当前卡片所在 dropdown 定位，避免跨卡片选错
+                                # 3. 等浮窗出现，不操作水印开关（默认已全部开启，点击反而会关掉）
                                 dropdown_locator = page.locator(".ant-dropdown:not(.ant-dropdown-hidden)").first
-                                switches = await dropdown_locator.locator(
-                                    "button[role='switch'].hl-brand-switch"
-                                ).all()
-                                for sw in switches:
-                                    try:
-                                        if not await sw.is_visible(timeout=500):
-                                            continue
-                                        checked = await sw.get_attribute("aria-checked")
-                                        if checked == "false":
-                                            await sw.click()
-                                            await asyncio.sleep(0.5)
-                                            print(f"[AUTO-V2] 订单#{order_id} 点击水印开关")
-                                    except:
-                                        pass
+                                try:
+                                    await dropdown_locator.wait_for(state="visible", timeout=3000)
+                                except:
+                                    print(f"[AUTO-V2] ⚠️ 订单#{order_id} 浮窗未出现，重试")
+                                    await asyncio.sleep(1)
+                                    continue
 
                                 # 4. 找浮窗内的"下载"按钮（class 含 cl_hl_H9_M，文字为"下载"）
                                 # 必须限定在当前可见浮窗内，防止多卡片时选错
