@@ -81,6 +81,8 @@ class HailuoAutomationV2:
         self._restart_interval = 3600
         # 正在被扫描的账号集合，防止健康检查/积分刷新同时操作同一个页面
         self._scanning_accounts: Set[str] = set()
+        # 每个账号的提交锁：同一账号同一时间只允许一个任务执行"填写提示词+点生成"
+        self._submit_locks: Dict[str, asyncio.Lock] = {}
         
     async def start(self):
         """启动多账号自动化系统"""
@@ -786,144 +788,143 @@ class HailuoAutomationV2:
                     await self._switch_to_last_frame_mode(page)
                     await self._upload_last_frame(page, last_frame_path)
 
-            # 填写提示词（最多重试3次）
-            if prompt and prompt.strip():
-                prompt_with_id = add_tracking_id(prompt, order_id)
-                prompt_ok = False
-                for prompt_attempt in range(3):
-                    try:
-                        text_input = page.locator("#video-create-textarea")
-                        if await text_input.is_visible(timeout=5000):
-                            await text_input.click(force=True, timeout=5000)
-                            await asyncio.sleep(0.3)
-                            await page.keyboard.press("Control+A")
-                            await page.keyboard.press("Delete")
-                            await page.keyboard.type(prompt_with_id, delay=10)
-                            print(f"[AUTO-V2] ✅ 提示词填写完成")
-                            prompt_ok = True
-                            break
-                        else:
-                            print(f"[AUTO-V2] ⚠️ 提示词输入框不可见(第{prompt_attempt+1}次)，等待重试...")
+            # ===== 关键提交段：加账号级锁，防止并发任务同时打字导致内容混乱 =====
+            if account_id not in self._submit_locks:
+                self._submit_locks[account_id] = asyncio.Lock()
+            print(f"[AUTO-V2] 订单#{order_id} 等待提交锁...")
+            async with self._submit_locks[account_id]:
+                print(f"[AUTO-V2] 订单#{order_id} 获得提交锁，开始填写表单")
+
+                # 填写提示词（最多重试3次）
+                if prompt and prompt.strip():
+                    prompt_with_id = add_tracking_id(prompt, order_id)
+                    prompt_ok = False
+                    for prompt_attempt in range(3):
+                        try:
+                            text_input = page.locator("#video-create-textarea")
+                            if await text_input.is_visible(timeout=5000):
+                                await text_input.click(force=True, timeout=5000)
+                                await asyncio.sleep(0.3)
+                                await page.keyboard.press("Control+A")
+                                await page.keyboard.press("Delete")
+                                await page.keyboard.type(prompt_with_id, delay=10)
+                                print(f"[AUTO-V2] ✅ 提示词填写完成")
+                                prompt_ok = True
+                                break
+                            else:
+                                print(f"[AUTO-V2] ⚠️ 提示词输入框不可见(第{prompt_attempt+1}次)，等待重试...")
+                                await asyncio.sleep(2)
+                        except Exception as e:
+                            print(f"[AUTO-V2] ⚠️ 填写提示词失败(第{prompt_attempt+1}次): {str(e)[:80]}")
                             await asyncio.sleep(2)
-                    except Exception as e:
-                        print(f"[AUTO-V2] ⚠️ 填写提示词失败(第{prompt_attempt+1}次): {str(e)[:80]}")
-                        await asyncio.sleep(2)
-                if not prompt_ok:
-                    print(f"[AUTO-V2] ❌ 订单#{order_id}提示词填写3次均失败，标记失败")
-                    self.update_order_status(order_id, "failed")
-                    return
+                    if not prompt_ok:
+                        print(f"[AUTO-V2] ❌ 订单#{order_id}提示词填写3次均失败，标记失败")
+                        self.update_order_status(order_id, "failed")
+                        return
 
-            # 步骤4: 选择模型
-            await self.select_model(page, model_name)
+                # 步骤4: 选择模型
+                await self.select_model(page, model_name)
 
-            # 步骤4.5: 选择分辨率和秒数
-            try:
-                # 点击分辨率/秒数设置按钮（包含768p/1080p和6s/10s的那个按钮栏）
-                settings_btn = page.locator("div.cursor-pointer:has(span:text('768p')), div.cursor-pointer:has(span:text('1080p'))").first
-                if await settings_btn.is_visible(timeout=3000):
-                    await settings_btn.click()
-                    await asyncio.sleep(0.5)
-
-                    # 选择分辨率
-                    res_btn = page.locator(f"div.cursor-pointer:has(div:text('{resolution}'))").first
-                    if await res_btn.is_visible(timeout=2000):
-                        await res_btn.click()
-                        await asyncio.sleep(0.2)
-                        print(f"[AUTO-V2] ✅ 订单#{order_id} 选择分辨率: {resolution}")
-
-                    # 选择秒数
-                    dur_btn = page.locator(f"div.cursor-pointer:has(div:text('{duration}'))").first
-                    if await dur_btn.is_visible(timeout=2000):
-                        await dur_btn.click()
-                        await asyncio.sleep(0.2)
-                        print(f"[AUTO-V2] ✅ 订单#{order_id} 选择时长: {duration}")
-
-                    # 点击空白处关闭设置面板
-                    await page.mouse.click(10, 10)
-                    await asyncio.sleep(0.3)
-                else:
-                    print(f"[AUTO-V2] ⚠️ 订单#{order_id} 未找到分辨率设置按钮，使用默认值")
-            except Exception as e:
-                print(f"[AUTO-V2] ⚠️ 订单#{order_id} 设置分辨率/秒数失败: {str(e)[:60]}")
-
-            # 步骤5: 等待popover完全关闭后再找生成按钮
-            await asyncio.sleep(0.5)
-            # 确保没有popover遮挡
-            for pop_sel in [".ant-popover:not(.ant-popover-hidden)"]:
+                # 步骤4.5: 选择分辨率和秒数
                 try:
-                    pop = page.locator(pop_sel).first
-                    if await pop.is_visible():
-                        await page.keyboard.press("Escape")
+                    settings_btn = page.locator("div.cursor-pointer:has(span:text('768p')), div.cursor-pointer:has(span:text('1080p'))").first
+                    if await settings_btn.is_visible(timeout=3000):
+                        await settings_btn.click()
                         await asyncio.sleep(0.5)
-                except:
-                    pass
 
-            # 点击生成按钮前检查是否暂停
-            if _get_v2_config('pause_generation', False):
-                print(f"[AUTO-V2] ⏸️ 订单#{order_id}已暂停（pause_generation开启），等待恢复...")
-                while _get_v2_config('pause_generation', False):
-                    await asyncio.sleep(5)
-                print(f"[AUTO-V2] ▶️ 订单#{order_id}恢复生成")
+                        res_btn = page.locator(f"div.cursor-pointer:has(div:text('{resolution}'))").first
+                        if await res_btn.is_visible(timeout=2000):
+                            await res_btn.click()
+                            await asyncio.sleep(0.2)
+                            print(f"[AUTO-V2] ✅ 订单#{order_id} 选择分辨率: {resolution}")
 
-            # 点击生成按钮（V1验证的选择器 + 用户提供的实际HTML class）
-            generate_btn = None
-            for selector in ["button.new-color-btn-bg", "button:has-text('生成')", "button:has-text('开始生成')", "button[type='submit']"]:
-                try:
-                    btn = page.locator(selector).first
-                    # 用count()检查元素是否存在，不依赖is_visible（可能被遮挡）
-                    if await btn.count() > 0:
-                        generate_btn = btn
-                        print(f"[AUTO-V2] ✅ 找到生成按钮: {selector}")
-                        break
-                except:
-                    continue
+                        dur_btn = page.locator(f"div.cursor-pointer:has(div:text('{duration}'))").first
+                        if await dur_btn.is_visible(timeout=2000):
+                            await dur_btn.click()
+                            await asyncio.sleep(0.2)
+                            print(f"[AUTO-V2] ✅ 订单#{order_id} 选择时长: {duration}")
 
-            if generate_btn:
-                # 最多尝试3次点击 + 确认
-                submit_confirmed = False
-                for click_attempt in range(3):
-                    if click_attempt > 0:
-                        print(f"[AUTO-V2] 🔁 订单#{order_id}第{click_attempt+1}次尝试点击生成按钮...")
-                        await asyncio.sleep(2)
-                        # 重新定位按钮防止DOM刷新后失效
-                        for selector in ["button.new-color-btn-bg", "button:has-text('生成')", "button:has-text('开始生成')", "button[type='submit']"]:
+                        await page.mouse.click(10, 10)
+                        await asyncio.sleep(0.3)
+                    else:
+                        print(f"[AUTO-V2] ⚠️ 订单#{order_id} 未找到分辨率设置按钮，使用默认值")
+                except Exception as e:
+                    print(f"[AUTO-V2] ⚠️ 订单#{order_id} 设置分辨率/秒数失败: {str(e)[:60]}")
+
+                # 步骤5: 等待popover完全关闭后再找生成按钮
+                await asyncio.sleep(0.5)
+                for pop_sel in [".ant-popover:not(.ant-popover-hidden)"]:
+                    try:
+                        pop = page.locator(pop_sel).first
+                        if await pop.is_visible():
+                            await page.keyboard.press("Escape")
+                            await asyncio.sleep(0.5)
+                    except:
+                        pass
+
+                # 点击生成按钮前检查是否暂停
+                if _get_v2_config('pause_generation', False):
+                    print(f"[AUTO-V2] ⏸️ 订单#{order_id}已暂停（pause_generation开启），等待恢复...")
+                    while _get_v2_config('pause_generation', False):
+                        await asyncio.sleep(5)
+                    print(f"[AUTO-V2] ▶️ 订单#{order_id}恢复生成")
+
+                # 点击生成按钮
+                generate_btn = None
+                for selector in ["button.new-color-btn-bg", "button:has-text('生成')", "button:has-text('开始生成')", "button[type='submit']"]:
+                    try:
+                        btn = page.locator(selector).first
+                        if await btn.count() > 0:
+                            generate_btn = btn
+                            print(f"[AUTO-V2] ✅ 找到生成按钮: {selector}")
+                            break
+                    except:
+                        continue
+
+                if generate_btn:
+                    submit_confirmed = False
+                    for click_attempt in range(3):
+                        if click_attempt > 0:
+                            print(f"[AUTO-V2] 🔁 订单#{order_id}第{click_attempt+1}次尝试点击生成按钮...")
+                            await asyncio.sleep(2)
+                            for selector in ["button.new-color-btn-bg", "button:has-text('生成')", "button:has-text('开始生成')", "button[type='submit']"]:
+                                try:
+                                    btn = page.locator(selector).first
+                                    if await btn.count() > 0:
+                                        generate_btn = btn
+                                        break
+                                except Exception:
+                                    continue
+
+                        await generate_btn.click(force=True)
+
+                        for _ in range(15):
+                            await asyncio.sleep(1)
                             try:
-                                btn = page.locator(selector).first
-                                if await btn.count() > 0:
-                                    generate_btn = btn
+                                queue_hint = page.locator("div:has-text('低速生成中'), div:has-text('排队'), div:has-text('生成中')")
+                                if await queue_hint.count() > 0:
+                                    submit_confirmed = True
+                                    break
+                                if await page.locator(".ant-progress-text").count() > 0:
+                                    submit_confirmed = True
                                     break
                             except Exception:
-                                continue
+                                pass
+                        if submit_confirmed:
+                            break
 
-                    await generate_btn.click(force=True)
-
-                    # 等待最多15秒，确认提交信号
-                    for _ in range(15):
-                        await asyncio.sleep(1)
-                        try:
-                            queue_hint = page.locator("div:has-text('低速生成中'), div:has-text('排队'), div:has-text('生成中')")
-                            if await queue_hint.count() > 0:
-                                submit_confirmed = True
-                                break
-                            if await page.locator(".ant-progress-text").count() > 0:
-                                submit_confirmed = True
-                                break
-                        except Exception:
-                            pass
                     if submit_confirmed:
-                        break
-
-                if submit_confirmed:
-                    print(f"[AUTO-V2] ✅ 订单#{order_id}已确认提交生成")
-                    self.update_order_status(order_id, "generating")
+                        print(f"[AUTO-V2] ✅ 订单#{order_id}已确认提交生成")
+                        self.update_order_status(order_id, "generating")
+                    else:
+                        print(f"[AUTO-V2] ❌ 订单#{order_id}重试3次后仍无确认信号，标记失败")
+                        self.update_order_status(order_id, "failed")
+                        return
                 else:
-                    print(f"[AUTO-V2] ❌ 订单#{order_id}重试3次后仍无确认信号，标记失败")
+                    print(f"[AUTO-V2] ❌ 未找到生成按钮")
                     self.update_order_status(order_id, "failed")
                     return
-            else:
-                print(f"[AUTO-V2] ❌ 未找到生成按钮")
-                self.update_order_status(order_id, "failed")
-                return
+            # ===== 提交锁释放 =====
 
             # 提交后刷新页面重置状态，等待task_processing_loop的扫描循环来检测完成
             await asyncio.sleep(3)
