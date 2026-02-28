@@ -545,38 +545,59 @@ class MultiAccountManager:
                 () => {
                     // 1. 锁定唯一侧边栏容器，避免与主内容区同名 CSS 类冲突
                     const sidebar = document.querySelector('div.sidebar-container');
-                    if (!sidebar) return -1;
+                    if (!sidebar) return -2;  // -2 = 侧边栏不存在（页面未加载）
 
-                    // 2. 找侧边栏内的「尊享会员」span（唯一标识积分卡片的锚点）
-                    const vipSpan = sidebar.querySelector('span.text-hl_brand_01');
-                    if (!vipSpan) return -1;
-
-                    // 3. 向上找积分卡片公共父容器
-                    //    HTML结构: 卡片内同时含有纯数字span和尊享会员span
-                    let card = vipSpan.parentElement;
-                    for (let i = 0; i < 6 && card; i++) {
-                        const spans = card.querySelectorAll('span');
-                        let numSpan = null;
-                        let hasVip = false;
+                    // 2. 策略一：找包含会员文字的卡片（VIP/尊享会员/普通会员/免费用户等）
+                    const memberKeywords = ['尊享会员', '普通会员', '免费用户', 'VIP', '会员'];
+                    let anchorSpan = null;
+                    for (const kw of memberKeywords) {
+                        const spans = sidebar.querySelectorAll('span');
                         for (const s of spans) {
-                            const t = s.textContent.trim();
-                            if (t === '尊享会员') hasVip = true;
-                            if (/^\\d+$/.test(t)) numSpan = s;
+                            if (s.textContent.trim().includes(kw)) {
+                                anchorSpan = s;
+                                break;
+                            }
                         }
-                        if (hasVip && numSpan) {
-                            return parseInt(numSpan.textContent.trim(), 10);
-                        }
-                        card = card.parentElement;
+                        if (anchorSpan) break;
                     }
 
-                    return -1;
+                    if (anchorSpan) {
+                        // 向上找含纯数字span的父容器（最多6层）
+                        let card = anchorSpan.parentElement;
+                        for (let i = 0; i < 8 && card; i++) {
+                            const spans = card.querySelectorAll('span');
+                            for (const s of spans) {
+                                const t = s.textContent.trim();
+                                if (/^\\d+$/.test(t)) {
+                                    return parseInt(t, 10);
+                                }
+                            }
+                            card = card.parentElement;
+                        }
+                    }
+
+                    // 3. 策略二：直接在侧边栏内找所有纯数字span，取最大的那个（积分通常是最大数）
+                    const allSpans = sidebar.querySelectorAll('span');
+                    let maxNum = -1;
+                    for (const s of allSpans) {
+                        const t = s.textContent.trim();
+                        if (/^\\d+$/.test(t)) {
+                            const n = parseInt(t, 10);
+                            if (n > maxNum) maxNum = n;
+                        }
+                    }
+                    if (maxNum >= 0) return maxNum;
+
+                    return -1;  // -1 = 侧边栏存在但找不到任何数字
                 }
             """)
 
             if credits >= 0:
-                print(f"[MULTI-ACCOUNT] ✅ 账号 {account_id} 剩余积分: {credits}")
+                print(f"[MULTI-ACCOUNT] ✅ 账号 {account_id} 积分: {credits}")
+            elif credits == -2:
+                print(f"[MULTI-ACCOUNT] ⚠️ 账号 {account_id} 侧边栏未加载（页面可能未就绪）")
             else:
-                print(f"[MULTI-ACCOUNT] ❌ 账号 {account_id} 无法获取积分信息")
+                print(f"[MULTI-ACCOUNT] ⚠️ 账号 {account_id} 侧边栏已加载但未找到积分数字")
 
             return credits
 
