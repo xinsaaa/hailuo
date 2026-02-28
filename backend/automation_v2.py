@@ -537,7 +537,7 @@ class HailuoAutomationV2:
                         continue
 
                     # 以上状态都不存在 = 生成完成，提取并下载无水印视频
-                    print(f"[AUTO-V2] ✅ 订单#{order_id}生成完成，开始获取无水印链接")
+                    print(f"[AUTO-V2] ✅ 订单#{order_id}生成完成，开始自动化下载")
                     try:
                         # 去重检查
                         dedup_key = f"order_{order_id}"
@@ -547,60 +547,52 @@ class HailuoAutomationV2:
                             _processed_share_links.clear()
                         _processed_share_links.add(dedup_key)
 
-                        # 1. 从视频卡片的 <video> 标签读取 CDN 链接
-                        #    链接格式: .../video/xxx_video_watermark_hash_id.mp4
-                        #    无水印格式: .../video/xxx_video_raw_hash_id.mp4
-                        watermark_url = None
-                        try:
-                            video_el = parent.locator("video").first
-                            watermark_url = await video_el.get_attribute("src", timeout=5000)
-                        except Exception:
-                            pass
-
-                        # 兜底：也尝试 source 标签
-                        if not watermark_url:
-                            try:
-                                source_el = parent.locator("video source").first
-                                watermark_url = await source_el.get_attribute("src", timeout=3000)
-                            except Exception:
-                                pass
-
-                        if not watermark_url or "cdn.hailuoai.com" not in watermark_url:
-                            print(f"[AUTO-V2] ❌ 订单#{order_id} 未找到 CDN 视频链接: {watermark_url}")
-                            _processed_share_links.discard(dedup_key)
-                            continue
-
-                        # 2. 将水印链接转换为无水印链接
-                        #    _video_watermark_ -> _video_raw_
-                        raw_url = watermark_url.replace("_video_watermark_", "_video_raw_")
-                        if raw_url == watermark_url:
-                            # 链接中没有 watermark 标志，可能本身就是无水印或格式变了
-                            print(f"[AUTO-V2] ⚠️ 订单#{order_id} 链接无法转换，直接用原链接: {watermark_url}")
-                            raw_url = watermark_url
-
-                        print(f"[AUTO-V2] 🔗 订单#{order_id} 视频链接: {raw_url}")
-
-                        # 3. 用 Playwright page.request 下载（继承浏览器 cookies/session/IP，绕过 CDN 防盗链）
                         filename = f"order_{order_id}.mp4"
                         filepath = os.path.join(VIDEOS_DIR, filename)
                         download_ok = False
 
                         for dl_attempt in range(3):
                             try:
-                                resp = await page.request.get(raw_url)
-                                if resp.status == 200:
-                                    body = await resp.body()
-                                    with open(filepath, "wb") as vf:
-                                        vf.write(body)
-                                    size_mb = os.path.getsize(filepath) / (1024 * 1024)
-                                    print(f"[AUTO-V2] 📥 订单#{order_id} 视频下载完成 ({size_mb:.1f}MB)")
-                                    download_ok = True
-                                    break
-                                else:
-                                    print(f"[AUTO-V2] ⚠️ 订单#{order_id} 第{dl_attempt+1}次下载失败: HTTP {resp.status}")
+                                # 1. hover 视频卡片触发悬浮下载按钮出现
+                                await parent.hover()
+                                await asyncio.sleep(0.8)
+
+                                # 2. 找下载按钮（带下载图标的 button）
+                                dl_btn = parent.locator(
+                                    "button.text-hl_text_00_legacy"
+                                ).first
+                                if not await dl_btn.is_visible(timeout=3000):
+                                    print(f"[AUTO-V2] ⚠️ 订单#{order_id} 第{dl_attempt+1}次未找到下载按钮")
+                                    await asyncio.sleep(2)
+                                    continue
+
+                                # 3. hover 下载按钮，触发去水印选项浮窗
+                                await dl_btn.hover()
+                                await asyncio.sleep(0.8)
+
+                                # 4. 找到所有水印开关，确保全部开启（aria-checked="true" = 去水印）
+                                switches = await page.locator(
+                                    "button[role='switch'].hl-brand-switch"
+                                ).all()
+                                for sw in switches:
+                                    checked = await sw.get_attribute("aria-checked")
+                                    if checked == "false":
+                                        await sw.click()
+                                        await asyncio.sleep(0.3)
+
+                                # 5. 点击下载按钮，拦截浏览器下载事件
+                                async with page.expect_download(timeout=60000) as dl_info:
+                                    await dl_btn.click()
+
+                                download = await dl_info.value
+                                await download.save_as(filepath)
+                                size_mb = os.path.getsize(filepath) / (1024 * 1024)
+                                print(f"[AUTO-V2] 📥 订单#{order_id} 下载完成 ({size_mb:.1f}MB)")
+                                download_ok = True
+                                break
+
                             except Exception as dl_err:
-                                print(f"[AUTO-V2] ⚠️ 订单#{order_id} 第{dl_attempt+1}次下载异常: {str(dl_err)[:80]}")
-                            if not download_ok:
+                                print(f"[AUTO-V2] ⚠️ 订单#{order_id} 第{dl_attempt+1}次下载异常: {str(dl_err)[:120]}")
                                 await asyncio.sleep(3)
 
                         if download_ok:
