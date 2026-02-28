@@ -575,10 +575,10 @@ class HailuoAutomationV2:
                         raw_url = watermark_url.replace("_video_watermark_", "_video_raw_")
                         if raw_url == watermark_url:
                             # 链接中没有 watermark 标志，可能本身就是无水印或格式变了
-                            print(f"[AUTO-V2] ⚠️ 订单#{order_id} 链接无法转换，直接用原链接: {watermark_url[:80]}")
+                            print(f"[AUTO-V2] ⚠️ 订单#{order_id} 链接无法转换，直接用原链接: {watermark_url}")
                             raw_url = watermark_url
 
-                        print(f"[AUTO-V2] 🔗 订单#{order_id} 无水印链接: {raw_url[:80]}...")
+                        print(f"[AUTO-V2] 🔗 订单#{order_id} 视频链接: {raw_url}")
 
                         # 3. 用标准库 urllib 下载（无需 httpx），流式写入避免大文件 OOM
                         import urllib.request
