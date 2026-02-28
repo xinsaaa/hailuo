@@ -341,9 +341,13 @@ class HailuoAutomationV2:
                             account_credits=getattr(self, '_account_credits', {})
                         )
                         if account_id:
-                            # 禁止并发：该账号已有任务在跑则跳过，等上一个完成再分配
-                            if account_id in self._submit_locks and self._submit_locks[account_id].locked():
-                                print(f"[AUTO-V2] 账号 {account_id} 正在提交中，订单#{order['id']} 等下次循环")
+                            # 禁止并发：该账号已有任何任务（含刚刚本次循环分配的）则跳过
+                            # 注意：不能用 _submit_locks.locked() —— create_task 后锁尚未 acquire，检查无效
+                            account_has_task = any(
+                                k.startswith(f"{account_id}_") for k in self.task_handlers
+                            )
+                            if account_has_task:
+                                print(f"[AUTO-V2] 账号 {account_id} 已有任务运行，订单#{order['id']} 等下次循环")
                                 continue
                             self._processing_order_ids.add(order['id'])
                             # 记录订单分配到哪个账号
@@ -576,25 +580,38 @@ class HailuoAutomationV2:
 
                         print(f"[AUTO-V2] 🔗 订单#{order_id} 无水印链接: {raw_url[:80]}...")
 
-                        # 3. 用 httpx 直接下载，流式写入避免大文件 OOM
-                        import httpx
+                        # 3. 用标准库 urllib 下载（无需 httpx），流式写入避免大文件 OOM
+                        import urllib.request
                         filename = f"order_{order_id}.mp4"
                         filepath = os.path.join(VIDEOS_DIR, filename)
                         download_ok = False
+
+                        def _download_sync(url: str, dest: str) -> int:
+                            """同步下载，在 executor 中运行"""
+                            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+                            with urllib.request.urlopen(req, timeout=120) as resp:
+                                if resp.status != 200:
+                                    return resp.status
+                                with open(dest, "wb") as vf:
+                                    while True:
+                                        chunk = resp.read(1024 * 256)
+                                        if not chunk:
+                                            break
+                                        vf.write(chunk)
+                            return 200
+
                         for dl_attempt in range(3):
                             try:
-                                async with httpx.AsyncClient(timeout=120, follow_redirects=True) as client:
-                                    async with client.stream("GET", raw_url) as resp:
-                                        if resp.status_code == 200:
-                                            with open(filepath, "wb") as vf:
-                                                async for chunk in resp.aiter_bytes(chunk_size=1024 * 256):
-                                                    vf.write(chunk)
-                                            size_mb = os.path.getsize(filepath) / (1024 * 1024)
-                                            print(f"[AUTO-V2] 📥 订单#{order_id} 无水印视频下载完成 ({size_mb:.1f}MB)")
-                                            download_ok = True
-                                            break
-                                        else:
-                                            print(f"[AUTO-V2] ⚠️ 订单#{order_id} 第{dl_attempt+1}次下载失败: HTTP {resp.status_code}")
+                                status = await asyncio.get_event_loop().run_in_executor(
+                                    None, _download_sync, raw_url, filepath
+                                )
+                                if status == 200:
+                                    size_mb = os.path.getsize(filepath) / (1024 * 1024)
+                                    print(f"[AUTO-V2] 📥 订单#{order_id} 无水印视频下载完成 ({size_mb:.1f}MB)")
+                                    download_ok = True
+                                    break
+                                else:
+                                    print(f"[AUTO-V2] ⚠️ 订单#{order_id} 第{dl_attempt+1}次下载失败: HTTP {status}")
                             except Exception as dl_err:
                                 print(f"[AUTO-V2] ⚠️ 订单#{order_id} 第{dl_attempt+1}次下载异常: {str(dl_err)[:80]}")
                             if not download_ok:

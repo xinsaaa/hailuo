@@ -18,7 +18,8 @@
       "Bash(awk:*)",
       "Bash(npm run build)",
       "Bash(python -m py_compile backend/automation_v2.py)",
-      "Bash(python -m py_compile backend/multi_account_manager.py)"
+      "Bash(python -m py_compile backend/multi_account_manager.py)",
+      "Bash(xargs grep -l \"credits\\\\|积分\")"
     ]
   }
 }
