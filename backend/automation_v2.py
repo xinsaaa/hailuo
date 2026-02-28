@@ -604,15 +604,43 @@ class HailuoAutomationV2:
                                                 pass
 
                                 # 4. 在浮窗里找真正触发下载的按钮并点击
-                                # 浮窗内的下载按钮与触发按钮 class 相同，但在 .ant-dropdown 容器内
-                                dropdown_dl_btn = page.locator(
-                                    ".ant-dropdown:not(.ant-dropdown-hidden) button.text-hl_text_00_legacy"
-                                ).first
-                                if not await dropdown_dl_btn.is_visible(timeout=3000):
-                                    # fallback：浮窗内找含"下载"文字的按钮
-                                    dropdown_dl_btn = page.locator(
-                                        ".ant-dropdown:not(.ant-dropdown-hidden) button"
-                                    ).last
+                                # 先打印浮窗 HTML 帮助调试
+                                try:
+                                    dropdown_html = await page.evaluate("""
+                                        () => {
+                                            const els = document.querySelectorAll('.ant-dropdown');
+                                            let info = [];
+                                            els.forEach((el, i) => {
+                                                info.push(`[${i}] hidden=${el.classList.contains('ant-dropdown-hidden')} html=${el.outerHTML.slice(0,400)}`);
+                                            });
+                                            return info.join('\\n') || '未找到 .ant-dropdown';
+                                        }
+                                    """)
+                                    print(f"[AUTO-V2] 浮窗HTML: {dropdown_html}")
+                                except Exception as dbg_err:
+                                    print(f"[AUTO-V2] 调试HTML失败: {dbg_err}")
+
+                                # 找可见浮窗内的下载按钮，尝试多个选择器
+                                dropdown_dl_btn = None
+                                for btn_sel in [
+                                    ".ant-dropdown:not(.ant-dropdown-hidden) button.text-hl_text_00_legacy",
+                                    ".ant-dropdown:not(.ant-dropdown-hidden) button",
+                                    "[class*='dropdown'] button.text-hl_text_00_legacy",
+                                    "[class*='dropdown'] button",
+                                ]:
+                                    try:
+                                        candidate = page.locator(btn_sel).last
+                                        if await candidate.is_visible(timeout=1500):
+                                            dropdown_dl_btn = candidate
+                                            print(f"[AUTO-V2] 找到下载按钮: {btn_sel}")
+                                            break
+                                    except:
+                                        pass
+
+                                if dropdown_dl_btn is None:
+                                    print(f"[AUTO-V2] ⚠️ 订单#{order_id} 未找到浮窗下载按钮，跳过")
+                                    await asyncio.sleep(2)
+                                    continue
 
                                 # 5. 点击浮窗内的下载按钮，拦截浏览器下载事件
                                 async with page.expect_download(timeout=60000) as dl_info:
