@@ -580,41 +580,24 @@ class HailuoAutomationV2:
 
                         print(f"[AUTO-V2] 🔗 订单#{order_id} 视频链接: {raw_url}")
 
-                        # 3. 用标准库 urllib 下载（无需 httpx），流式写入避免大文件 OOM
-                        import urllib.request
+                        # 3. 用 Playwright page.request 下载（继承浏览器 cookies/session/IP，绕过 CDN 防盗链）
                         filename = f"order_{order_id}.mp4"
                         filepath = os.path.join(VIDEOS_DIR, filename)
                         download_ok = False
 
-                        def _download_sync(url: str, dest: str) -> int:
-                            """同步下载，在 executor 中运行"""
-                            req = urllib.request.Request(url, headers={
-                                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-                                "Referer": "https://hailuoai.com/",
-                            })
-                            with urllib.request.urlopen(req, timeout=120) as resp:
-                                if resp.status != 200:
-                                    return resp.status
-                                with open(dest, "wb") as vf:
-                                    while True:
-                                        chunk = resp.read(1024 * 256)
-                                        if not chunk:
-                                            break
-                                        vf.write(chunk)
-                            return 200
-
                         for dl_attempt in range(3):
                             try:
-                                status = await asyncio.get_event_loop().run_in_executor(
-                                    None, _download_sync, raw_url, filepath
-                                )
-                                if status == 200:
+                                resp = await page.request.get(raw_url)
+                                if resp.status == 200:
+                                    body = await resp.body()
+                                    with open(filepath, "wb") as vf:
+                                        vf.write(body)
                                     size_mb = os.path.getsize(filepath) / (1024 * 1024)
-                                    print(f"[AUTO-V2] 📥 订单#{order_id} 无水印视频下载完成 ({size_mb:.1f}MB)")
+                                    print(f"[AUTO-V2] 📥 订单#{order_id} 视频下载完成 ({size_mb:.1f}MB)")
                                     download_ok = True
                                     break
                                 else:
-                                    print(f"[AUTO-V2] ⚠️ 订单#{order_id} 第{dl_attempt+1}次下载失败: HTTP {status}")
+                                    print(f"[AUTO-V2] ⚠️ 订单#{order_id} 第{dl_attempt+1}次下载失败: HTTP {resp.status}")
                             except Exception as dl_err:
                                 print(f"[AUTO-V2] ⚠️ 订单#{order_id} 第{dl_attempt+1}次下载异常: {str(dl_err)[:80]}")
                             if not download_ok:
