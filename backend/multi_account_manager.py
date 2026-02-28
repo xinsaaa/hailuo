@@ -439,31 +439,37 @@ class MultiAccountManager:
             print(f"[LOGIN] 等待登录验证...")
             await page.wait_for_timeout(3000)
 
-            # 5. 验证登录结果：登录按钮消失 = 登录成功
-            login_btn_check = page.locator("div.border-hl_line_00:has-text('登录')").first
-            try:
-                await login_btn_check.wait_for(state="visible", timeout=5000)
-                # 登录按钮仍在 = 登录失败
-                self.mark_account_logged_out(account_id)
-                print(f"[MULTI-ACCOUNT] 账号 {account.display_name} 登录验证失败 - 登录按钮仍存在")
-                return False
-            except:
-                # 登录按钮消失 = 登录成功
-                print(f"[LOGIN] 登录按钮已消失，登录成功")
-                
-                # 关闭可能的弹窗
+            # 5. 验证登录结果：出现头像或会员标识 = 登录成功
+            avatar_loc = page.locator("div.cursor-pointer.overflow-hidden.rounded-full img[alt*='avatar']")
+            vip_loc = page.locator("span.text-hl_brand_01:has-text('尊享会员'), span:has-text('尊享会员')")
+            login_confirmed = False
+            for _ in range(10):
+                await page.wait_for_timeout(1000)
                 try:
-                    close_btn = page.locator("button.ant-modal-close")
-                    if await close_btn.is_visible():
-                        await close_btn.click(force=True)
-                        print(f"[LOGIN] 已关闭弹窗")
-                except:
+                    if await avatar_loc.count() > 0 or await vip_loc.count() > 0:
+                        login_confirmed = True
+                        break
+                except Exception:
                     pass
-                
-                await self._save_cookies(account_id)
-                self.mark_account_logged_in(account_id)
-                print(f"[MULTI-ACCOUNT] 账号 {account.display_name} 验证码登录成功")
-                return True
+            if not login_confirmed:
+                self.mark_account_logged_out(account_id)
+                print(f"[MULTI-ACCOUNT] 账号 {account.display_name} 登录验证失败 - 未找到登录标识")
+                return False
+            print(f"[LOGIN] 已找到登录标识，登录成功")
+
+            # 关闭可能的弹窗
+            try:
+                close_btn = page.locator("button.ant-modal-close")
+                if await close_btn.is_visible():
+                    await close_btn.click(force=True)
+                    print(f"[LOGIN] 已关闭弹窗")
+            except:
+                pass
+
+            await self._save_cookies(account_id)
+            self.mark_account_logged_in(account_id)
+            print(f"[MULTI-ACCOUNT] 账号 {account.display_name} 验证码登录成功")
+            return True
                 
         except Exception as e:
             print(f"[MULTI-ACCOUNT] 验证码登录失败 {account.display_name}: {e}")
@@ -502,16 +508,23 @@ class MultiAccountManager:
                 # 导航失败不直接判定掉线，可能是临时网络问题
                 return account_id in self._verified_accounts  # 保持之前的状态
 
-            # 核心判断：登录按钮存在 = 未登录
-            login_btn = page.locator("div.border-hl_line_00:has-text('登录')").first
+            # 核心判断：找到头像或会员标识 = 已登录
+            # 头像：div.rounded-full 内有来自 cdn.hailuoai.com 的 img
+            avatar_locator = page.locator("div.cursor-pointer.overflow-hidden.rounded-full img[alt*='avatar']")
+            # 会员标识
+            vip_locator = page.locator("span.text-hl_brand_01:has-text('尊享会员'), span:has-text('尊享会员')")
             try:
-                await login_btn.wait_for(state="visible", timeout=5000)
-                print(f"[MULTI-ACCOUNT] ❌ 账号 {account_id} 发现登录按钮，未登录状态")
+                avatar_count = await avatar_locator.count()
+                vip_count = await vip_locator.count()
+                if avatar_count > 0 or vip_count > 0:
+                    print(f"[MULTI-ACCOUNT] ✅ 账号 {account_id} 确认已登录（头像:{avatar_count} 会员:{vip_count}）")
+                    return True
+                else:
+                    print(f"[MULTI-ACCOUNT] ❌ 账号 {account_id} 未找到登录标识，未登录状态")
+                    return False
+            except Exception as check_e:
+                print(f"[MULTI-ACCOUNT] ⚠️ 登录状态检查异常 {account_id}: {str(check_e)[:80]}")
                 return False
-            except:
-                # 登录按钮不存在 = 已登录
-                print(f"[MULTI-ACCOUNT] ✅ 账号 {account_id} 确认已登录")
-                return True
 
         except Exception as e:
             print(f"[MULTI-ACCOUNT] 检查登录状态异常 {account_id}: {str(e)[:80]}")
@@ -674,18 +687,21 @@ class MultiAccountManager:
 
         return best_account[0]
 
-    async def auto_check_and_recover_accounts(self):
+    async def auto_check_and_recover_accounts(self, skip_accounts: set = None):
         """自动检查和恢复失效账号"""
         print("[SCHEDULER] 开始检查账号登录状态...")
-        
+
         for account_id, account in self.accounts.items():
             if not account.is_active:
                 continue
-                
+            # 跳过正在被扫描的账号，防止与扫描循环争抢同一个页面
+            if skip_accounts and account_id in skip_accounts:
+                print(f"[SCHEDULER] ⏭️ 账号 {account.display_name} 正在扫描中，跳过健康检查")
+                continue
             # 只检查已有上下文的账号
             if account_id in self.contexts:
                 is_logged_in = await self.check_login_status(account_id)
-                
+
                 if is_logged_in:
                     self.mark_account_logged_in(account_id)
                 else:

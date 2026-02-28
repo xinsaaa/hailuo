@@ -75,6 +75,12 @@ class HailuoAutomationV2:
         # 核心循环任务引用，用于监控和重启
         self._loop_task: Optional[asyncio.Task] = None
         self._health_task: Optional[asyncio.Task] = None
+        # 系统启动时间，用于定时重启
+        self._start_time: Optional[datetime] = None
+        # 重启间隔（秒），默认1小时
+        self._restart_interval = 3600
+        # 正在被扫描的账号集合，防止健康检查/积分刷新同时操作同一个页面
+        self._scanning_accounts: Set[str] = set()
         
     async def start(self):
         """启动多账号自动化系统"""
@@ -97,6 +103,7 @@ class HailuoAutomationV2:
             
             # 设置运行状态
             self.is_running = True
+            self._start_time = datetime.utcnow()
             print("[AUTO-V2] ✅ 系统状态已设置为运行中")
             
             # 并行登录所有激活的账号（先加载Cookie再登录）
@@ -141,12 +148,31 @@ class HailuoAutomationV2:
             raise
 
     async def _watchdog_loop(self):
-        """监控核心任务，死掉自动重启"""
+        """监控核心任务，死掉自动重启 + 每小时定时重启整个系统"""
         while self.is_running:
             try:
                 await asyncio.sleep(30)
                 if not self.is_running:
                     break
+
+                # 定时重启：检查运行时长是否超过重启间隔
+                if self._start_time:
+                    elapsed = (datetime.utcnow() - self._start_time).total_seconds()
+                    if elapsed >= self._restart_interval:
+                        active_tasks = len([t for t in self.task_handlers.values() if not t.done()])
+                        # 最长再等 30 分钟，超时后强制重启（防止卡死任务导致永不重启）
+                        max_delay = 1800
+                        overdue = elapsed - self._restart_interval
+                        if active_tasks > 0 and overdue < max_delay:
+                            print(f"[AUTO-V2] ⏰ 已运行{elapsed/60:.0f}分钟，有{active_tasks}个活跃任务，延迟重启（已超期{overdue/60:.0f}分钟）...")
+                        else:
+                            if active_tasks > 0:
+                                print(f"[AUTO-V2] ⏰ 已运行{elapsed/60:.0f}分钟，超期{overdue/60:.0f}分钟强制重启（{active_tasks}个任务可能卡死）")
+                            else:
+                                print(f"[AUTO-V2] ⏰ 已运行{elapsed/60:.0f}分钟，开始定时重启...")
+                            await self._scheduled_restart()
+                            continue
+
                 if self._loop_task and self._loop_task.done():
                     exc = self._loop_task.exception() if not self._loop_task.cancelled() else None
                     print(f"[AUTO-V2] ⚠️ 任务处理循环已死亡{f': {exc}' if exc else ''}，正在重启...")
@@ -158,6 +184,81 @@ class HailuoAutomationV2:
             except Exception as e:
                 print(f"[AUTO-V2] 监控循环错误: {e}")
                 await asyncio.sleep(10)
+
+    async def _scheduled_restart(self):
+        """定时重启：关闭所有上下文，重新登录，重启核心循环"""
+        print("[AUTO-V2] 🔄 开始定时重启...")
+
+        # 1. 取消并等待核心循环任务结束
+        for task, name in [(self._loop_task, "任务循环"), (self._health_task, "健康检查")]:
+            if task and not task.done():
+                task.cancel()
+                try:
+                    await asyncio.wait_for(asyncio.shield(task), timeout=10)
+                except Exception:
+                    pass
+                print(f"[AUTO-V2] ✅ {name}已停止")
+
+        # 2. 关闭所有浏览器上下文
+        try:
+            await self.manager.close_all()
+            print("[AUTO-V2] ✅ 所有浏览器上下文已关闭")
+        except Exception as e:
+            print(f"[AUTO-V2] ⚠️ 关闭浏览器上下文时出错: {e}")
+
+        # 3. 清理运行时状态
+        self.task_handlers.clear()
+        self._processing_order_ids.clear()
+        self._account_orders.clear()
+
+        # 3b. 将数据库中仍为 generating 的订单重新放回扫描队列
+        # 重启后浏览器已重新登录，这些订单在海螺页面上仍存在，需要继续扫描
+        try:
+            with Session(engine) as session:
+                orphaned = session.exec(
+                    select(VideoOrder).where(VideoOrder.status == "generating")
+                ).all()
+                if orphaned:
+                    print(f"[AUTO-V2] 🔄 重启后发现 {len(orphaned)} 个 generating 订单，恢复扫描队列")
+                    # 无法精确知道订单在哪个账号，平均分配给所有活跃账号
+                    active_ids = [aid for aid, acc in self.manager.accounts.items() if acc.is_active]
+                    if active_ids:
+                        for i, order in enumerate(orphaned):
+                            target = active_ids[i % len(active_ids)]
+                            if target not in self._account_orders:
+                                self._account_orders[target] = set()
+                            self._account_orders[target].add(order.id)
+        except Exception as e:
+            print(f"[AUTO-V2] ⚠️ 恢复 generating 订单失败: {e}")
+
+        # 4. 重新初始化并登录
+        print("[AUTO-V2] 重新加载账号配置并登录...")
+        try:
+            self.manager.load_accounts_config("accounts.json")
+            active_accounts = [aid for aid, acc in self.manager.accounts.items() if acc.is_active]
+
+            login_tasks = []
+            for account_id in active_accounts:
+                try:
+                    await self.manager.create_account_context(account_id)
+                    login_tasks.append(self.manager.login_account(account_id))
+                except Exception as e:
+                    print(f"[AUTO-V2] ⚠️ 初始化账号 {account_id} 失败: {e}")
+
+            if login_tasks:
+                results = await asyncio.gather(*login_tasks, return_exceptions=True)
+                success_count = sum(1 for r in results if r is True)
+                print(f"[AUTO-V2] ✅ 重启后成功登录 {success_count}/{len(login_tasks)} 个账号")
+        except Exception as e:
+            print(f"[AUTO-V2] ❌ 重启时重新登录失败: {e}")
+
+        # 5. 重启核心循环
+        self._loop_task = asyncio.create_task(self.task_processing_loop())
+        self._health_task = asyncio.create_task(self.account_health_check_loop())
+
+        # 6. 重置计时器
+        self._start_time = datetime.utcnow()
+        print("[AUTO-V2] 🎉 定时重启完成，系统已恢复运行")
 
     async def account_health_check_loop(self):
         """账号健康检查循环"""
@@ -171,7 +272,7 @@ class HailuoAutomationV2:
                     break
                     
                 print("[AUTO-V2] 开始账号健康检查...")
-                await self.manager.auto_check_and_recover_accounts()
+                await self.manager.auto_check_and_recover_accounts(skip_accounts=self._scanning_accounts)
                 
             except Exception as e:
                 print(f"[AUTO-V2] 健康检查循环错误: {e}")
@@ -317,6 +418,11 @@ class HailuoAutomationV2:
 
     async def _scan_completed_videos(self, page, account_id: str):
         """扫描页面上已完成的视频 - 严格移植自V1的scan_for_completed_videos"""
+        # 加扫描锁，防止健康检查/积分刷新并发操作同一个页面
+        if account_id in self._scanning_accounts:
+            print(f"[AUTO-V2] ⏭️ 账号{account_id}正在扫描中，跳过重入")
+            return
+        self._scanning_accounts.add(account_id)
         try:
             # 确保页面在海螺AI的创建页面上，并刷新以获取最新状态
             try:
@@ -335,18 +441,31 @@ class HailuoAutomationV2:
                 print(f"[AUTO-V2] 📭 账号{account_id}页面无视频卡片")
                 return
 
-            print(f"[AUTO-V2] 🔍 账号{account_id}页面发现 {len(prompt_spans)} 个视频卡片")
+            # 只取最新的20张卡片（generating订单都是最近提交的，无需扫历史）
+            SCAN_LIMIT = 20
+            if len(prompt_spans) > SCAN_LIMIT:
+                prompt_spans = prompt_spans[:SCAN_LIMIT]
+            print(f"[AUTO-V2] 🔍 账号{account_id}页面扫描 {len(prompt_spans)} 个视频卡片（上限{SCAN_LIMIT}）")
             completed_count = 0
             processing_count = 0
 
-            # 预处理：找任意一个卡片预勾选去水印开关（只需一次）
+            # 预处理：找任意一个完成状态的卡片预勾选去水印开关（只需一次，带重试确认）
             try:
                 any_card = page.locator("div[class*='group/video-card']").first
                 if await any_card.is_visible(timeout=3000):
                     await any_card.hover()
                     await asyncio.sleep(0.8)
-                    pre_dl_btn = any_card.locator("button:has(svg path[d*='M2 9.26074'])").first
-                    if await pre_dl_btn.is_visible(timeout=2000):
+                    # 多选择器找下载按钮
+                    pre_dl_btn = None
+                    for dl_sel in ["button:has(svg path[d*='M2 9.26074'])", "button[title*='下载']", "button[aria-label*='下载']"]:
+                        try:
+                            btn = any_card.locator(dl_sel).first
+                            if await btn.is_visible(timeout=2000):
+                                pre_dl_btn = btn
+                                break
+                        except Exception:
+                            pass
+                    if pre_dl_btn:
                         await pre_dl_btn.hover()
                         await asyncio.sleep(0.8)
                         pre_switches = page.locator("button.ant-switch.hl-brand-switch")
@@ -355,24 +474,35 @@ class HailuoAutomationV2:
                             sw = pre_switches.nth(i)
                             try:
                                 checked = await sw.get_attribute("aria-checked")
-                                if checked == "false":
-                                    await sw.click(force=True, timeout=3000)
-                                    await asyncio.sleep(0.5)
-                                    agree_btn = page.locator("button:has-text('同意')").first
+                                if checked == "true":
+                                    continue
+                                # 重试3次确认 aria-checked 变 true
+                                for attempt in range(3):
                                     try:
-                                        if await agree_btn.is_visible(timeout=2000):
-                                            await agree_btn.click()
-                                            await asyncio.sleep(0.5)
-                                            print(f"[AUTO-V2] 📋 预勾选: 同意去水印协议")
+                                        await pre_dl_btn.hover()
+                                        await asyncio.sleep(0.4)
+                                        await sw.scroll_into_view_if_needed(timeout=2000)
+                                        await sw.click(force=True, timeout=3000)
+                                        await asyncio.sleep(0.6)
+                                        agree_btn = page.locator("button:has-text('同意')").first
+                                        try:
+                                            if await agree_btn.is_visible(timeout=2000):
+                                                await agree_btn.click()
+                                                await asyncio.sleep(0.5)
+                                                print(f"[AUTO-V2] 📋 预勾选: 同意去水印协议")
+                                        except Exception:
+                                            pass
+                                        new_checked = await sw.get_attribute("aria-checked")
+                                        if new_checked == "true":
+                                            print(f"[AUTO-V2] 🔄 预勾选: 去水印开关{i+1}已开启（第{attempt+1}次）")
+                                            break
                                     except Exception:
-                                        pass
-                                    print(f"[AUTO-V2] 🔄 预勾选: 开启去水印开关 {i+1}")
+                                        await asyncio.sleep(0.5)
                             except Exception:
                                 pass
-                        # 点击空白处关闭悬浮面板
                         await page.mouse.click(10, 10)
                         await asyncio.sleep(0.5)
-                print(f"[AUTO-V2] ✅ 去水印开关预勾选完成")
+                        print(f"[AUTO-V2] ✅ 去水印开关预勾选完成")
             except Exception as e:
                 print(f"[AUTO-V2] ⚠️ 预勾选去水印开关失败: {str(e)[:60]}")
 
@@ -397,34 +527,61 @@ class HailuoAutomationV2:
                     # 找到父级视频卡片
                     parent = span.locator("xpath=ancestor::div[contains(@class, 'group/video-card')]").first
 
-                    # 检查排队状态
+                    # 检查所有"仍在处理中"的状态，任意命中则跳过下载
+                    still_processing = False
+                    processing_reason = ""
+
+                    # a. 排队中（低速生成）
                     try:
-                        queue_hint = parent.locator("div:has-text('低速生成中')")
-                        if await queue_hint.is_visible():
-                            print(f"[AUTO-V2] ⏳ 订单#{order_id}排队中")
+                        if await parent.locator("div:has-text('低速生成中')").is_visible():
+                            still_processing = True
+                            processing_reason = "排队中"
                             self._update_order_progress(order_id, -1)
-                            processing_count += 1
-                            continue
                     except:
                         pass
 
-                    # 检查进度条
-                    try:
-                        progress = parent.locator(".ant-progress-text")
-                        if await progress.is_visible():
-                            progress_text = await progress.text_content() or "0%"
-                            print(f"[AUTO-V2] ⏳ 订单#{order_id}生成中 ({progress_text})")
-                            try:
-                                val = int(progress_text.replace("%", "").strip())
-                                self._update_order_progress(order_id, val)
-                            except:
-                                pass
-                            processing_count += 1
-                            continue
-                    except:
-                        pass
+                    # b. 正在优化提示词
+                    if not still_processing:
+                        try:
+                            if await parent.locator("div:has-text('正在优化提示词')").is_visible():
+                                still_processing = True
+                                processing_reason = "优化提示词中"
+                        except:
+                            pass
 
-                    # 没有进度条也没有排队 = 生成完成，下载视频
+                    # c. 通用兜底：卡片内存在火箭加载图 或 取消按钮 = 还在处理
+                    if not still_processing:
+                        try:
+                            has_loading = await parent.locator("img[alt*='hailuo AI video loading']").count() > 0
+                            has_cancel = await parent.locator("div:has-text('取消')").count() > 0
+                            if has_loading or has_cancel:
+                                still_processing = True
+                                processing_reason = "加载中(loading图/取消按钮)"
+                        except:
+                            pass
+
+                    # d. 进度条
+                    if not still_processing:
+                        try:
+                            progress = parent.locator(".ant-progress-text")
+                            if await progress.is_visible():
+                                progress_text = await progress.text_content() or "0%"
+                                still_processing = True
+                                processing_reason = f"进度条 {progress_text}"
+                                try:
+                                    val = int(progress_text.replace("%", "").strip())
+                                    self._update_order_progress(order_id, val)
+                                except:
+                                    pass
+                        except:
+                            pass
+
+                    if still_processing:
+                        print(f"[AUTO-V2] ⏳ 订单#{order_id} {processing_reason}")
+                        processing_count += 1
+                        continue
+
+                    # 以上状态都不存在 = 生成完成，下载视频
                     print(f"[AUTO-V2] ✅ 订单#{order_id}生成完成，开始下载视频")
                     try:
                         # 去重检查（用order_id）
@@ -439,11 +596,31 @@ class HailuoAutomationV2:
                         await parent.hover()
                         await asyncio.sleep(0.8)
 
-                        # 2. 找到下载按钮（带下载箭头SVG的button）
-                        download_btn = parent.locator("button:has(svg path[d*='M2 9.26074'])").first
-                        if not await download_btn.is_visible(timeout=3000):
+                        # 2. 找到下载按钮（带重试：hover后按钮可能需要时间渲染）
+                        download_btn = None
+                        for hover_attempt in range(3):
+                            await parent.hover()
+                            await asyncio.sleep(1 + hover_attempt * 0.5)  # 逐次延长等待
+                            # 多选择器兜底：SVG路径 -> title -> aria-label
+                            for dl_sel in [
+                                "button:has(svg path[d*='M2 9.26074'])",
+                                "button[title*='下载']",
+                                "button[aria-label*='下载']",
+                                "button:has(svg path[d*='M12 15'])",
+                            ]:
+                                try:
+                                    btn = parent.locator(dl_sel).first
+                                    if await btn.is_visible(timeout=2000):
+                                        download_btn = btn
+                                        break
+                                except Exception:
+                                    continue
+                            if download_btn:
+                                break
+                            print(f"[AUTO-V2] ⚠️ 订单#{order_id} 第{hover_attempt+1}次未找到下载按钮，重试hover...")
+
+                        if not download_btn:
                             # 兜底：尝试从video标签src直接下载
-                            print(f"[AUTO-V2] ⚠️ 订单#{order_id}未找到下载按钮，尝试从video标签直接下载")
                             try:
                                 video_el = parent.locator("video").first
                                 video_src = await video_el.get_attribute("src", timeout=3000)
@@ -474,27 +651,58 @@ class HailuoAutomationV2:
                         await download_btn.hover()
                         await asyncio.sleep(1)
 
-                        # 4. 尝试勾选去水印开关（尽力而为，不阻塞下载）
+                        # 4. 尝试勾选去水印开关（带重试，确认 aria-checked 变为 true）
                         try:
                             watermark_switches = page.locator("button.ant-switch.hl-brand-switch")
                             switch_count = await watermark_switches.count()
                             for i in range(switch_count):
+                                # 每次点开关前重新 hover 下载按钮，保持悬浮面板不关闭
+                                try:
+                                    await download_btn.hover()
+                                    await asyncio.sleep(0.5)
+                                except Exception:
+                                    pass
+
                                 sw = watermark_switches.nth(i)
                                 try:
                                     checked = await sw.get_attribute("aria-checked")
-                                    if checked == "false":
-                                        await sw.click(force=True, timeout=3000)
-                                        await asyncio.sleep(0.5)
-                                        # 检测协议弹窗，点击同意
-                                        agree_btn = page.locator("button:has-text('同意')").first
+                                    if checked == "true":
+                                        continue  # 已经开启，跳过
+
+                                    # 最多重试 3 次，直到确认 aria-checked == "true"
+                                    confirmed = False
+                                    for attempt in range(3):
                                         try:
-                                            if await agree_btn.is_visible(timeout=2000):
-                                                await agree_btn.click()
+                                            await sw.scroll_into_view_if_needed(timeout=2000)
+                                            await sw.click(force=True, timeout=3000)
+                                            await asyncio.sleep(0.6)
+
+                                            # 检测协议弹窗，点击同意
+                                            agree_btn = page.locator("button:has-text('同意')").first
+                                            try:
+                                                if await agree_btn.is_visible(timeout=2000):
+                                                    await agree_btn.click()
+                                                    await asyncio.sleep(0.5)
+                                                    print(f"[AUTO-V2] 📋 订单#{order_id} 同意去水印协议")
+                                            except Exception:
+                                                pass
+
+                                            # 确认状态已变为 true
+                                            new_checked = await sw.get_attribute("aria-checked")
+                                            if new_checked == "true":
+                                                confirmed = True
+                                                print(f"[AUTO-V2] 🔄 订单#{order_id} 去水印开关{i+1}已开启（第{attempt+1}次）")
+                                                break
+                                            else:
+                                                print(f"[AUTO-V2] ⚠️ 订单#{order_id} 去水印开关{i+1}第{attempt+1}次点击未生效，重试...")
+                                                await download_btn.hover()
                                                 await asyncio.sleep(0.5)
-                                                print(f"[AUTO-V2] 📋 订单#{order_id} 同意去水印协议")
-                                        except Exception:
-                                            pass
-                                        print(f"[AUTO-V2] 🔄 订单#{order_id} 开启去水印开关 {i+1}")
+                                        except Exception as sw_err:
+                                            print(f"[AUTO-V2] ⚠️ 订单#{order_id} 去水印开关{i+1}第{attempt+1}次异常: {str(sw_err)[:60]}")
+                                            await asyncio.sleep(0.5)
+
+                                    if not confirmed:
+                                        print(f"[AUTO-V2] ⚠️ 订单#{order_id} 去水印开关{i+1}重试3次仍未成功，继续下载")
                                 except Exception:
                                     pass
                         except Exception:
@@ -565,6 +773,8 @@ class HailuoAutomationV2:
 
         except Exception as e:
             print(f"[AUTO-V2] 扫描页面出错: {str(e)[:100]}")
+        finally:
+            self._scanning_accounts.discard(account_id)
 
     def _check_stuck_orders(self):
         """检查卡在generating/processing状态超久的订单 - 仅处理真正卡住的"""
@@ -574,7 +784,7 @@ class HailuoAutomationV2:
                 cutoff_generating = datetime.utcnow() - timedelta(minutes=30)
                 cutoff_processing = datetime.utcnow() - timedelta(minutes=10)
 
-                # 检查generating超时（30分钟无进度）
+                # 检查generating超时（30分钟，不论有无进度都算卡死）
                 stuck_generating = session.exec(
                     select(VideoOrder).where(
                         VideoOrder.status == "generating",
@@ -582,9 +792,7 @@ class HailuoAutomationV2:
                     )
                 ).all()
                 for order in stuck_generating:
-                    if order.progress and order.progress > 0:
-                        continue
-                    print(f"[AUTO-V2] ⚠️ 订单#{order.id}卡在generating超过30分钟且无进度，标记失败")
+                    print(f"[AUTO-V2] ⚠️ 订单#{order.id}卡在generating超过30分钟（进度:{order.progress}），标记失败")
                     stuck_order_ids.append(order.id)
 
                 # 检查processing超时（10分钟）
@@ -618,8 +826,8 @@ class HailuoAutomationV2:
             account = self.manager.accounts.get(account_id)
             if not account or account_id not in self.manager._verified_accounts:
                 continue
-            # 只在账号空闲时检查，不打断正在工作的账号
-            if account.current_tasks > 0:
+            # 只在账号空闲且未被扫描时操作页面，防止与扫描循环冲突
+            if account.current_tasks > 0 or account_id in self._scanning_accounts:
                 continue
             page = self.manager.pages.get(account_id)
             if not page:
@@ -690,10 +898,22 @@ class HailuoAutomationV2:
                     self.update_order_status(order_id, "failed")
                     return
 
-            # 根据视频类型导航到不同页面
+            # 根据视频类型导航到不同页面（最多重试3次）
             target_url = HAILUO_TEXT_URL if is_text_mode else HAILUO_URL
-            await page.goto(target_url, timeout=30000, wait_until="domcontentloaded")
-            await asyncio.sleep(2)
+            nav_ok = False
+            for nav_attempt in range(3):
+                try:
+                    await page.goto(target_url, timeout=30000, wait_until="domcontentloaded")
+                    await asyncio.sleep(2)
+                    nav_ok = True
+                    break
+                except Exception as nav_err:
+                    print(f"[AUTO-V2] ⚠️ 订单#{order_id}页面导航失败(第{nav_attempt+1}次): {str(nav_err)[:80]}")
+                    await asyncio.sleep(3)
+            if not nav_ok:
+                print(f"[AUTO-V2] ❌ 订单#{order_id}页面导航3次均失败，标记失败")
+                self.update_order_status(order_id, "failed")
+                return
 
             # 关闭可能的弹窗
             await self._dismiss_popup(page)
@@ -714,24 +934,30 @@ class HailuoAutomationV2:
                     await self._switch_to_last_frame_mode(page)
                     await self._upload_last_frame(page, last_frame_path)
 
-            # 填写提示词（两种模式输入框选择器相同）
+            # 填写提示词（最多重试3次）
             if prompt and prompt.strip():
                 prompt_with_id = add_tracking_id(prompt, order_id)
-                try:
-                    text_input = page.locator("#video-create-textarea")
-                    if await text_input.is_visible(timeout=5000):
-                        await text_input.click(force=True, timeout=5000)
-                        await asyncio.sleep(0.3)
-                        await page.keyboard.press("Control+A")
-                        await page.keyboard.press("Delete")
-                        await page.keyboard.type(prompt_with_id, delay=10)
-                        print(f"[AUTO-V2] ✅ 提示词填写完成")
-                    else:
-                        print(f"[AUTO-V2] ❌ 提示词输入框不可见")
-                        self.update_order_status(order_id, "failed")
-                        return
-                except Exception as e:
-                    print(f"[AUTO-V2] ❌ 填写提示词失败: {str(e)[:100]}")
+                prompt_ok = False
+                for prompt_attempt in range(3):
+                    try:
+                        text_input = page.locator("#video-create-textarea")
+                        if await text_input.is_visible(timeout=5000):
+                            await text_input.click(force=True, timeout=5000)
+                            await asyncio.sleep(0.3)
+                            await page.keyboard.press("Control+A")
+                            await page.keyboard.press("Delete")
+                            await page.keyboard.type(prompt_with_id, delay=10)
+                            print(f"[AUTO-V2] ✅ 提示词填写完成")
+                            prompt_ok = True
+                            break
+                        else:
+                            print(f"[AUTO-V2] ⚠️ 提示词输入框不可见(第{prompt_attempt+1}次)，等待重试...")
+                            await asyncio.sleep(2)
+                    except Exception as e:
+                        print(f"[AUTO-V2] ⚠️ 填写提示词失败(第{prompt_attempt+1}次): {str(e)[:80]}")
+                        await asyncio.sleep(2)
+                if not prompt_ok:
+                    print(f"[AUTO-V2] ❌ 订单#{order_id}提示词填写3次均失败，标记失败")
                     self.update_order_status(order_id, "failed")
                     return
 
@@ -801,9 +1027,47 @@ class HailuoAutomationV2:
                     continue
 
             if generate_btn:
-                await generate_btn.click(force=True)
-                print(f"[AUTO-V2] ✅ 订单#{order_id}已提交生成")
-                self.update_order_status(order_id, "generating")
+                # 最多尝试3次点击 + 确认
+                submit_confirmed = False
+                for click_attempt in range(3):
+                    if click_attempt > 0:
+                        print(f"[AUTO-V2] 🔁 订单#{order_id}第{click_attempt+1}次尝试点击生成按钮...")
+                        await asyncio.sleep(2)
+                        # 重新定位按钮防止DOM刷新后失效
+                        for selector in ["button.new-color-btn-bg", "button:has-text('生成')", "button:has-text('开始生成')", "button[type='submit']"]:
+                            try:
+                                btn = page.locator(selector).first
+                                if await btn.count() > 0:
+                                    generate_btn = btn
+                                    break
+                            except Exception:
+                                continue
+
+                    await generate_btn.click(force=True)
+
+                    # 等待最多15秒，确认提交信号
+                    for _ in range(15):
+                        await asyncio.sleep(1)
+                        try:
+                            queue_hint = page.locator("div:has-text('低速生成中'), div:has-text('排队'), div:has-text('生成中')")
+                            if await queue_hint.count() > 0:
+                                submit_confirmed = True
+                                break
+                            if await page.locator(".ant-progress-text").count() > 0:
+                                submit_confirmed = True
+                                break
+                        except Exception:
+                            pass
+                    if submit_confirmed:
+                        break
+
+                if submit_confirmed:
+                    print(f"[AUTO-V2] ✅ 订单#{order_id}已确认提交生成")
+                    self.update_order_status(order_id, "generating")
+                else:
+                    print(f"[AUTO-V2] ❌ 订单#{order_id}重试3次后仍无确认信号，标记失败")
+                    self.update_order_status(order_id, "failed")
+                    return
             else:
                 print(f"[AUTO-V2] ❌ 未找到生成按钮")
                 self.update_order_status(order_id, "failed")

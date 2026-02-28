@@ -435,6 +435,10 @@ def get_public_config(session: Session = Depends(get_session)):
         # 访问控制
         "block_mobile_users": get_config_value(session, "block_mobile_users", False),
         "block_mobile_message": get_config_value(session, "block_mobile_message", "暂不支持移动端访问，请使用电脑浏览器"),
+        # 维护模式
+        "maintenance_mode": get_config_value(session, "maintenance_mode", False),
+        "maintenance_message": get_config_value(session, "maintenance_message", "系统维护中，请稍后再试"),
+        "maintenance_password": get_config_value(session, "maintenance_password", ""),
         # 站点信息
         "site_name": get_config_value(session, "site_name", "大帝AI"),
         "site_announcement": get_config_value(session, "site_announcement", ""),

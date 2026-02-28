@@ -762,6 +762,10 @@ DEFAULT_CONFIG = {
     # ---- 访问控制 ----
     "block_mobile_users": {"value": False, "description": "是否拦截手机端用户访问", "category": "access", "type": "boolean"},
     "block_mobile_message": {"value": "暂不支持移动端访问，请使用电脑浏览器", "description": "手机用户拦截提示语", "category": "access", "type": "string"},
+    # ---- 维护模式 ----
+    "maintenance_mode": {"value": False, "description": "开启维护模式（用户访问将看到维护页面）", "category": "maintenance", "type": "boolean"},
+    "maintenance_message": {"value": "系统维护中，请稍后再试", "description": "维护页面提示语", "category": "maintenance", "type": "string"},
+    "maintenance_password": {"value": "", "description": "绕过维护模式的密码（留空则无法绕过）", "category": "maintenance", "type": "string"},
 }
 
 
