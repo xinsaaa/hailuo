@@ -541,52 +541,17 @@ class MultiAccountManager:
         try:
             print(f"[MULTI-ACCOUNT] 🔍 获取账号 {account_id} 剩余积分...")
 
-            # 先打印调试信息，看侧边栏实际结构
-            debug_info = await page.evaluate("""
-                () => {
-                    const sidebar = document.querySelector('div.sidebar-container');
-                    if (!sidebar) return {error: 'no sidebar'};
-                    // 找所有span，打出class和文本
-                    const spans = sidebar.querySelectorAll('span');
-                    const result = [];
-                    for (const s of spans) {
-                        const t = s.textContent.trim();
-                        if (t) result.push({cls: s.className, text: t.slice(0, 30)});
-                    }
-                    return {spans: result.slice(0, 20)};
-                }
-            """)
-            print(f"[MULTI-ACCOUNT] 调试 {account_id} 侧边栏spans: {debug_info}")
-
             credits = await page.evaluate("""
                 () => {
                     const sidebar = document.querySelector('div.sidebar-container');
                     if (!sidebar) return -2;
 
-                    // 找 span.text-hl_brand_01（"尊享会员"），
-                    // 根据HTML它就在数字span的同级父div里
-                    const vipSpan = sidebar.querySelector('span.text-hl_brand_01');
-                    if (vipSpan) {
-                        // 数字span和vipSpan在同一个 div.flex-col.items-center 父容器下
-                        // 向上最多6层找包含纯数字span的共同祖先
-                        let node = vipSpan.parentElement;
-                        for (let i = 0; i < 8 && node; i++) {
-                            const spans = node.querySelectorAll('span');
-                            for (const s of spans) {
-                                const t = s.textContent.trim();
-                                if (/^\\d+$/.test(t)) return parseInt(t, 10);
-                            }
-                            node = node.parentElement;
-                        }
-                    }
-
-                    // 降级：在侧边栏找任意纯数字span（包括0）
-                    const allSpans = sidebar.querySelectorAll('span');
-                    for (const s of allSpans) {
-                        const t = s.textContent.trim();
+                    // 积分数字可能带千位逗号，如 "15,766"，先去掉逗号再匹配
+                    const spans = sidebar.querySelectorAll('span');
+                    for (const s of spans) {
+                        const t = s.textContent.trim().replace(/,/g, '');
                         if (/^\\d+$/.test(t)) return parseInt(t, 10);
                     }
-
                     return -1;
                 }
             """)
