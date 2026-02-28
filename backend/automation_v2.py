@@ -553,12 +553,24 @@ class HailuoAutomationV2:
 
                         for dl_attempt in range(3):
                             try:
-                                # 1. 找卡片上的下载按钮（ant-dropdown-trigger）
-                                dl_trigger = parent.locator(
-                                    "button.text-hl_text_00_legacy"
-                                ).first
-                                if not await dl_trigger.is_visible(timeout=3000):
-                                    print(f"[AUTO-V2] ⚠️ 订单#{order_id} 第{dl_attempt+1}次未找到下载按钮")
+                                # 1. 找卡片上触发下载浮窗的按钮
+                                # 真实HTML: button含下载图标SVG（path含 M2 9.26074）
+                                dl_trigger = None
+                                for trigger_sel in [
+                                    "button:has(path[d*='M2 9.26074'])",
+                                    "button:has(path[d*='M8.65991'])",
+                                    "button.bg-hl_bg_10_legacy",
+                                ]:
+                                    try:
+                                        candidate = parent.locator(trigger_sel).first
+                                        if await candidate.is_visible(timeout=2000):
+                                            dl_trigger = candidate
+                                            print(f"[AUTO-V2] 找到触发按钮: {trigger_sel}")
+                                            break
+                                    except:
+                                        pass
+                                if dl_trigger is None:
+                                    print(f"[AUTO-V2] ⚠️ 订单#{order_id} 第{dl_attempt+1}次未找到触发按钮")
                                     await asyncio.sleep(2)
                                     continue
 
