@@ -50,11 +50,11 @@ class SecurityLogger:
         file_handler.setFormatter(formatter)
         self.logger.addHandler(file_handler)
         
-        # 控制台处理器（仅开发环境）
-        if os.getenv("ENVIRONMENT") != "production":
-            console_handler = logging.StreamHandler()
-            console_handler.setFormatter(formatter)
-            self.logger.addHandler(console_handler)
+        # 控制台处理器：已禁用，避免与 loguru 重复输出
+        # if os.getenv("ENVIRONMENT") != "production":
+        #     console_handler = logging.StreamHandler()
+        #     console_handler.setFormatter(formatter)
+        #     self.logger.addHandler(console_handler)
     
     def audit(self, event_type: str, **kwargs):
         """记录审计事件，过滤敏感信息"""

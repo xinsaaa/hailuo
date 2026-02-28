@@ -17,14 +17,10 @@ from backend.exceptions import AppException
 async def app_exception_handler(request: Request, exc: AppException) -> JSONResponse:
     """处理自定义应用异常"""
     request_id = get_request_id()
-    
-    # 记录异常
+
     app_logger.error(
-        f"Application exception: {exc.message}",
+        f"应用异常 {exc.status_code}: {exc.message} [{request.method} {request.url.path}]",
         exc_info=exc,
-        path=request.url.path,
-        method=request.method,
-        status_code=exc.status_code,
     )
     
     # 返回标准化错误响应
@@ -59,10 +55,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 
     # 记录验证错误
     app_logger.warning(
-        "Validation error",
-        path=request.url.path,
-        method=request.method,
-        field_errors=field_errors,
+        f"参数验证失败 [{request.method} {request.url.path}]: {field_errors}",
     )
 
     return JSONResponse(
@@ -81,15 +74,17 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 async def http_exception_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
     """处理 HTTP 异常"""
     request_id = get_request_id()
-    
-    # 记录 HTTP 异常
-    app_logger.warning(
-        f"HTTP exception: {exc.detail}",
-        path=request.url.path,
-        method=request.method,
-        status_code=exc.status_code,
-    )
-    
+
+    # 只有4xx才记录警告，5xx才记录错误
+    if exc.status_code >= 500:
+        app_logger.error(
+            f"接口错误 {exc.status_code}: {exc.detail} [{request.method} {request.url.path}]",
+        )
+    elif exc.status_code >= 400:
+        app_logger.warning(
+            f"请求被拒绝 {exc.status_code}: {exc.detail} [{request.method} {request.url.path}]",
+        )
+
     return JSONResponse(
         status_code=exc.status_code,
         content={
@@ -105,21 +100,16 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException) 
 async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     """全局异常处理器 - 捕获所有未处理的异常"""
     request_id = get_request_id()
-    
-    # 记录异常（包含完整堆栈跟踪）
+
     app_logger.error(
-        f"Unhandled exception: {type(exc).__name__}",
+        f"系统异常 [{request.method} {request.url.path}]: {type(exc).__name__}: {exc}",
         exc_info=exc,
-        path=request.url.path,
-        method=request.method,
     )
-    
-    # 返回标准化错误响应（生产环境不暴露详细错误信息）
+
     import os
     environment = os.getenv("ENVIRONMENT", "development").lower()
-    
-    error_detail = str(exc) if environment == "development" else "Internal server error"
-    
+    error_detail = str(exc) if environment == "development" else "系统内部错误，请稍后重试"
+
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={

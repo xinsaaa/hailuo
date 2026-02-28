@@ -112,23 +112,13 @@ class AppLogger:
         # 创建日志目录
         Path(log_dir).mkdir(parents=True, exist_ok=True)
         
-        # 控制台处理器（开发模式使用彩色输出，生产模式使用 JSON）
-        if environment == "development":
-            # 开发模式：彩色、易读格式
-            logger.add(
-                sys.stdout,
-                level=log_level,
-                format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> | <level>{message}</level>",
-                colorize=True,
-            )
-        else:
-            # 生产模式：JSON 格式
-            logger.add(
-                sys.stdout,
-                level=log_level,
-                format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} | {message}",
-                serialize=False,
-            )
+        # 控制台处理器 - 只输出 WARNING 及以上，格式简洁
+        logger.add(
+            sys.stdout,
+            level="WARNING",
+            format="<green>{time:MM-DD HH:mm:ss}</green> | <level>{level: <7}</level> | <level>{message}</level>",
+            colorize=True,
+        )
         
         # 文件处理器 - 所有日志
         logger.add(
