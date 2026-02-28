@@ -553,36 +553,70 @@ class HailuoAutomationV2:
 
                         for dl_attempt in range(3):
                             try:
-                                # 1. hover 视频卡片触发悬浮下载按钮出现
-                                await parent.hover()
-                                await asyncio.sleep(0.8)
-
-                                # 2. 找下载按钮（带下载图标的 button）
-                                dl_btn = parent.locator(
+                                # 1. 找卡片上的下载按钮（ant-dropdown-trigger）
+                                dl_trigger = parent.locator(
                                     "button.text-hl_text_00_legacy"
                                 ).first
-                                if not await dl_btn.is_visible(timeout=3000):
+                                if not await dl_trigger.is_visible(timeout=3000):
                                     print(f"[AUTO-V2] ⚠️ 订单#{order_id} 第{dl_attempt+1}次未找到下载按钮")
                                     await asyncio.sleep(2)
                                     continue
 
-                                # 3. hover 下载按钮，触发去水印选项浮窗
-                                await dl_btn.hover()
-                                await asyncio.sleep(0.8)
+                                # 2. hover 下载按钮，触发 ant-dropdown 浮窗
+                                await dl_trigger.hover()
+                                await asyncio.sleep(1.0)
 
-                                # 4. 找到所有水印开关，确保全部开启（aria-checked="true" = 去水印）
+                                # 3. 在浮窗里找水印开关，确保去水印开启（aria-checked="true" = 去水印）
+                                # ant-dropdown 浮窗挂在 body 下，用 page 级别查找
                                 switches = await page.locator(
-                                    "button[role='switch'].hl-brand-switch"
+                                    ".ant-dropdown:not(.ant-dropdown-hidden) button[role='switch'].hl-brand-switch"
                                 ).all()
+                                if not switches:
+                                    # fallback：直接找所有可见的 switch
+                                    switches = await page.locator(
+                                        "button[role='switch'].hl-brand-switch"
+                                    ).all()
                                 for sw in switches:
+                                    if not await sw.is_visible():
+                                        continue
                                     checked = await sw.get_attribute("aria-checked")
                                     if checked == "false":
                                         await sw.click()
-                                        await asyncio.sleep(0.3)
+                                        await asyncio.sleep(0.5)
+                                        # 点击水印开关后可能弹出确认弹窗，点击同意
+                                        for confirm_sel in [
+                                            ".ant-modal-confirm .ant-btn-primary",
+                                            ".ant-modal-footer .ant-btn-primary",
+                                            ".ant-modal button.ant-btn-primary",
+                                            "button:has-text('同意')",
+                                            "button:has-text('确认')",
+                                            "button:has-text('确定')",
+                                            "button:has-text('OK')",
+                                        ]:
+                                            try:
+                                                confirm_btn = page.locator(confirm_sel).first
+                                                if await confirm_btn.is_visible(timeout=800):
+                                                    await confirm_btn.click()
+                                                    print(f"[AUTO-V2] 订单#{order_id} 点击水印确认弹窗")
+                                                    await asyncio.sleep(0.5)
+                                                    break
+                                            except:
+                                                pass
 
-                                # 5. 点击下载按钮，拦截浏览器下载事件
+                                # 4. 在浮窗里找真正触发下载的按钮并点击
+                                # 浮窗内的下载按钮与触发按钮 class 相同，但在 .ant-dropdown 容器内
+                                dropdown_dl_btn = page.locator(
+                                    ".ant-dropdown:not(.ant-dropdown-hidden) button.text-hl_text_00_legacy"
+                                ).first
+                                if not await dropdown_dl_btn.is_visible(timeout=3000):
+                                    # fallback：浮窗内找含"下载"文字的按钮
+                                    dropdown_dl_btn = page.locator(
+                                        ".ant-dropdown:not(.ant-dropdown-hidden) button"
+                                    ).last
+
+                                # 5. 点击浮窗内的下载按钮，拦截浏览器下载事件
                                 async with page.expect_download(timeout=60000) as dl_info:
-                                    await dl_btn.click()
+                                    await dropdown_dl_btn.click()
 
                                 download = await dl_info.value
                                 await download.save_as(filepath)
