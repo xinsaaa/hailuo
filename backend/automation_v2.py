@@ -588,7 +588,10 @@ class HailuoAutomationV2:
 
                         def _download_sync(url: str, dest: str) -> int:
                             """同步下载，在 executor 中运行"""
-                            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+                            req = urllib.request.Request(url, headers={
+                                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+                                "Referer": "https://hailuoai.com/",
+                            })
                             with urllib.request.urlopen(req, timeout=120) as resp:
                                 if resp.status != 200:
                                     return resp.status
