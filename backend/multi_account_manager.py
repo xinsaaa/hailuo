@@ -532,7 +532,7 @@ class MultiAccountManager:
             return account_id in self._verified_accounts
 
     async def get_account_credits(self, account_id: str) -> int:
-        """获取账号剩余积分 - 直接在当前页面读取，不跳转"""
+        """获取账号剩余积分 - 从侧边栏精确读取，避免与主内容区同名CSS类冲突"""
         if account_id not in self.pages:
             return -1
 
@@ -541,55 +541,32 @@ class MultiAccountManager:
         try:
             print(f"[MULTI-ACCOUNT] 🔍 获取账号 {account_id} 剩余积分...")
 
-            # 直接在当前页面提取积分，不跳转（视频生成页面也能看到积分）
             credits = await page.evaluate("""
                 () => {
-                    // 方法1: 找火焰SVG图标，取相邻span的数字
-                    const svgs = document.querySelectorAll('svg');
-                    for (const svg of svgs) {
-                        const path = svg.querySelector('path');
-                        if (path) {
-                            const d = path.getAttribute('d') || '';
-                            if (d.includes('8.00048') && d.includes('1.82032')) {
-                                const container = svg.closest('.relative') || svg.closest('.flex-col') || svg.closest('.flex');
-                                if (container) {
-                                    const spans = container.querySelectorAll('span');
-                                    for (const s of spans) {
-                                        const t = s.textContent.trim();
-                                        if (/^[\\d,]+$/.test(t) && /\\d/.test(t)) {
-                                            return parseInt(t.replace(/,/g, ''));
-                                        }
-                                    }
-                                }
-                                let sibling = svg.parentElement?.nextElementSibling;
-                                if (!sibling) sibling = svg.nextElementSibling;
-                                if (sibling) {
-                                    const t = sibling.textContent.trim();
-                                    if (/^[\\d,]+$/.test(t) && /\\d/.test(t)) {
-                                        return parseInt(t.replace(/,/g, ''));
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    // 1. 锁定唯一侧边栏容器，避免与主内容区同名 CSS 类冲突
+                    const sidebar = document.querySelector('div.sidebar-container');
+                    if (!sidebar) return -1;
 
-                    // 方法2: 找"尊享会员"或"升级"文字，向上找积分数字
-                    const allSpans = document.querySelectorAll('span');
-                    for (const span of allSpans) {
-                        const text = span.textContent.trim();
-                        if (text === '尊享会员' || text === '升级' || text.includes('会员')) {
-                            let container = span.closest('.flex-col') || span.closest('.flex');
-                            for (let i = 0; i < 5 && container; i++) {
-                                const numberSpans = container.querySelectorAll('span');
-                                for (const ns of numberSpans) {
-                                    const numText = ns.textContent.trim();
-                                    if (/^[\\d,]+$/.test(numText) && /\\d/.test(numText)) {
-                                        return parseInt(numText.replace(/,/g, ''));
-                                    }
-                                }
-                                container = container.parentElement;
-                            }
+                    // 2. 找侧边栏内的「尊享会员」span（唯一标识积分卡片的锚点）
+                    const vipSpan = sidebar.querySelector('span.text-hl_brand_01');
+                    if (!vipSpan) return -1;
+
+                    // 3. 向上找积分卡片公共父容器
+                    //    HTML结构: 卡片内同时含有纯数字span和尊享会员span
+                    let card = vipSpan.parentElement;
+                    for (let i = 0; i < 6 && card; i++) {
+                        const spans = card.querySelectorAll('span');
+                        let numSpan = null;
+                        let hasVip = false;
+                        for (const s of spans) {
+                            const t = s.textContent.trim();
+                            if (t === '尊享会员') hasVip = true;
+                            if (/^\\d+$/.test(t)) numSpan = s;
                         }
+                        if (hasVip && numSpan) {
+                            return parseInt(numSpan.textContent.trim(), 10);
+                        }
+                        card = card.parentElement;
                     }
 
                     return -1;
