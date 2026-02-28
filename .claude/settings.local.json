@@ -16,7 +16,9 @@
       "Bash(python -m pip list:*)",
       "Bash(dir:*)",
       "Bash(awk:*)",
-      "Bash(npm run build)"
+      "Bash(npm run build)",
+      "Bash(python -m py_compile backend/automation_v2.py)",
+      "Bash(python -m py_compile backend/multi_account_manager.py)"
     ]
   }
 }

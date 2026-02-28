@@ -157,7 +157,7 @@ async def log_requests(request: Request, call_next):
 
 # 后端启动时自动初始化数据库和启动自动化
 @app.on_event("startup")
-def startup_event():
+async def startup_event():
     # 确保数据库表存在
     from backend.models import create_db_and_tables
     create_db_and_tables()
