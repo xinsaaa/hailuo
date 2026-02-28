@@ -543,52 +543,39 @@ class MultiAccountManager:
 
             credits = await page.evaluate("""
                 () => {
-                    // 1. 锁定唯一侧边栏容器，避免与主内容区同名 CSS 类冲突
+                    // 1. 锁定侧边栏，避免与主内容区冲突
                     const sidebar = document.querySelector('div.sidebar-container');
-                    if (!sidebar) return -2;  // -2 = 侧边栏不存在（页面未加载）
+                    if (!sidebar) return -2;
 
-                    // 2. 策略一：找包含会员文字的卡片（VIP/尊享会员/普通会员/免费用户等）
-                    const memberKeywords = ['尊享会员', '普通会员', '免费用户', 'VIP', '会员'];
-                    let anchorSpan = null;
-                    for (const kw of memberKeywords) {
-                        const spans = sidebar.querySelectorAll('span');
+                    // 2. 直接定位积分卡片（border-hl_brand_00是会员积分卡的边框class）
+                    //    HTML结构: div.border-hl_brand_00 > ... > span.text-hl_text_00(数字) + span.text-hl_brand_01(尊享会员)
+                    const card = sidebar.querySelector('div.border-hl_brand_00');
+                    if (card) {
+                        const spans = card.querySelectorAll('span');
                         for (const s of spans) {
-                            if (s.textContent.trim().includes(kw)) {
-                                anchorSpan = s;
-                                break;
+                            const t = s.textContent.trim();
+                            if (/^\\d+$/.test(t)) {
+                                return parseInt(t, 10);
                             }
                         }
-                        if (anchorSpan) break;
                     }
 
-                    if (anchorSpan) {
-                        // 向上找含纯数字span的父容器（最多6层）
-                        let card = anchorSpan.parentElement;
-                        for (let i = 0; i < 8 && card; i++) {
-                            const spans = card.querySelectorAll('span');
+                    // 3. 降级：找 span.text-hl_brand_01（会员文字）的兄弟节点中的数字
+                    const vipSpan = sidebar.querySelector('span.text-hl_brand_01');
+                    if (vipSpan) {
+                        // 向上找共同父容器，再找数字span（数字在vipSpan上方的兄弟div里）
+                        let parent = vipSpan.parentElement;
+                        for (let i = 0; i < 5 && parent; i++) {
+                            const spans = parent.querySelectorAll('span');
                             for (const s of spans) {
                                 const t = s.textContent.trim();
-                                if (/^\\d+$/.test(t)) {
-                                    return parseInt(t, 10);
-                                }
+                                if (/^\\d+$/.test(t)) return parseInt(t, 10);
                             }
-                            card = card.parentElement;
+                            parent = parent.parentElement;
                         }
                     }
 
-                    // 3. 策略二：直接在侧边栏内找所有纯数字span，取最大的那个（积分通常是最大数）
-                    const allSpans = sidebar.querySelectorAll('span');
-                    let maxNum = -1;
-                    for (const s of allSpans) {
-                        const t = s.textContent.trim();
-                        if (/^\\d+$/.test(t)) {
-                            const n = parseInt(t, 10);
-                            if (n > maxNum) maxNum = n;
-                        }
-                    }
-                    if (maxNum >= 0) return maxNum;
-
-                    return -1;  // -1 = 侧边栏存在但找不到任何数字
+                    return -1;
                 }
             """)
 
