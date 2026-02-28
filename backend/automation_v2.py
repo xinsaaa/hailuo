@@ -449,62 +449,7 @@ class HailuoAutomationV2:
             completed_count = 0
             processing_count = 0
 
-            # 预处理：找任意一个完成状态的卡片预勾选去水印开关（只需一次，带重试确认）
-            try:
-                any_card = page.locator("div[class*='group/video-card']").first
-                if await any_card.is_visible(timeout=3000):
-                    await any_card.hover()
-                    await asyncio.sleep(0.8)
-                    # 多选择器找下载按钮
-                    pre_dl_btn = None
-                    for dl_sel in ["button:has(svg path[d*='M2 9.26074'])", "button[title*='下载']", "button[aria-label*='下载']"]:
-                        try:
-                            btn = any_card.locator(dl_sel).first
-                            if await btn.is_visible(timeout=2000):
-                                pre_dl_btn = btn
-                                break
-                        except Exception:
-                            pass
-                    if pre_dl_btn:
-                        await pre_dl_btn.hover()
-                        await asyncio.sleep(0.8)
-                        pre_switches = page.locator("button.ant-switch.hl-brand-switch")
-                        pre_count = await pre_switches.count()
-                        for i in range(pre_count):
-                            sw = pre_switches.nth(i)
-                            try:
-                                checked = await sw.get_attribute("aria-checked")
-                                if checked == "true":
-                                    continue
-                                # 重试3次确认 aria-checked 变 true
-                                for attempt in range(3):
-                                    try:
-                                        await pre_dl_btn.hover()
-                                        await asyncio.sleep(0.4)
-                                        await sw.scroll_into_view_if_needed(timeout=2000)
-                                        await sw.click(force=True, timeout=3000)
-                                        await asyncio.sleep(0.6)
-                                        agree_btn = page.locator("button:has-text('同意')").first
-                                        try:
-                                            if await agree_btn.is_visible(timeout=2000):
-                                                await agree_btn.click()
-                                                await asyncio.sleep(0.5)
-                                                print(f"[AUTO-V2] 📋 预勾选: 同意去水印协议")
-                                        except Exception:
-                                            pass
-                                        new_checked = await sw.get_attribute("aria-checked")
-                                        if new_checked == "true":
-                                            print(f"[AUTO-V2] 🔄 预勾选: 去水印开关{i+1}已开启（第{attempt+1}次）")
-                                            break
-                                    except Exception:
-                                        await asyncio.sleep(0.5)
-                            except Exception:
-                                pass
-                        await page.mouse.click(10, 10)
-                        await asyncio.sleep(0.5)
-                        print(f"[AUTO-V2] ✅ 去水印开关预勾选完成")
-            except Exception as e:
-                print(f"[AUTO-V2] ⚠️ 预勾选去水印开关失败: {str(e)[:60]}")
+            # 预处理：扫描前不再需要预勾选去水印开关（改用 CDN 链接转换方式下载无水印视频）
 
             for span in prompt_spans:
                 try:
@@ -581,10 +526,10 @@ class HailuoAutomationV2:
                         processing_count += 1
                         continue
 
-                    # 以上状态都不存在 = 生成完成，下载视频
-                    print(f"[AUTO-V2] ✅ 订单#{order_id}生成完成，开始下载视频")
+                    # 以上状态都不存在 = 生成完成，提取并下载无水印视频
+                    print(f"[AUTO-V2] ✅ 订单#{order_id}生成完成，开始获取无水印链接")
                     try:
-                        # 去重检查（用order_id）
+                        # 去重检查
                         dedup_key = f"order_{order_id}"
                         if dedup_key in _processed_share_links:
                             continue
@@ -592,163 +537,70 @@ class HailuoAutomationV2:
                             _processed_share_links.clear()
                         _processed_share_links.add(dedup_key)
 
-                        # 1. 鼠标悬停视频卡片，让操作按钮显示
-                        await parent.hover()
-                        await asyncio.sleep(0.8)
-
-                        # 2. 找到下载按钮（带重试：hover后按钮可能需要时间渲染）
-                        download_btn = None
-                        for hover_attempt in range(3):
-                            await parent.hover()
-                            await asyncio.sleep(1 + hover_attempt * 0.5)  # 逐次延长等待
-                            # 多选择器兜底：SVG路径 -> title -> aria-label
-                            for dl_sel in [
-                                "button:has(svg path[d*='M2 9.26074'])",
-                                "button[title*='下载']",
-                                "button[aria-label*='下载']",
-                                "button:has(svg path[d*='M12 15'])",
-                            ]:
-                                try:
-                                    btn = parent.locator(dl_sel).first
-                                    if await btn.is_visible(timeout=2000):
-                                        download_btn = btn
-                                        break
-                                except Exception:
-                                    continue
-                            if download_btn:
-                                break
-                            print(f"[AUTO-V2] ⚠️ 订单#{order_id} 第{hover_attempt+1}次未找到下载按钮，重试hover...")
-
-                        if not download_btn:
-                            # 兜底：尝试从video标签src直接下载
-                            try:
-                                video_el = parent.locator("video").first
-                                video_src = await video_el.get_attribute("src", timeout=3000)
-                                if video_src and video_src.startswith("http"):
-                                    import httpx
-                                    filename = f"order_{order_id}.mp4"
-                                    filepath = os.path.join(VIDEOS_DIR, filename)
-                                    async with httpx.AsyncClient(timeout=120, follow_redirects=True) as client:
-                                        resp = await client.get(video_src)
-                                        if resp.status_code == 200:
-                                            with open(filepath, "wb") as vf:
-                                                vf.write(resp.content)
-                                            size_mb = os.path.getsize(filepath) / (1024 * 1024)
-                                            print(f"[AUTO-V2] 📥 订单#{order_id} 从video src直接下载完成 ({size_mb:.1f}MB)")
-                                            self.update_order_result(order_id, f"/videos/{filename}", "completed")
-                                            completed_count += 1
-                                            continue
-                                        else:
-                                            print(f"[AUTO-V2] ❌ 订单#{order_id} video src下载失败: HTTP {resp.status_code}")
-                                else:
-                                    print(f"[AUTO-V2] ❌ 订单#{order_id} video标签无有效src: {video_src}")
-                            except Exception as ve:
-                                print(f"[AUTO-V2] ❌ 订单#{order_id} video src兜底失败: {str(ve)[:60]}")
-                            _processed_share_links.discard(dedup_key)
-                            continue
-
-                        # 3. 悬停下载按钮，出现去水印开关
-                        await download_btn.hover()
-                        await asyncio.sleep(1)
-
-                        # 4. 尝试勾选去水印开关（带重试，确认 aria-checked 变为 true）
+                        # 1. 从视频卡片的 <video> 标签读取 CDN 链接
+                        #    链接格式: .../video/xxx_video_watermark_hash_id.mp4
+                        #    无水印格式: .../video/xxx_video_raw_hash_id.mp4
+                        watermark_url = None
                         try:
-                            watermark_switches = page.locator("button.ant-switch.hl-brand-switch")
-                            switch_count = await watermark_switches.count()
-                            for i in range(switch_count):
-                                # 每次点开关前重新 hover 下载按钮，保持悬浮面板不关闭
-                                try:
-                                    await download_btn.hover()
-                                    await asyncio.sleep(0.5)
-                                except Exception:
-                                    pass
-
-                                sw = watermark_switches.nth(i)
-                                try:
-                                    checked = await sw.get_attribute("aria-checked")
-                                    if checked == "true":
-                                        continue  # 已经开启，跳过
-
-                                    # 最多重试 3 次，直到确认 aria-checked == "true"
-                                    confirmed = False
-                                    for attempt in range(3):
-                                        try:
-                                            await sw.scroll_into_view_if_needed(timeout=2000)
-                                            await sw.click(force=True, timeout=3000)
-                                            await asyncio.sleep(0.6)
-
-                                            # 检测协议弹窗，点击同意
-                                            agree_btn = page.locator("button:has-text('同意')").first
-                                            try:
-                                                if await agree_btn.is_visible(timeout=2000):
-                                                    await agree_btn.click()
-                                                    await asyncio.sleep(0.5)
-                                                    print(f"[AUTO-V2] 📋 订单#{order_id} 同意去水印协议")
-                                            except Exception:
-                                                pass
-
-                                            # 确认状态已变为 true
-                                            new_checked = await sw.get_attribute("aria-checked")
-                                            if new_checked == "true":
-                                                confirmed = True
-                                                print(f"[AUTO-V2] 🔄 订单#{order_id} 去水印开关{i+1}已开启（第{attempt+1}次）")
-                                                break
-                                            else:
-                                                print(f"[AUTO-V2] ⚠️ 订单#{order_id} 去水印开关{i+1}第{attempt+1}次点击未生效，重试...")
-                                                await download_btn.hover()
-                                                await asyncio.sleep(0.5)
-                                        except Exception as sw_err:
-                                            print(f"[AUTO-V2] ⚠️ 订单#{order_id} 去水印开关{i+1}第{attempt+1}次异常: {str(sw_err)[:60]}")
-                                            await asyncio.sleep(0.5)
-
-                                    if not confirmed:
-                                        print(f"[AUTO-V2] ⚠️ 订单#{order_id} 去水印开关{i+1}重试3次仍未成功，继续下载")
-                                except Exception:
-                                    pass
+                            video_el = parent.locator("video").first
+                            watermark_url = await video_el.get_attribute("src", timeout=5000)
                         except Exception:
                             pass
 
-                        # 5. 点击下载按钮，直接触发下载
-                        try:
-                            async with page.expect_download(timeout=60000) as download_info:
-                                await download_btn.click()
-
-                            download = await download_info.value
-                            # 6. 保存到本地videos目录
-                            filename = f"order_{order_id}.mp4"
-                            filepath = os.path.join(VIDEOS_DIR, filename)
-                            await download.save_as(filepath)
-                            size_mb = os.path.getsize(filepath) / (1024 * 1024)
-                            print(f"[AUTO-V2] 📥 订单#{order_id} 下载完成 ({size_mb:.1f}MB)")
-
-                            self.update_order_result(order_id, f"/videos/{filename}", "completed")
-                            print(f"[AUTO-V2] 🎉 订单#{order_id}完成! 本地视频: {filename}")
-                            completed_count += 1
-                        except Exception as download_err:
-                            print(f"[AUTO-V2] ⚠️ 订单#{order_id} 下载失败: {str(download_err)[:80]}")
-                            # 下载失败，尝试复制分享链接给用户
+                        # 兜底：也尝试 source 标签
+                        if not watermark_url:
                             try:
-                                await parent.hover()
-                                await asyncio.sleep(0.5)
-                                share_btn = parent.locator("div.text-hl_text_00_legacy:has(svg path[d*='M7.84176'])").first
-                                if await share_btn.is_visible(timeout=3000):
-                                    await share_btn.click()
-                                    await asyncio.sleep(0.5)
-                                    share_link = await page.evaluate("() => navigator.clipboard.readText()") or ""
-                                    if share_link.startswith("http"):
-                                        self.update_order_result(order_id, share_link, "completed")
-                                        print(f"[AUTO-V2] 🔗 订单#{order_id} 已保存分享链接: {share_link}")
-                                        print(f"[AUTO-V2] 💡 订单#{order_id} 视频下载失败，用户可通过链接手动下载，或发工单处理")
-                                        completed_count += 1
-                                    else:
-                                        print(f"[AUTO-V2] ❌ 订单#{order_id} 获取分享链接失败")
-                                        _processed_share_links.discard(dedup_key)
-                                else:
-                                    print(f"[AUTO-V2] ❌ 订单#{order_id} 未找到分享按钮")
-                                    _processed_share_links.discard(dedup_key)
-                            except Exception as share_err:
-                                print(f"[AUTO-V2] ❌ 订单#{order_id} 获取分享链接也失败: {str(share_err)[:60]}")
-                                _processed_share_links.discard(dedup_key)
+                                source_el = parent.locator("video source").first
+                                watermark_url = await source_el.get_attribute("src", timeout=3000)
+                            except Exception:
+                                pass
+
+                        if not watermark_url or "cdn.hailuoai.com" not in watermark_url:
+                            print(f"[AUTO-V2] ❌ 订单#{order_id} 未找到 CDN 视频链接: {watermark_url}")
+                            _processed_share_links.discard(dedup_key)
+                            continue
+
+                        # 2. 将水印链接转换为无水印链接
+                        #    _video_watermark_ -> _video_raw_
+                        raw_url = watermark_url.replace("_video_watermark_", "_video_raw_")
+                        if raw_url == watermark_url:
+                            # 链接中没有 watermark 标志，可能本身就是无水印或格式变了
+                            print(f"[AUTO-V2] ⚠️ 订单#{order_id} 链接无法转换，直接用原链接: {watermark_url[:80]}")
+                            raw_url = watermark_url
+
+                        print(f"[AUTO-V2] 🔗 订单#{order_id} 无水印链接: {raw_url[:80]}...")
+
+                        # 3. 用 httpx 直接下载，流式写入避免大文件 OOM
+                        import httpx
+                        filename = f"order_{order_id}.mp4"
+                        filepath = os.path.join(VIDEOS_DIR, filename)
+                        download_ok = False
+                        for dl_attempt in range(3):
+                            try:
+                                async with httpx.AsyncClient(timeout=120, follow_redirects=True) as client:
+                                    async with client.stream("GET", raw_url) as resp:
+                                        if resp.status_code == 200:
+                                            with open(filepath, "wb") as vf:
+                                                async for chunk in resp.aiter_bytes(chunk_size=1024 * 256):
+                                                    vf.write(chunk)
+                                            size_mb = os.path.getsize(filepath) / (1024 * 1024)
+                                            print(f"[AUTO-V2] 📥 订单#{order_id} 无水印视频下载完成 ({size_mb:.1f}MB)")
+                                            download_ok = True
+                                            break
+                                        else:
+                                            print(f"[AUTO-V2] ⚠️ 订单#{order_id} 第{dl_attempt+1}次下载失败: HTTP {resp.status_code}")
+                            except Exception as dl_err:
+                                print(f"[AUTO-V2] ⚠️ 订单#{order_id} 第{dl_attempt+1}次下载异常: {str(dl_err)[:80]}")
+                            if not download_ok:
+                                await asyncio.sleep(3)
+
+                        if download_ok:
+                            self.update_order_result(order_id, f"/videos/{filename}", "completed")
+                            print(f"[AUTO-V2] 🎉 订单#{order_id}完成!")
+                            completed_count += 1
+                        else:
+                            print(f"[AUTO-V2] ❌ 订单#{order_id} 3次下载均失败，丢弃")
+                            _processed_share_links.discard(dedup_key)
 
                     except Exception as e:
                         print(f"[AUTO-V2] 下载视频出错 订单#{order_id}: {str(e)[:100]}")
