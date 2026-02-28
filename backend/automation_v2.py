@@ -341,6 +341,10 @@ class HailuoAutomationV2:
                             account_credits=getattr(self, '_account_credits', {})
                         )
                         if account_id:
+                            # 禁止并发：该账号已有任务在跑则跳过，等上一个完成再分配
+                            if account_id in self._submit_locks and self._submit_locks[account_id].locked():
+                                print(f"[AUTO-V2] 账号 {account_id} 正在提交中，订单#{order['id']} 等下次循环")
+                                continue
                             self._processing_order_ids.add(order['id'])
                             # 记录订单分配到哪个账号
                             if account_id not in self._account_orders:
