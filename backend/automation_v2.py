@@ -56,6 +56,9 @@ def extract_order_id_from_text(text: str) -> Optional[int]:
 _processed_share_links: Set[str] = set()
 _MAX_SHARE_LINKS = 500
 
+# 新订单唤醒事件：订单创建时 set()，主循环 wait() 立即响应
+_new_order_event: asyncio.Event = asyncio.Event()
+
 # 视频下载目录
 VIDEOS_DIR = os.path.join(os.path.dirname(__file__), "..", "videos")
 os.makedirs(VIDEOS_DIR, exist_ok=True)
@@ -388,15 +391,21 @@ class HailuoAutomationV2:
                 if generating_count == 0 and len(self.task_handlers) == 0:
                     await self._refresh_account_credits()
 
-                # 动态轮询间隔：有活跃任务时短间隔，空闲时渐进拉长
-                if generating_count > 0 or len(self.task_handlers) > 0:
+                # 动态等待：空闲时最长等60秒，但新订单到来时立刻唤醒
+                has_pending = bool(self.get_pending_orders())
+                if generating_count > 0 or len(self.task_handlers) > 0 or has_pending:
                     self._idle_count = 0
-                    await asyncio.sleep(poll_interval)
+                    wait_interval = poll_interval
                 else:
                     self._idle_count = getattr(self, '_idle_count', 0) + 1
-                    # 空闲时渐进：15s -> 30s -> 45s -> 60s（封顶）
-                    idle_interval = min(poll_interval * 3 + self._idle_count * 15, 60)
-                    await asyncio.sleep(idle_interval)
+                    wait_interval = min(poll_interval * 3 + self._idle_count * 15, 60)
+
+                _new_order_event.clear()
+                try:
+                    await asyncio.wait_for(_new_order_event.wait(), timeout=wait_interval)
+                    print(f"[AUTO-V2] ⚡ 新订单唤醒，立即处理")
+                except asyncio.TimeoutError:
+                    pass
 
             except Exception as e:
                 print(f"[AUTO-V2] 任务循环错误: {e}")
@@ -993,6 +1002,10 @@ class HailuoAutomationV2:
                     if submit_confirmed:
                         print(f"[AUTO-V2] ✅ 订单#{order_id}已确认提交生成")
                         self.update_order_status(order_id, "generating")
+                        # 提交成功后重新加入扫描队列，让扫描循环跟踪下载
+                        if account_id not in self._account_orders:
+                            self._account_orders[account_id] = set()
+                        self._account_orders[account_id].add(order_id)
                     else:
                         print(f"[AUTO-V2] ❌ 订单#{order_id}重试3次后仍无确认信号，标记失败")
                         self.update_order_status(order_id, "failed")
@@ -1014,6 +1027,9 @@ class HailuoAutomationV2:
         finally:
             account.current_tasks = max(0, account.current_tasks - 1)
             self._processing_order_ids.discard(order_id)
+            # 提交完成后从 _account_orders 移除（generating 由扫描循环负责，不要留在这里积累）
+            for aid_orders in self._account_orders.values():
+                aid_orders.discard(order_id)
     
     async def select_model(self, page: Page, model_name: str):
         """选择指定的AI模型 - 移植自V1的popover方式"""

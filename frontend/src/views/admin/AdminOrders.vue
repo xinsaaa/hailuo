@@ -11,6 +11,13 @@ const showModal = ref(false)
 const editingOrder = ref(null)
 const editForm = ref({ status: '', video_url: '' })
 
+const getAdminVideoUrl = (url) => {
+  if (!url || !url.startsWith('/videos/')) return url
+  const token = localStorage.getItem('adminToken') || localStorage.getItem('token')
+  const sep = url.includes('?') ? '&' : '?'
+  return token ? `${url}${sep}token=${token}` : url
+}
+
 const showToast = ref(false)
 const toastMessage = ref('')
 const toastType = ref('info')
@@ -133,9 +140,9 @@ onMounted(() => loadOrders())
                         </span>
                     </td>
                     <td class="px-6 py-4 text-sm">
-                        <a 
-                            v-if="order.video_url" 
-                            :href="order.video_url" 
+                        <a
+                            v-if="order.video_url"
+                            :href="getAdminVideoUrl(order.video_url)"
                             target="_blank"
                             class="inline-flex items-center gap-1.5 px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded-lg text-blue-400 hover:text-blue-300 transition-colors text-xs font-medium"
                         >

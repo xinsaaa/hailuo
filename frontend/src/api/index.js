@@ -6,9 +6,9 @@ const getBaseURL = () => {
     if (import.meta.env.VITE_API_URL) {
         return import.meta.env.VITE_API_URL
     }
-    // 如果访问的不是 localhost，说明是远程访问，使用当前域名
+    // 如果访问的不是 localhost，说明是远程访问，使用当前域名同源（由 Nginx 反代）
     if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-        return `${window.location.protocol}//${window.location.hostname}:8000/api`
+        return `${window.location.protocol}//${window.location.host}/api`
     }
     // 本地开发：localhost
     return 'http://localhost:8000/api'
