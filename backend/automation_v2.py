@@ -578,7 +578,7 @@ class HailuoAutomationV2:
                                 await dl_trigger.hover()
                                 await asyncio.sleep(1.0)
 
-                                # 3. 等浮窗出现，不操作水印开关（默认已全部开启，点击反而会关掉）
+                                # 3. 等浮窗出现
                                 dropdown_locator = page.locator(".ant-dropdown:not(.ant-dropdown-hidden)").first
                                 try:
                                     await dropdown_locator.wait_for(state="visible", timeout=3000)
@@ -587,8 +587,57 @@ class HailuoAutomationV2:
                                     await asyncio.sleep(1)
                                     continue
 
-                                # 4. 找浮窗内的"下载"按钮（class 含 cl_hl_H9_M，文字为"下载"）
-                                # 必须限定在当前可见浮窗内，防止多卡片时选错
+                                # 4. 逐个点击未开启的水印开关（实际默认是 false，需要点击开启）
+                                #    点击后可能弹出《去水印规则》确认弹窗（不一定），需要处理
+                                #    点击后浮窗可能关闭（无论是否有弹窗），需要重新 hover
+                                sw_count = await dropdown_locator.locator("button[role='switch']").count()
+                                for sw_idx in range(sw_count):
+                                    try:
+                                        # 每次都重新定位，避免 DOM 重建后 stale 引用
+                                        sw = dropdown_locator.locator("button[role='switch']").nth(sw_idx)
+                                        checked = await sw.get_attribute("aria-checked", timeout=2000)
+                                        if checked != "false":
+                                            print(f"[AUTO-V2] 订单#{order_id} 开关[{sw_idx}]已开启，跳过")
+                                            continue
+                                        print(f"[AUTO-V2] 订单#{order_id} 点击水印开关[{sw_idx}]")
+                                        await sw.click()
+                                        await asyncio.sleep(0.8)
+                                        # 点击后可能弹出协议确认弹窗（不一定出现），自动同意
+                                        for confirm_sel in [
+                                            "button:has-text('同意')",
+                                            "button:has-text('确认')",
+                                            "button:has-text('确定')",
+                                            ".ant-modal-footer .ant-btn-primary",
+                                            ".ant-modal .ant-btn-primary",
+                                        ]:
+                                            try:
+                                                confirm_btn = page.locator(confirm_sel).first
+                                                if await confirm_btn.is_visible(timeout=1000):
+                                                    await confirm_btn.click()
+                                                    print(f"[AUTO-V2] 订单#{order_id} 开关[{sw_idx}]同意协议弹窗")
+                                                    await asyncio.sleep(0.5)
+                                                    break
+                                            except:
+                                                pass
+                                        # 浮窗可能因点击而关闭，重新 hover 确保后续操作可继续
+                                        dropdown_visible = False
+                                        try:
+                                            dropdown_visible = await dropdown_locator.is_visible(timeout=800)
+                                        except:
+                                            pass
+                                        if not dropdown_visible:
+                                            print(f"[AUTO-V2] 订单#{order_id} 浮窗已关闭，重新hover")
+                                            await dl_trigger.hover()
+                                            await asyncio.sleep(1.0)
+                                            try:
+                                                await dropdown_locator.wait_for(state="visible", timeout=3000)
+                                            except:
+                                                print(f"[AUTO-V2] ⚠️ 订单#{order_id} 重新hover后浮窗未出现")
+                                                break
+                                    except Exception as sw_err:
+                                        print(f"[AUTO-V2] ⚠️ 订单#{order_id} 处理开关[{sw_idx}]出错: {str(sw_err)[:80]}")
+
+                                # 5. 找浮窗内的"下载"按钮（class 含 cl_hl_H9_M，文字为"下载"）
                                 dropdown_dl_btn = None
                                 for btn_sel in [
                                     "button.cl_hl_H9_M",
