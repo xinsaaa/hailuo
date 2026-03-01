@@ -216,26 +216,6 @@ class HailuoAutomationV2:
         self._processing_order_ids.clear()
         self._account_orders.clear()
 
-        # 3b. 将数据库中仍为 generating 的订单重新放回扫描队列
-        # 重启后浏览器已重新登录，这些订单在海螺页面上仍存在，需要继续扫描
-        try:
-            with Session(engine) as session:
-                orphaned = session.exec(
-                    select(VideoOrder).where(VideoOrder.status == "generating")
-                ).all()
-                if orphaned:
-                    print(f"[AUTO-V2] 🔄 重启后发现 {len(orphaned)} 个 generating 订单，恢复扫描队列")
-                    # 无法精确知道订单在哪个账号，平均分配给所有活跃账号
-                    active_ids = [aid for aid, acc in self.manager.accounts.items() if acc.is_active]
-                    if active_ids:
-                        for i, order in enumerate(orphaned):
-                            target = active_ids[i % len(active_ids)]
-                            if target not in self._account_orders:
-                                self._account_orders[target] = set()
-                            self._account_orders[target].add(order.id)
-        except Exception as e:
-            print(f"[AUTO-V2] ⚠️ 恢复 generating 订单失败: {e}")
-
         # 4. 重新初始化并登录
         print("[AUTO-V2] 重新加载账号配置并登录...")
         try:
@@ -256,6 +236,26 @@ class HailuoAutomationV2:
                 print(f"[AUTO-V2] ✅ 重启后成功登录 {success_count}/{len(login_tasks)} 个账号")
         except Exception as e:
             print(f"[AUTO-V2] ❌ 重启时重新登录失败: {e}")
+
+        # 4b. 登录完成后，将数据库中仍为 generating 的订单放回扫描队列
+        # 必须在登录后执行，扫描条件要求账号在 _verified_accounts 中
+        try:
+            with Session(engine) as session:
+                orphaned = session.exec(
+                    select(VideoOrder).where(VideoOrder.status == "generating")
+                ).all()
+                if orphaned:
+                    print(f"[AUTO-V2] 🔄 重启后发现 {len(orphaned)} 个 generating 订单，恢复扫描队列")
+                    active_ids = [aid for aid in self.manager._verified_accounts
+                                  if aid in self.manager.accounts and self.manager.accounts[aid].is_active]
+                    if active_ids:
+                        for i, order in enumerate(orphaned):
+                            target = active_ids[i % len(active_ids)]
+                            if target not in self._account_orders:
+                                self._account_orders[target] = set()
+                            self._account_orders[target].add(order.id)
+        except Exception as e:
+            print(f"[AUTO-V2] ⚠️ 恢复 generating 订单失败: {e}")
 
         # 5. 重启核心循环
         self._loop_task = asyncio.create_task(self.task_processing_loop())
@@ -1027,9 +1027,6 @@ class HailuoAutomationV2:
         finally:
             account.current_tasks = max(0, account.current_tasks - 1)
             self._processing_order_ids.discard(order_id)
-            # 提交完成后从 _account_orders 移除（generating 由扫描循环负责，不要留在这里积累）
-            for aid_orders in self._account_orders.values():
-                aid_orders.discard(order_id)
     
     async def select_model(self, page: Page, model_name: str):
         """选择指定的AI模型 - 移植自V1的popover方式"""
