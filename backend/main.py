@@ -1173,10 +1173,11 @@ async def create_order(
     if enable_multi_account:
         # 多账号模式：唤醒主循环立即处理，无需等待轮询间隔
         try:
-            from backend.automation_v2 import _new_order_event
-            _new_order_event.set()
-        except Exception:
-            pass
+            from backend.automation_v2 import _notify_new_order
+            _notify_new_order()
+            app_logger.info(f"订单#{new_order.id}已唤醒自动化主循环")
+        except Exception as e:
+            app_logger.error(f"唤醒自动化主循环失败: {e}")
     else:
         # 单账号模式：推入队列
         import asyncio

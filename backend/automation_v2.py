@@ -56,8 +56,20 @@ def extract_order_id_from_text(text: str) -> Optional[int]:
 _processed_share_links: Set[str] = set()
 _MAX_SHARE_LINKS = 500
 
-# 新订单唤醒事件：订单创建时 set()，主循环 wait() 立即响应
-_new_order_event: asyncio.Event = asyncio.Event()
+# 新订单唤醒事件：延迟初始化，确保事件循环已存在
+_new_order_event: Optional[asyncio.Event] = None
+
+def _get_new_order_event() -> asyncio.Event:
+    """获取或创建新订单事件（延迟初始化，确保事件循环已存在）"""
+    global _new_order_event
+    if _new_order_event is None:
+        _new_order_event = asyncio.Event()
+    return _new_order_event
+
+def _notify_new_order():
+    """通知有新订单（供外部调用）"""
+    event = _get_new_order_event()
+    event.set()
 
 # 视频下载目录
 VIDEOS_DIR = os.path.join(os.path.dirname(__file__), "..", "videos")
@@ -400,9 +412,11 @@ class HailuoAutomationV2:
                     self._idle_count = getattr(self, '_idle_count', 0) + 1
                     wait_interval = min(poll_interval * 3 + self._idle_count * 15, 60)
 
-                _new_order_event.clear()
+                # 使用延迟初始化的事件，避免事件循环问题
+                event = _get_new_order_event()
+                event.clear()
                 try:
-                    await asyncio.wait_for(_new_order_event.wait(), timeout=wait_interval)
+                    await asyncio.wait_for(event.wait(), timeout=wait_interval)
                     print(f"[AUTO-V2] ⚡ 新订单唤醒，立即处理")
                 except asyncio.TimeoutError:
                     pass
