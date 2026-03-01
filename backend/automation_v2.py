@@ -628,8 +628,9 @@ class HailuoAutomationV2:
                             print(f"[AUTO-V2] 🎉 订单#{order_id}完成!")
                             completed_count += 1
                         else:
-                            print(f"[AUTO-V2] ❌ 订单#{order_id} 3次下载均失败，丢弃")
+                            print(f"[AUTO-V2] ❌ 订单#{order_id} 3次下载均失败，标记失败")
                             _processed_share_links.discard(dedup_key)
+                            self.update_order_status(order_id, "failed")
 
                     except Exception as e:
                         print(f"[AUTO-V2] 下载视频出错 订单#{order_id}: {str(e)[:100]}")

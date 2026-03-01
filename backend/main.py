@@ -679,28 +679,32 @@ def login(data: LoginWithCaptcha, request: Request, session: Session = Depends(g
             if data.username == ADMIN_USERNAME:
                 if not verify_password(data.password, ADMIN_PASSWORD_HASH):
                     app_logger.warning("Admin login failed - incorrect password", client_ip=client_ip)
-                    # record_fail(client_ip)
+                    record_fail(client_ip)
                     raise HTTPException(status_code=401, detail="用户名或密码错误")
-                
+
                 app_logger.audit("admin.login", username=data.username, login_ip=client_ip)
-                # record_success(client_ip)
+                record_success(client_ip)
                 access_token = create_access_token(data={"sub": data.username, "is_admin": True})
                 return {"access_token": access_token, "token_type": "bearer", "is_admin": True}
+        except HTTPException:
+            raise
         except Exception as e:
             app_logger.error("Admin login check error", exc_info=e)
-        
+
         # 验证普通用户名密码
         user = session.exec(select(User).where(User.username == data.username)).first()
         if not user:
             app_logger.warning("Login failed - user not found", username=data.username, client_ip=client_ip)
+            record_fail(client_ip)
             raise HTTPException(status_code=401, detail="用户名或密码错误")
-            
+
         if not verify_password(data.password, user.hashed_password):
             app_logger.warning("Login failed - incorrect password", username=data.username, client_ip=client_ip)
+            record_fail(client_ip)
             raise HTTPException(status_code=401, detail="用户名或密码错误")
-        
+
         app_logger.audit("user.login", user_id=user.id, username=user.username, login_ip=client_ip)
-        # record_success(client_ip)
+        record_success(client_ip)
         # 安全获取管理员状态，防止数据库字段不存在
         is_admin = getattr(user, 'is_superuser', False)
         access_token = create_access_token(data={"sub": user.username, "is_admin": is_admin})
