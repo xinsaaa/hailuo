@@ -397,11 +397,12 @@ class HailuoAutomationV2:
                         if acc:
                             print(f"[AUTO-V2]   - 账号{aid}: current_tasks={acc.current_tasks}, is_active={acc.is_active}")
                 
-                # 只扫描有未完成订单且当前没有正在提交任务的账号
+                # 只扫描已登录且当前没有正在提交任务的账号
+                # 触发条件：数据库有 generating 订单 OR _account_orders 有记录（两者取并集，不依赖单一内存状态）
                 accounts_with_orders = [aid for aid in all_pages
                                         if aid in self.manager._verified_accounts
                                         and aid in self.manager.accounts
-                                        and self._account_orders.get(aid)
+                                        and (self._account_orders.get(aid) or generating_count > 0)
                                         and self.manager.accounts[aid].current_tasks == 0]
                 if accounts_with_orders:
                     print(f"[AUTO-V2] 📋 需扫描账号: {accounts_with_orders}")
