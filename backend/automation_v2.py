@@ -568,11 +568,21 @@ class HailuoAutomationV2:
             for page_name, target_url in pages_to_scan:
                 try:
                     print(f"[AUTO-V2] 🔍 账号{account_id} 扫描{page_name}页面...")
-                    await asyncio.wait_for(
-                        page.goto(target_url, timeout=30000, wait_until="domcontentloaded"),
-                        timeout=35
-                    )
-                    await asyncio.sleep(3)
+                    # 强制刷新页面，确保获取最新状态
+                    current_url = page.url
+                    if target_url in current_url:
+                        # 已在目标页面，执行刷新
+                        await asyncio.wait_for(
+                            page.reload(timeout=30000, wait_until="networkidle"),
+                            timeout=35
+                        )
+                    else:
+                        # 导航到目标页面
+                        await asyncio.wait_for(
+                            page.goto(target_url, timeout=30000, wait_until="networkidle"),
+                            timeout=35
+                        )
+                    await asyncio.sleep(2)
                 except asyncio.TimeoutError:
                     print(f"[AUTO-V2] ⚠️ 账号{account_id} {page_name}页面操作超时(>35s)，跳过")
                     continue
@@ -628,32 +638,49 @@ class HailuoAutomationV2:
                 still_processing = False
                 processing_reason = ""
 
+                # 检测1: 排队中
                 try:
                     if await parent.locator("div:has-text('低速生成中')").is_visible():
                         still_processing = True
                         processing_reason = "排队中"
                         self._update_order_progress(order_id, -1)
+                        print(f"[AUTO-V2]   检测到: 低速生成中")
                 except:
                     pass
 
+                # 检测2: 优化提示词
                 if not still_processing:
                     try:
                         if await parent.locator("div:has-text('正在优化提示词')").is_visible():
                             still_processing = True
                             processing_reason = "优化提示词中"
+                            print(f"[AUTO-V2]   检测到: 正在优化提示词")
                     except:
                         pass
 
+                # 检测3: loading图
                 if not still_processing:
                     try:
                         has_loading = await parent.locator("img[alt*='hailuo AI video loading']").count() > 0
-                        has_cancel = await parent.locator("div:has-text('取消')").count() > 0
-                        if has_loading or has_cancel:
+                        if has_loading:
                             still_processing = True
-                            processing_reason = "加载中(loading图/取消按钮)"
+                            processing_reason = "加载中(loading图)"
+                            print(f"[AUTO-V2]   检测到: loading图")
                     except:
                         pass
 
+                # 检测4: 取消按钮（更精确的选择器）
+                if not still_processing:
+                    try:
+                        has_cancel = await parent.locator("button:has-text('取消')").count() > 0
+                        if has_cancel:
+                            still_processing = True
+                            processing_reason = "生成中(有取消按钮)"
+                            print(f"[AUTO-V2]   检测到: 取消按钮")
+                    except:
+                        pass
+
+                # 检测5: 进度条
                 if not still_processing:
                     try:
                         progress = parent.locator(".ant-progress-text")
@@ -661,11 +688,22 @@ class HailuoAutomationV2:
                             progress_text = await progress.text_content() or "0%"
                             still_processing = True
                             processing_reason = f"进度条 {progress_text}"
+                            print(f"[AUTO-V2]   检测到: 进度条 {progress_text}")
                             try:
                                 val = int(progress_text.replace("%", "").strip())
                                 self._update_order_progress(order_id, val)
                             except:
                                 pass
+                    except:
+                        pass
+
+                # 检测6: 视频是否已完成（有播放按钮或下载按钮）
+                if not still_processing:
+                    try:
+                        has_play = await parent.locator("button:has-text('播放'), video").count() > 0
+                        has_download_btn = await parent.locator("button:has(path[d*='M2 9.26074']), button:has(path[d*='M8.65991'])").count() > 0
+                        if has_play or has_download_btn:
+                            print(f"[AUTO-V2]   检测到: 视频已完成(播放/下载按钮)")
                     except:
                         pass
 
