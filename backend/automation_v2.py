@@ -14,6 +14,29 @@ from playwright.async_api import async_playwright, Browser, BrowserContext, Page
 from sqlmodel import Session, select
 from backend.models import VideoOrder, SystemConfig, User, Transaction, engine
 
+# 导入日志收集器（用于前端显示）
+from backend.automation import automation_logger
+
+def log_info(msg: str):
+    """同时输出到控制台和日志收集器"""
+    print(f"[AUTO-V2] {msg}")
+    automation_logger.info(msg, quiet=True)
+
+def log_success(msg: str):
+    """成功日志"""
+    print(f"[AUTO-V2] ✅ {msg}")
+    automation_logger.success(msg)
+
+def log_warn(msg: str):
+    """警告日志"""
+    print(f"[AUTO-V2] ⚠️ {msg}")
+    automation_logger.warn(msg)
+
+def log_error(msg: str):
+    """错误日志"""
+    print(f"[AUTO-V2] ❌ {msg}")
+    automation_logger.error(msg)
+
 # 配置缓存，避免每次都查数据库
 _config_cache: Dict[str, Any] = {}
 _config_cache_time: float = 0
@@ -106,65 +129,65 @@ class HailuoAutomationV2:
     async def start(self):
         """启动多账号自动化系统"""
         if self.is_running:
-            print("[AUTO-V2] 系统已在运行中")
+            log_info("系统已在运行中")
             return
         
-        print("[AUTO-V2] 🚀 启动多账号自动化系统...")
+        log_info("🚀 启动多账号自动化系统...")
         
         try:
             # 加载账号配置
             self.manager.load_accounts_config("accounts.json")
-            print(f"[AUTO-V2] 已加载 {len(self.manager.accounts)} 个账号配置")
+            log_info(f"已加载 {len(self.manager.accounts)} 个账号配置")
             
             # 检查是否有可用账号
             active_accounts = [acc for acc in self.manager.accounts.values() if acc.is_active]
             if not active_accounts:
-                print("[AUTO-V2] ⚠️ 没有激活的账号，系统无法启动")
+                log_warn("没有激活的账号，系统无法启动")
                 return
             
             # 设置运行状态
             self.is_running = True
             self._start_time = datetime.utcnow()
-            print("[AUTO-V2] ✅ 系统状态已设置为运行中")
+            log_success("系统状态已设置为运行中")
             
             # 并行登录所有激活的账号（先加载Cookie再登录）
             login_tasks = []
-            print("[AUTO-V2] 开始初始化账号上下文...")
+            log_info("开始初始化账号上下文...")
             
             for account_id, account in self.manager.accounts.items():
                 if account.is_active:
                     try:
-                        print(f"[AUTO-V2] 正在初始化账号: {account.display_name}")
+                        log_info(f"正在初始化账号: {account.display_name}")
                         # 创建上下文
                         await self.manager.create_account_context(account_id)
                         # 尝试加载Cookie（已在create_account_context中处理）
                         # 添加登录任务
                         login_tasks.append(self.manager.login_account(account_id))
                     except Exception as e:
-                        print(f"[AUTO-V2] ❌ 初始化账号 {account.display_name} 失败: {e}")
+                        log_error(f"初始化账号 {account.display_name} 失败: {e}")
             
             if login_tasks:
-                print(f"[AUTO-V2] 开始登录 {len(login_tasks)} 个账号...")
+                log_info(f"开始登录 {len(login_tasks)} 个账号...")
                 # 并行登录
                 login_results = await asyncio.gather(*login_tasks, return_exceptions=True)
                 success_count = sum(1 for result in login_results if result is True)
-                print(f"[AUTO-V2] ✅ 成功登录 {success_count}/{len(login_tasks)} 个账号")
+                log_success(f"成功登录 {success_count}/{len(login_tasks)} 个账号")
             
             # 启动任务处理循环
-            print("[AUTO-V2] 启动任务处理循环...")
+            log_info("启动任务处理循环...")
             self._loop_task = asyncio.create_task(self.task_processing_loop())
 
             # 启动账号健康检查循环
-            print("[AUTO-V2] 启动账号健康检查循环...")
+            log_info("启动账号健康检查循环...")
             self._health_task = asyncio.create_task(self.account_health_check_loop())
 
             # 启动监控循环，自动重启死掉的核心任务
             asyncio.create_task(self._watchdog_loop())
             
-            print("[AUTO-V2] 🎉 多账号自动化系统启动成功！")
+            log_success("🎉 多账号自动化系统启动成功！")
             
         except Exception as e:
-            print(f"[AUTO-V2] ❌ 系统启动失败: {e}")
+            log_error(f"系统启动失败: {e}")
             self.is_running = False  # 确保启动失败时重置状态
             raise
 
@@ -180,7 +203,7 @@ class HailuoAutomationV2:
                 if self._last_heartbeat:
                     heartbeat_elapsed = (datetime.utcnow() - self._last_heartbeat).total_seconds()
                     if heartbeat_elapsed > self._heartbeat_timeout:
-                        print(f"[AUTO-V2] 🚨 主循环心跳超时 {heartbeat_elapsed:.0f}秒，可能卡住，强制重启")
+                        log_warn(f"🚨 主循环心跳超时 {heartbeat_elapsed:.0f}秒，可能卡住，强制重启")
                         await self._scheduled_restart()
                         continue
 
@@ -193,30 +216,30 @@ class HailuoAutomationV2:
                         max_delay = 1800
                         overdue = elapsed - self._restart_interval
                         if active_tasks > 0 and overdue < max_delay:
-                            print(f"[AUTO-V2] ⏰ 已运行{elapsed/60:.0f}分钟，有{active_tasks}个活跃任务，延迟重启（已超期{overdue/60:.0f}分钟）...")
+                            log_info(f"⏰ 已运行{elapsed/60:.0f}分钟，有{active_tasks}个活跃任务，延迟重启（已超期{overdue/60:.0f}分钟）...")
                         else:
                             if active_tasks > 0:
-                                print(f"[AUTO-V2] ⏰ 已运行{elapsed/60:.0f}分钟，超期{overdue/60:.0f}分钟强制重启（{active_tasks}个任务可能卡死）")
+                                log_warn(f"⏰ 已运行{elapsed/60:.0f}分钟，超期{overdue/60:.0f}分钟强制重启（{active_tasks}个任务可能卡死）")
                             else:
-                                print(f"[AUTO-V2] ⏰ 已运行{elapsed/60:.0f}分钟，开始定时重启...")
+                                log_info(f"⏰ 已运行{elapsed/60:.0f}分钟，开始定时重启...")
                             await self._scheduled_restart()
                             continue
 
                 if self._loop_task and self._loop_task.done():
                     exc = self._loop_task.exception() if not self._loop_task.cancelled() else None
-                    print(f"[AUTO-V2] ⚠️ 任务处理循环已死亡{f': {exc}' if exc else ''}，正在重启...")
+                    log_warn(f"任务处理循环已死亡{f': {exc}' if exc else ''}，正在重启...")
                     self._loop_task = asyncio.create_task(self.task_processing_loop())
                 if self._health_task and self._health_task.done():
                     exc = self._health_task.exception() if not self._health_task.cancelled() else None
-                    print(f"[AUTO-V2] ⚠️ 健康检查循环已死亡{f': {exc}' if exc else ''}，正在重启...")
+                    log_warn(f"健康检查循环已死亡{f': {exc}' if exc else ''}，正在重启...")
                     self._health_task = asyncio.create_task(self.account_health_check_loop())
             except Exception as e:
-                print(f"[AUTO-V2] 监控循环错误: {e}")
+                log_error(f"监控循环错误: {e}")
                 await asyncio.sleep(10)
 
     async def _scheduled_restart(self):
         """定时重启：关闭所有上下文，重新登录，重启核心循环"""
-        print("[AUTO-V2] 🔄 开始定时重启...")
+        log_info("🔄 开始定时重启...")
 
         # 1. 取消并等待核心循环任务结束
         for task, name in [(self._loop_task, "任务循环"), (self._health_task, "健康检查")]:
@@ -401,7 +424,7 @@ class HailuoAutomationV2:
                     if not task.cancelled():
                         exc = task.exception()
                         if exc:
-                            print(f"[AUTO-V2] ⚠️ 任务{task_id}异常: {exc}")
+                            log_warn(f"任务{task_id}异常: {exc}")
                     # 从processing集合中移除对应的order_id
                     try:
                         oid = int(task_id.split('_')[-1])
@@ -430,12 +453,12 @@ class HailuoAutomationV2:
                 event.clear()
                 try:
                     await asyncio.wait_for(event.wait(), timeout=wait_interval)
-                    print(f"[AUTO-V2] ⚡ 新订单唤醒，立即处理")
+                    log_info("⚡ 新订单唤醒，立即处理")
                 except asyncio.TimeoutError:
                     pass
 
             except Exception as e:
-                print(f"[AUTO-V2] 任务循环错误: {e}")
+                log_error(f"任务循环错误: {e}")
                 await asyncio.sleep(10)
     
     def get_pending_orders(self) -> List[dict]:
@@ -1399,14 +1422,14 @@ class HailuoAutomationV2:
         )
         
         if not account_id:
-            print(f"[AUTO-V2] 📭 订单#{order_id}暂无可用账号，等待主循环处理")
+            log_info(f"📭 订单#{order_id}暂无可用账号，等待主循环处理")
             return False
         
         account_has_task = any(
             k.startswith(f"{account_id}_") for k in self.task_handlers
         )
         if account_has_task:
-            print(f"[AUTO-V2] 账号 {account_id} 已有任务运行，订单#{order_id}等待主循环处理")
+            log_info(f"账号 {account_id} 已有任务运行，订单#{order_id}等待主循环处理")
             return False
         
         self._processing_order_ids.add(order_id)
@@ -1418,12 +1441,12 @@ class HailuoAutomationV2:
             self.process_order(account_id, order_dict)
         )
         self.task_handlers[f"{account_id}_{order_id}"] = task
-        print(f"[AUTO-V2] ⚡ 订单#{order_id}已立即分配给账号 {account_id}")
+        log_success(f"⚡ 订单#{order_id}已立即分配给账号 {account_id}")
         return True
     
     async def stop(self):
         """停止自动化系统"""
-        print("[AUTO-V2] 🛑 停止多账号自动化系统...")
+        log_info("🛑 停止多账号自动化系统...")
         self.is_running = False
         
         # 等待所有任务完成
