@@ -385,6 +385,18 @@ class HailuoAutomationV2:
                 # ========== 第1步: 扫描有未完成订单的账号页面 ==========
                 scanned_accounts = 0
                 all_pages = list(self.manager.pages.keys())
+                
+                # 调试日志：显示扫描条件
+                if generating_count > 0:
+                    print(f"[AUTO-V2] 🔍 扫描条件检查:")
+                    print(f"[AUTO-V2]   - all_pages: {all_pages}")
+                    print(f"[AUTO-V2]   - verified_accounts: {list(self.manager._verified_accounts)}")
+                    print(f"[AUTO-V2]   - _account_orders: {dict(self._account_orders)}")
+                    for aid in all_pages:
+                        acc = self.manager.accounts.get(aid)
+                        if acc:
+                            print(f"[AUTO-V2]   - 账号{aid}: current_tasks={acc.current_tasks}, is_active={acc.is_active}")
+                
                 # 只扫描有未完成订单且当前没有正在提交任务的账号
                 accounts_with_orders = [aid for aid in all_pages
                                         if aid in self.manager._verified_accounts
@@ -393,6 +405,8 @@ class HailuoAutomationV2:
                                         and self.manager.accounts[aid].current_tasks == 0]
                 if accounts_with_orders:
                     print(f"[AUTO-V2] 📋 需扫描账号: {accounts_with_orders}")
+                elif generating_count > 0:
+                    print(f"[AUTO-V2] ⚠️ 有{generating_count}个generating订单但无账号满足扫描条件!")
                 for account_id in accounts_with_orders:
                     page = self.manager.pages.get(account_id)
                     if not page:
@@ -1119,6 +1133,7 @@ class HailuoAutomationV2:
                         if account_id not in self._account_orders:
                             self._account_orders[account_id] = set()
                         self._account_orders[account_id].add(order_id)
+                        print(f"[AUTO-V2] 📌 订单#{order_id} 已加入账号 {account_id} 的扫描队列，当前队列: {self._account_orders[account_id]}")
                     else:
                         print(f"[AUTO-V2] ❌ 订单#{order_id}重试3次后仍无确认信号，标记失败")
                         self.update_order_status(order_id, "failed")
