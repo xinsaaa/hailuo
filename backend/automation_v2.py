@@ -530,12 +530,16 @@ class HailuoAutomationV2:
                     for oid in self._account_orders[account_id]:
                         order = session.get(VideoOrder, oid)
                         if order and order.status == "generating":
-                            video_type = getattr(order, 'video_type', 'image_to_video')
+                            video_type = getattr(order, 'video_type', None) or 'image_to_video'
                             order_types.add(video_type)
+                            print(f"[AUTO-V2] 📋 订单#{oid} video_type={video_type}")
             
             # 如果没有订单信息，默认扫描两个页面
             if not order_types:
                 order_types = {'image_to_video', 'text_to_video'}
+                print(f"[AUTO-V2] ⚠️ 未检测到订单类型，默认扫描两个页面")
+            
+            print(f"[AUTO-V2] 📋 需扫描的页面类型: {order_types}")
             
             # 扫描需要的页面
             pages_to_scan = []

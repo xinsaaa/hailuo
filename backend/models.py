@@ -165,6 +165,7 @@ def _auto_migrate():
     cursor.execute("PRAGMA table_info(videoorder)")
     existing_cols = {row[1] for row in cursor.fetchall()}
     migrations = [
+        ("videoorder", "video_type", "TEXT DEFAULT 'image_to_video'"),
         ("videoorder", "resolution", "TEXT DEFAULT '768p'"),
         ("videoorder", "duration", "TEXT DEFAULT '6s'"),
     ]
