@@ -98,6 +98,10 @@ class HailuoAutomationV2:
         self._scanning_accounts: Set[str] = set()
         # 每个账号的提交锁：同一账号同一时间只允许一个任务执行"填写提示词+点生成"
         self._submit_locks: Dict[str, asyncio.Lock] = {}
+        # 主循环心跳时间戳，用于检测卡住的任务
+        self._last_heartbeat: Optional[datetime] = None
+        # 心跳超时阈值（秒），超过此时间无心跳则认为主循环卡住
+        self._heartbeat_timeout = 300
         
     async def start(self):
         """启动多账号自动化系统"""
@@ -165,12 +169,20 @@ class HailuoAutomationV2:
             raise
 
     async def _watchdog_loop(self):
-        """监控核心任务，死掉自动重启 + 每小时定时重启整个系统"""
+        """监控核心任务，死掉自动重启 + 每小时定时重启整个系统 + 心跳检测"""
         while self.is_running:
             try:
                 await asyncio.sleep(30)
                 if not self.is_running:
                     break
+
+                # 心跳检测：检查主循环是否卡住
+                if self._last_heartbeat:
+                    heartbeat_elapsed = (datetime.utcnow() - self._last_heartbeat).total_seconds()
+                    if heartbeat_elapsed > self._heartbeat_timeout:
+                        print(f"[AUTO-V2] 🚨 主循环心跳超时 {heartbeat_elapsed:.0f}秒，可能卡住，强制重启")
+                        await self._scheduled_restart()
+                        continue
 
                 # 定时重启：检查运行时长是否超过重启间隔
                 if self._start_time:
@@ -303,6 +315,7 @@ class HailuoAutomationV2:
         while self.is_running:
             try:
                 loop_count += 1
+                self._last_heartbeat = datetime.utcnow()
                 poll_interval = _get_v2_config('task_poll_interval', 5)
 
                 # 统计当前状态
@@ -374,8 +387,8 @@ class HailuoAutomationV2:
                             )
                             self.task_handlers[f"{account_id}_{order['id']}"] = task
                         else:
-                            print(f"[AUTO-V2] 暂无可用账号处理订单 {order['id']}")
-                            break  # 没有可用账号就不继续分配了
+                            print(f"[AUTO-V2] 暂无可用账号处理订单 {order['id']}，等待下次循环")
+                            continue
 
                 # 清理完成的任务，回收异常信息
                 completed_tasks = [
@@ -457,14 +470,22 @@ class HailuoAutomationV2:
             return
         self._scanning_accounts.add(account_id)
         try:
-            # 确保页面在海螺AI的创建页面上，并刷新以获取最新状态
             try:
                 current_url = page.url
                 if not current_url or "/create" not in current_url:
-                    await page.goto(HAILUO_URL, timeout=30000, wait_until="domcontentloaded")
+                    await asyncio.wait_for(
+                        page.goto(HAILUO_URL, timeout=30000, wait_until="domcontentloaded"),
+                        timeout=35
+                    )
                 else:
-                    await page.reload(timeout=30000, wait_until="domcontentloaded")
+                    await asyncio.wait_for(
+                        page.reload(timeout=30000, wait_until="domcontentloaded"),
+                        timeout=35
+                    )
                 await asyncio.sleep(3)
+            except asyncio.TimeoutError:
+                print(f"[AUTO-V2] ⚠️ 账号{account_id}页面操作超时(>35s)，跳过本次扫描")
+                return
             except Exception as e:
                 print(f"[AUTO-V2] 页面导航失败: {str(e)[:80]}")
                 return

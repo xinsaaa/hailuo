@@ -46,6 +46,10 @@ class MultiAccountManager:
         
         # 已验证登录的账号集合（只有真正通过页面验证的才算）
         self._verified_accounts: set = set()
+        
+        # 登录失败计数器（用于心跳保护，连续失败N次才标记掉线）
+        self._login_fail_count: Dict[str, int] = {}
+        LOGIN_FAIL_THRESHOLD = 3
     
     async def init_browser(self):
         """初始化单个浏览器实例"""
@@ -665,10 +669,15 @@ class MultiAccountManager:
                 is_logged_in = await self.check_login_status(account_id)
 
                 if is_logged_in:
+                    self._login_fail_count[account_id] = 0
                     self.mark_account_logged_in(account_id)
                 else:
-                    self.mark_account_logged_out(account_id)
-                    print(f"[SCHEDULER] ⚠️ 账号 {account.display_name} 登录失效，需要重新验证码登录")
+                    self._login_fail_count[account_id] = self._login_fail_count.get(account_id, 0) + 1
+                    if self._login_fail_count[account_id] >= 3:
+                        self.mark_account_logged_out(account_id)
+                        print(f"[SCHEDULER] ⚠️ 账号 {account.display_name} 连续{self._login_fail_count[account_id]}次检查失败，标记掉线")
+                    else:
+                        print(f"[SCHEDULER] ⚠️ 账号 {account.display_name} 检查失败({self._login_fail_count[account_id]}/3)，暂不标记掉线")
     
     def get_system_performance_stats(self) -> Dict[str, Any]:
         """获取系统性能统计"""
