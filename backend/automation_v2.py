@@ -1535,6 +1535,49 @@ class HailuoAutomationV2:
             "total_accounts": len(self.manager.accounts),
             "active_accounts": sum(1 for acc in self.manager.accounts.values() if acc.is_active)
         }
+    
+    async def force_scan_order(self, order_id: int):
+        """强制扫描指定订单 - 用于卡住的订单手动触发"""
+        log_info(f"🔍 强制扫描订单#{order_id}...")
+        
+        with Session(engine) as session:
+            order = session.get(VideoOrder, order_id)
+            if not order:
+                log_warn(f"订单#{order_id}不存在")
+                return False
+            if order.status not in ("generating", "processing"):
+                log_warn(f"订单#{order_id}状态为{order.status}，不需要扫描")
+                return False
+            
+            video_type = getattr(order, 'video_type', None) or 'image_to_video'
+        
+        # 找一个可用的账号来扫描
+        all_pages = list(self.manager.pages.keys())
+        verified_pages = [aid for aid in all_pages if aid in self.manager._verified_accounts]
+        
+        if not verified_pages:
+            log_warn(f"无已验证账号，无法扫描订单#{order_id}")
+            return False
+        
+        # 确保订单在扫描队列中
+        for account_id in verified_pages:
+            if account_id not in self._account_orders:
+                self._account_orders[account_id] = set()
+            self._account_orders[account_id].add(order_id)
+        
+        # 立即触发扫描
+        for account_id in verified_pages:
+            page = self.manager.pages.get(account_id)
+            if not page:
+                continue
+            try:
+                log_info(f"🔍 强制扫描账号 {account_id} 页面...")
+                await self._scan_completed_videos(page, account_id)
+                break
+            except Exception as e:
+                log_error(f"扫描账号 {account_id} 出错: {str(e)[:80]}")
+        
+        return True
 
 
 # 全局实例

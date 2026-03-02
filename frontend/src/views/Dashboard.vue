@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { getCurrentUser, createOrder, getOrders, getPublicConfig, getAvailableModels } from '../api'
+import { getCurrentUser, createOrder, getOrders, getPublicConfig, getAvailableModels, forceScanOrder as forceScanOrderApi } from '../api'
 
 const route = useRoute()
 const router = useRouter()
@@ -361,6 +361,36 @@ const showBalanceInsufficient = (price) => {
 const retryOrder = async (order) => {
   prompt.value = order.prompt
   showNotification('已填入原始描述，请点击生成', 'info')
+}
+
+// 强制扫描卡住的订单
+const forceScanning = ref(false)
+const forceScanOrder = async (orderId) => {
+  if (forceScanning.value) return
+  forceScanning.value = true
+  try {
+    await forceScanOrderApi(orderId)
+    showNotification('已触发扫描，请稍候...', 'success')
+    // 3秒后刷新订单列表
+    setTimeout(() => {
+      loadData()
+    }, 3000)
+  } catch (err) {
+    showNotification(err.response?.data?.detail || '扫描失败', 'error')
+  } finally {
+    forceScanning.value = false
+  }
+}
+
+// 判断订单是否卡住（生成中但进度为0%超过2分钟）
+const isOrderStuck = (order) => {
+  if (order.status !== 'generating' && order.status !== 'processing') return false
+  if (order.progress > 0) return false
+  // 检查是否超过2分钟
+  const createdAt = new Date(order.created_at)
+  const now = new Date()
+  const minutesDiff = (now - createdAt) / 1000 / 60
+  return minutesDiff > 2
 }
 
 const copyInviteCode = () => {
@@ -878,9 +908,24 @@ const handleLogout = () => {
                        </svg>
                        {{ order.progress === -1 ? '排队中，等待生成...' : 'AI 正在努力生成中...' }}
                     </span>
-                    <span class="text-xs font-mono font-bold text-cyan-400">
-                      {{ order.progress === -1 ? '准备中...' : (order.progress || 0) + '%' }}
-                    </span>
+                    <div class="flex items-center gap-2">
+                      <span class="text-xs font-mono font-bold text-cyan-400">
+                        {{ order.progress === -1 ? '准备中...' : (order.progress || 0) + '%' }}
+                      </span>
+                      <!-- 刷新按钮：订单卡住时显示 -->
+                      <button 
+                        v-if="isOrderStuck(order)"
+                        @click="forceScanOrder(order.id)"
+                        :disabled="forceScanning"
+                        class="px-2 py-1 bg-orange-500/20 hover:bg-orange-500/30 text-orange-400 text-xs rounded border border-orange-500/30 hover:border-orange-500/50 transition-all flex items-center gap-1"
+                        title="订单似乎卡住了，点击尝试刷新状态"
+                      >
+                        <svg class="w-3 h-3" :class="{ 'animate-spin': forceScanning }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                        </svg>
+                        刷新
+                      </button>
+                    </div>
                   </div>
                   <div class="h-1.5 bg-gray-700/50 rounded-full overflow-hidden">
                     <div 
@@ -889,6 +934,13 @@ const handleLogout = () => {
                     >
                        <div class="absolute inset-0 bg-white/20 animate-pulse"></div>
                     </div>
+                  </div>
+                  <!-- 卡住提示 -->
+                  <div v-if="isOrderStuck(order)" class="mt-2 text-xs text-orange-400/80 flex items-center gap-1">
+                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                    </svg>
+                    订单可能卡住了，点击刷新按钮尝试恢复
                   </div>
                 </div>
               </div>

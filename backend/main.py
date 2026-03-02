@@ -1194,6 +1194,26 @@ def get_orders(current_user: User = Depends(get_current_user), session: Session 
     return results
 
 
+@app.post("/api/orders/{order_id}/force-scan")
+def force_scan_order(order_id: int, current_user: User = Depends(get_current_user), session: Session = Depends(get_session)):
+    """手动触发订单扫描 - 用于卡住的订单"""
+    order = session.get(VideoOrder, order_id)
+    if not order:
+        raise HTTPException(status_code=404, detail="订单不存在")
+    if order.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="无权操作此订单")
+    if order.status not in ("generating", "processing"):
+        raise HTTPException(status_code=400, detail="订单状态不允许扫描")
+    
+    # 调用 automation_v2 的强制扫描
+    from backend.automation_v2 import automation_v2
+    if automation_v2 and automation_v2.is_running:
+        asyncio.create_task(automation_v2.force_scan_order(order_id))
+        return {"message": "已触发扫描", "order_id": order_id}
+    else:
+        raise HTTPException(status_code=503, detail="自动化服务未运行")
+
+
 @app.post("/api/hailuo/code")
 def upload_verification_code(request: VerificationCodeRequest, session: Session = Depends(get_session)):
     match = re.search(r'【海螺AI】(\d{6})', request.text)
