@@ -1548,7 +1548,7 @@ async def serve_video(filename: str, token: Optional[str] = None, session: Sessi
         filepath = os.path.join(videos_dir, filename)
         if not os.path.isfile(filepath):
             raise HTTPException(status_code=404, detail="视频文件不存在")
-        return FileResponse(filepath, media_type="video/mp4", filename=filename)
+        return FileResponse(filepath, media_type="video/mp4")
 
     # 普通用户：检查权限
     user = session.exec(select(User).where(User.username == username)).first()
@@ -1574,7 +1574,7 @@ async def serve_video(filename: str, token: Optional[str] = None, session: Sessi
     if not os.path.isfile(filepath):
         raise HTTPException(status_code=404, detail="视频文件不存在")
 
-    return FileResponse(filepath, media_type="video/mp4", filename=filename)
+    return FileResponse(filepath, media_type="video/mp4")
 
 # 检查前端构建目录是否存在
 frontend_dist_path = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist")
