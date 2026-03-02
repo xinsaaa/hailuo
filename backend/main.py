@@ -1196,7 +1196,7 @@ def get_orders(current_user: User = Depends(get_current_user), session: Session 
 
 
 @app.post("/api/orders/{order_id}/force-scan")
-def force_scan_order(order_id: int, current_user: User = Depends(get_current_user), session: Session = Depends(get_session)):
+async def force_scan_order(order_id: int, current_user: User = Depends(get_current_user), session: Session = Depends(get_session)):
     """手动触发订单扫描 - 用于卡住的订单"""
     order = session.get(VideoOrder, order_id)
     if not order:
