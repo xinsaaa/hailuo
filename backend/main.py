@@ -1532,19 +1532,28 @@ os.makedirs(videos_dir, exist_ok=True)
 @app.get("/videos/{filename}")
 async def serve_video(filename: str, token: Optional[str] = None, session: Session = Depends(get_session)):
     """只有下单用户和管理员能访问视频，支持query参数token鉴权"""
-    # 鉴权：从query参数或header获取token
     if not token:
         raise HTTPException(status_code=401, detail="未登录")
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         username = payload.get("sub")
+        is_admin = payload.get("is_admin", False)
         if not username:
             raise HTTPException(status_code=401, detail="无效token")
-        user = session.exec(select(User).where(User.username == username)).first()
-        if not user:
-            raise HTTPException(status_code=401, detail="用户不存在")
     except JWTError:
         raise HTTPException(status_code=401, detail="无效token")
+
+    # 管理员直接放行
+    if is_admin:
+        filepath = os.path.join(videos_dir, filename)
+        if not os.path.isfile(filepath):
+            raise HTTPException(status_code=404, detail="视频文件不存在")
+        return FileResponse(filepath, media_type="video/mp4", filename=filename)
+
+    # 普通用户：检查权限
+    user = session.exec(select(User).where(User.username == username)).first()
+    if not user:
+        raise HTTPException(status_code=401, detail="用户不存在")
 
     # 从文件名提取订单ID（格式: order_123.mp4）
     order_id = None
@@ -1558,7 +1567,7 @@ async def serve_video(filename: str, token: Optional[str] = None, session: Sessi
         order = session.get(VideoOrder, order_id)
         if not order:
             raise HTTPException(status_code=404, detail="订单不存在")
-        if order.user_id != user.id and not user.is_admin:
+        if order.user_id != user.id:
             raise HTTPException(status_code=403, detail="无权访问此视频")
 
     filepath = os.path.join(videos_dir, filename)
