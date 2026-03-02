@@ -437,10 +437,10 @@ class HailuoAutomationV2:
                             account_credits=getattr(self, '_account_credits', {})
                         )
                         if account_id:
-                            # 禁止并发：该账号已有任何任务（含刚刚本次循环分配的）则跳过
-                            # 注意：不能用 _submit_locks.locked() —— create_task 后锁尚未 acquire，检查无效
+                            # 禁止并发：该账号已有任何运行中的任务则跳过（过滤已完成的僵尸任务）
                             account_has_task = any(
-                                k.startswith(f"{account_id}_") for k in self.task_handlers
+                                k.startswith(f"{account_id}_") for k, t in self.task_handlers.items()
+                                if not t.done()
                             )
                             if account_has_task:
                                 print(f"[AUTO-V2] 账号 {account_id} 已有任务运行，订单#{order['id']} 等下次循环")
@@ -1533,9 +1533,11 @@ class HailuoAutomationV2:
         if not account_id:
             log_info(f"📭 订单#{order_id}暂无可用账号，等待主循环处理")
             return False
-        
+
+        # 只检查仍在运行中的任务（过滤已完成的僵尸任务，避免误判）
         account_has_task = any(
-            k.startswith(f"{account_id}_") for k in self.task_handlers
+            k.startswith(f"{account_id}_") for k, t in self.task_handlers.items()
+            if not t.done()
         )
         if account_has_task:
             log_info(f"账号 {account_id} 已有任务运行，订单#{order_id}等待主循环处理")
