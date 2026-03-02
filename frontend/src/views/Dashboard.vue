@@ -382,6 +382,14 @@ const forceScanOrder = async (orderId) => {
   }
 }
 
+// 格式化 UTC 时间为本地时间显示
+const formatUTCTime = (utcTimeStr) => {
+  if (!utcTimeStr) return ''
+  // 服务器返回的是 UTC 时间，添加 Z 后缀让浏览器正确解析
+  const date = new Date(utcTimeStr + 'Z')
+  return date.toLocaleString()
+}
+
 // 判断订单是否卡住（生成中但进度为0%超过2分钟）
 const isOrderStuck = (order) => {
   // 条件1: 状态必须是 generating 或 processing
@@ -848,7 +856,7 @@ const handleLogout = () => {
                   <div class="flex-1 mr-6">
                     <p class="text-gray-200 font-medium line-clamp-2 leading-relaxed text-sm">{{ order.prompt }}</p>
                     <div class="flex items-center gap-4 mt-3">
-                      <p class="text-xs text-gray-500 font-mono">{{ new Date(order.created_at).toLocaleString() }}</p>
+                      <p class="text-xs text-gray-500 font-mono">{{ formatUTCTime(order.created_at) }}</p>
                       <div v-if="order.model_name" class="flex items-center gap-1.5 px-2 py-0.5 bg-white/5 rounded border border-white/5">
                         <div class="w-1.5 h-1.5 bg-purple-400 rounded-full shadow-[0_0_5px_rgba(192,132,252,0.8)]"></div>
                         <span class="text-xs text-gray-300">{{ order.model_name }}</span>
