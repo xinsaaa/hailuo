@@ -2,6 +2,7 @@ from fastapi import FastAPI, Depends, HTTPException, status, BackgroundTasks, Re
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 import os
+import asyncio
 
 # 加载环境变量（必须在其他导入之前）
 load_dotenv()
