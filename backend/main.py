@@ -1171,13 +1171,14 @@ async def create_order(
     # 根据运行模式选择订单路由
     enable_multi_account = os.getenv("ENABLE_MULTI_ACCOUNT", "true").lower() == "true"
     if enable_multi_account:
-        # 多账号模式：唤醒主循环立即处理，无需等待轮询间隔
+        # 多账号模式：直接尝试立即处理订单，无需等待主循环扫描
         try:
-            from backend.automation_v2 import _notify_new_order
-            _notify_new_order()
-            app_logger.info(f"订单#{new_order.id}已唤醒自动化主循环")
+            from backend.automation_v2 import process_order_immediately
+            import asyncio
+            asyncio.create_task(process_order_immediately(new_order.id))
+            app_logger.info(f"订单#{new_order.id}已提交立即处理")
         except Exception as e:
-            app_logger.error(f"唤醒自动化主循环失败: {e}")
+            app_logger.error(f"提交订单立即处理失败: {e}")
     else:
         # 单账号模式：推入队列
         import asyncio

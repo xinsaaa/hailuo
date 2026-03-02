@@ -1353,6 +1353,74 @@ class HailuoAutomationV2:
             oids.discard(order_id)
         self._processing_order_ids.discard(order_id)
     
+    async def process_order_immediately(self, order_id: int) -> bool:
+        """
+        立即处理订单 - 由 API 直接调用，无需等待主循环扫描
+        
+        Args:
+            order_id: 订单ID
+            
+        Returns:
+            bool: True 表示已分配处理，False 表示无可用账号（订单留在 pending 状态等待主循环）
+        """
+        if not self.is_running:
+            print(f"[AUTO-V2] ⚠️ 系统未运行，订单#{order_id}无法立即处理")
+            return False
+        
+        if order_id in self._processing_order_ids:
+            print(f"[AUTO-V2] 订单#{order_id}已在处理中")
+            return True
+        
+        with Session(engine) as session:
+            order = session.get(VideoOrder, order_id)
+            if not order:
+                print(f"[AUTO-V2] ❌ 订单#{order_id}不存在")
+                return False
+            if order.status != "pending":
+                print(f"[AUTO-V2] 订单#{order_id}状态为{order.status}，跳过")
+                return True
+            
+            order_dict = {
+                "id": order.id,
+                "prompt": order.prompt,
+                "model_name": order.model_name,
+                "first_frame_image": getattr(order, 'first_frame_image', None),
+                "last_frame_image": getattr(order, 'last_frame_image', None),
+                "user_id": order.user_id,
+                "video_type": getattr(order, 'video_type', 'image_to_video'),
+                "resolution": getattr(order, 'resolution', '768p'),
+                "duration": getattr(order, 'duration', '6s'),
+            }
+        
+        model_name = order_dict.get("model_name", "")
+        account_id = self.manager.get_best_account_for_task(
+            model_name=model_name,
+            account_credits=getattr(self, '_account_credits', {})
+        )
+        
+        if not account_id:
+            print(f"[AUTO-V2] 📭 订单#{order_id}暂无可用账号，等待主循环处理")
+            return False
+        
+        account_has_task = any(
+            k.startswith(f"{account_id}_") for k in self.task_handlers
+        )
+        if account_has_task:
+            print(f"[AUTO-V2] 账号 {account_id} 已有任务运行，订单#{order_id}等待主循环处理")
+            return False
+        
+        self._processing_order_ids.add(order_id)
+        if account_id not in self._account_orders:
+            self._account_orders[account_id] = set()
+        self._account_orders[account_id].add(order_id)
+        
+        task = asyncio.create_task(
+            self.process_order(account_id, order_dict)
+        )
+        self.task_handlers[f"{account_id}_{order_id}"] = task
+        print(f"[AUTO-V2] ⚡ 订单#{order_id}已立即分配给账号 {account_id}")
+        return True
+    
     async def stop(self):
         """停止自动化系统"""
         print("[AUTO-V2] 🛑 停止多账号自动化系统...")
@@ -1393,6 +1461,10 @@ async def stop_automation_v2():
 def get_automation_v2_status():
     """获取多账号自动化状态"""
     return automation_v2.get_system_status()
+
+async def process_order_immediately(order_id: int) -> bool:
+    """立即处理订单 - 供 API 直接调用"""
+    return await automation_v2.process_order_immediately(order_id)
 
 async def add_account(account_config: dict):
     """添加新账号（只保存配置，不自动登录，登录由用户手动触发）"""
