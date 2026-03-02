@@ -301,8 +301,14 @@ class HailuoAutomationV2:
                             if target not in self._account_orders:
                                 self._account_orders[target] = set()
                             self._account_orders[target].add(order.id)
+                            print(f"[AUTO-V2] 📌 订单#{order.id} 分配给账号 {target}")
+                    else:
+                        print(f"[AUTO-V2] ⚠️ 无可用账号，generating订单暂时挂起，等待下次循环")
         except Exception as e:
             print(f"[AUTO-V2] ⚠️ 恢复 generating 订单失败: {e}")
+
+        # 4c. 重启后立即主动扫描一次所有账号页面，加速订单恢复
+        await self._initial_scan_after_restart()
 
         # 5. 重启核心循环
         self._loop_task = asyncio.create_task(self.task_processing_loop())
@@ -311,6 +317,30 @@ class HailuoAutomationV2:
         # 6. 重置计时器
         self._start_time = datetime.utcnow()
         print("[AUTO-V2] 🎉 定时重启完成，系统已恢复运行")
+
+    async def _initial_scan_after_restart(self):
+        """重启后主动扫描所有账号页面，加速恢复generating订单"""
+        print("[AUTO-V2] 🔍 重启后主动扫描所有账号页面...")
+        
+        all_pages = list(self.manager.pages.keys())
+        verified_pages = [aid for aid in all_pages if aid in self.manager._verified_accounts]
+        
+        if not verified_pages:
+            print("[AUTO-V2] ⚠️ 无已验证账号，跳过初始扫描")
+            return
+        
+        scanned = 0
+        for account_id in verified_pages:
+            page = self.manager.pages.get(account_id)
+            if not page:
+                continue
+            try:
+                await self._scan_completed_videos(page, account_id)
+                scanned += 1
+            except Exception as e:
+                print(f"[AUTO-V2] 初始扫描账号 {account_id} 出错: {str(e)[:80]}")
+        
+        print(f"[AUTO-V2] ✅ 初始扫描完成，共扫描 {scanned} 个账号")
 
     async def account_health_check_loop(self):
         """账号健康检查循环"""
@@ -486,293 +516,314 @@ class HailuoAutomationV2:
             ]
 
     async def _scan_completed_videos(self, page, account_id: str):
-        """扫描页面上已完成的视频 - 严格移植自V1的scan_for_completed_videos"""
-        # 加扫描锁，防止健康检查/积分刷新并发操作同一个页面
+        """扫描页面上已完成的视频 - 需要扫描图生视频和文生视频两个页面"""
         if account_id in self._scanning_accounts:
             print(f"[AUTO-V2] ⏭️ 账号{account_id}正在扫描中，跳过重入")
             return
         self._scanning_accounts.add(account_id)
+        
         try:
-            try:
-                current_url = page.url
-                if not current_url or "/create" not in current_url:
-                    await asyncio.wait_for(
-                        page.goto(HAILUO_URL, timeout=30000, wait_until="domcontentloaded"),
-                        timeout=35
-                    )
-                else:
-                    await asyncio.wait_for(
-                        page.reload(timeout=30000, wait_until="domcontentloaded"),
-                        timeout=35
-                    )
-                await asyncio.sleep(3)
-            except asyncio.TimeoutError:
-                print(f"[AUTO-V2] ⚠️ 账号{account_id}页面操作超时(>35s)，跳过本次扫描")
-                return
-            except Exception as e:
-                print(f"[AUTO-V2] 页面导航失败: {str(e)[:80]}")
-                return
-
-            prompt_spans = await page.locator("span.prompt-plain-span").all()
-            if not prompt_spans:
-                print(f"[AUTO-V2] 📭 账号{account_id}页面无视频卡片")
-                return
-
-            # 只取最新的20张卡片（generating订单都是最近提交的，无需扫历史）
-            SCAN_LIMIT = 20
-            if len(prompt_spans) > SCAN_LIMIT:
-                prompt_spans = prompt_spans[:SCAN_LIMIT]
-            print(f"[AUTO-V2] 🔍 账号{account_id}页面扫描 {len(prompt_spans)} 个视频卡片（上限{SCAN_LIMIT}）")
-            completed_count = 0
-            processing_count = 0
-
-            # 预处理：扫描前不再需要预勾选去水印开关（改用 CDN 链接转换方式下载无水印视频）
-
-            for span in prompt_spans:
-                try:
-                    prompt_text = await span.text_content()
-                    if not prompt_text:
-                        continue
-
-                    order_id = extract_order_id_from_text(prompt_text)
-                    if not order_id:
-                        continue
-
-                    # 检查订单状态
-                    with Session(engine) as session:
-                        order = session.get(VideoOrder, order_id)
-                        if not order or order.status == "completed" or order.status == "failed":
-                            continue
-
-                    print(f"[AUTO-V2] 🎯 发现订单#{order_id} (状态: {order.status if order else '?'})")
-
-                    # 找到父级视频卡片
-                    parent = span.locator("xpath=ancestor::div[contains(@class, 'group/video-card')]").first
-
-                    # 检查所有"仍在处理中"的状态，任意命中则跳过下载
-                    still_processing = False
-                    processing_reason = ""
-
-                    # a. 排队中（低速生成）
-                    try:
-                        if await parent.locator("div:has-text('低速生成中')").is_visible():
-                            still_processing = True
-                            processing_reason = "排队中"
-                            self._update_order_progress(order_id, -1)
-                    except:
-                        pass
-
-                    # b. 正在优化提示词
-                    if not still_processing:
-                        try:
-                            if await parent.locator("div:has-text('正在优化提示词')").is_visible():
-                                still_processing = True
-                                processing_reason = "优化提示词中"
-                        except:
-                            pass
-
-                    # c. 通用兜底：卡片内存在火箭加载图 或 取消按钮 = 还在处理
-                    if not still_processing:
-                        try:
-                            has_loading = await parent.locator("img[alt*='hailuo AI video loading']").count() > 0
-                            has_cancel = await parent.locator("div:has-text('取消')").count() > 0
-                            if has_loading or has_cancel:
-                                still_processing = True
-                                processing_reason = "加载中(loading图/取消按钮)"
-                        except:
-                            pass
-
-                    # d. 进度条
-                    if not still_processing:
-                        try:
-                            progress = parent.locator(".ant-progress-text")
-                            if await progress.is_visible():
-                                progress_text = await progress.text_content() or "0%"
-                                still_processing = True
-                                processing_reason = f"进度条 {progress_text}"
-                                try:
-                                    val = int(progress_text.replace("%", "").strip())
-                                    self._update_order_progress(order_id, val)
-                                except:
-                                    pass
-                        except:
-                            pass
-
-                    if still_processing:
-                        print(f"[AUTO-V2] ⏳ 订单#{order_id} {processing_reason}")
-                        processing_count += 1
-                        continue
-
-                    # 以上状态都不存在 = 生成完成，提取并下载无水印视频
-                    print(f"[AUTO-V2] ✅ 订单#{order_id}生成完成，开始自动化下载")
-                    try:
-                        # 去重检查
-                        dedup_key = f"order_{order_id}"
-                        if dedup_key in _processed_share_links:
-                            continue
-                        if len(_processed_share_links) > _MAX_SHARE_LINKS:
-                            _processed_share_links.clear()
-                        _processed_share_links.add(dedup_key)
-
-                        filename = f"order_{order_id}.mp4"
-                        filepath = os.path.join(VIDEOS_DIR, filename)
-                        download_ok = False
-
-                        for dl_attempt in range(3):
-                            try:
-                                # 1. 找卡片上触发下载浮窗的按钮
-                                # 真实HTML: button含下载图标SVG（path含 M2 9.26074）
-                                dl_trigger = None
-                                for trigger_sel in [
-                                    "button:has(path[d*='M2 9.26074'])",
-                                    "button:has(path[d*='M8.65991'])",
-                                    "button.bg-hl_bg_10_legacy",
-                                ]:
-                                    try:
-                                        candidate = parent.locator(trigger_sel).first
-                                        if await candidate.is_visible(timeout=2000):
-                                            dl_trigger = candidate
-                                            print(f"[AUTO-V2] 找到触发按钮: {trigger_sel}")
-                                            break
-                                    except:
-                                        pass
-                                if dl_trigger is None:
-                                    print(f"[AUTO-V2] ⚠️ 订单#{order_id} 第{dl_attempt+1}次未找到触发按钮")
-                                    await asyncio.sleep(2)
-                                    continue
-
-                                # 2. hover 下载按钮，触发 ant-dropdown 浮窗
-                                await dl_trigger.hover()
-                                await asyncio.sleep(1.0)
-
-                                # 3. 等浮窗出现
-                                dropdown_locator = page.locator(".ant-dropdown:not(.ant-dropdown-hidden)").first
-                                try:
-                                    await dropdown_locator.wait_for(state="visible", timeout=3000)
-                                except:
-                                    print(f"[AUTO-V2] ⚠️ 订单#{order_id} 浮窗未出现，重试")
-                                    await asyncio.sleep(1)
-                                    continue
-
-                                # 4. 逐个点击未开启的水印开关（实际默认是 false，需要点击开启）
-                                #    点击后可能弹出《去水印规则》确认弹窗（不一定），需要处理
-                                #    点击后浮窗可能关闭（无论是否有弹窗），需要重新 hover
-                                sw_count = await dropdown_locator.locator("button[role='switch']").count()
-                                for sw_idx in range(sw_count):
-                                    try:
-                                        # 每次都重新定位，避免 DOM 重建后 stale 引用
-                                        sw = dropdown_locator.locator("button[role='switch']").nth(sw_idx)
-                                        checked = await sw.get_attribute("aria-checked", timeout=2000)
-                                        if checked != "false":
-                                            print(f"[AUTO-V2] 订单#{order_id} 开关[{sw_idx}]已开启，跳过")
-                                            continue
-                                        print(f"[AUTO-V2] 订单#{order_id} 点击水印开关[{sw_idx}]")
-                                        await sw.click()
-                                        await asyncio.sleep(0.8)
-                                        # 点击后可能弹出协议确认弹窗（不一定出现），自动同意
-                                        for confirm_sel in [
-                                            "button:has-text('同意')",
-                                            "button:has-text('确认')",
-                                            "button:has-text('确定')",
-                                            ".ant-modal-footer .ant-btn-primary",
-                                            ".ant-modal .ant-btn-primary",
-                                        ]:
-                                            try:
-                                                confirm_btn = page.locator(confirm_sel).first
-                                                if await confirm_btn.is_visible(timeout=1000):
-                                                    await confirm_btn.click()
-                                                    print(f"[AUTO-V2] 订单#{order_id} 开关[{sw_idx}]同意协议弹窗")
-                                                    await asyncio.sleep(0.5)
-                                                    break
-                                            except:
-                                                pass
-                                        # 浮窗可能因点击而关闭，重新 hover 确保后续操作可继续
-                                        dropdown_visible = False
-                                        try:
-                                            dropdown_visible = await dropdown_locator.is_visible(timeout=800)
-                                        except:
-                                            pass
-                                        if not dropdown_visible:
-                                            print(f"[AUTO-V2] 订单#{order_id} 浮窗已关闭，重新hover")
-                                            await dl_trigger.hover()
-                                            await asyncio.sleep(1.0)
-                                            try:
-                                                await dropdown_locator.wait_for(state="visible", timeout=3000)
-                                            except:
-                                                print(f"[AUTO-V2] ⚠️ 订单#{order_id} 重新hover后浮窗未出现")
-                                                break
-                                    except Exception as sw_err:
-                                        print(f"[AUTO-V2] ⚠️ 订单#{order_id} 处理开关[{sw_idx}]出错: {str(sw_err)[:80]}")
-
-                                # 5. 找浮窗内的"下载"按钮（class 含 cl_hl_H9_M，文字为"下载"）
-                                dropdown_dl_btn = None
-                                for btn_sel in [
-                                    "button.cl_hl_H9_M",
-                                    "button:has-text('下载')",
-                                ]:
-                                    try:
-                                        candidate = dropdown_locator.locator(btn_sel).first
-                                        if await candidate.is_visible(timeout=1500):
-                                            dropdown_dl_btn = candidate
-                                            print(f"[AUTO-V2] 找到浮窗下载按钮: {btn_sel}")
-                                            break
-                                    except:
-                                        pass
-
-                                if dropdown_dl_btn is None:
-                                    print(f"[AUTO-V2] ⚠️ 订单#{order_id} 未找到浮窗下载按钮，跳过")
-                                    await asyncio.sleep(2)
-                                    continue
-
-                                # 5. 点击浮窗内的下载按钮，拦截浏览器下载事件
-                                async with page.expect_download(timeout=60000) as dl_info:
-                                    await dropdown_dl_btn.click()
-
-                                download = await dl_info.value
-                                await download.save_as(filepath)
-                                size_mb = os.path.getsize(filepath) / (1024 * 1024)
-                                print(f"[AUTO-V2] 📥 订单#{order_id} 下载完成 ({size_mb:.1f}MB)")
-                                download_ok = True
-                                break
-
-                            except Exception as dl_err:
-                                print(f"[AUTO-V2] ⚠️ 订单#{order_id} 第{dl_attempt+1}次下载异常: {str(dl_err)[:120]}")
-                                await asyncio.sleep(3)
-
-                        if download_ok:
-                            self.update_order_result(order_id, f"/videos/{filename}", "completed")
-                            print(f"[AUTO-V2] 🎉 订单#{order_id}完成!")
-                            completed_count += 1
-                        else:
-                            print(f"[AUTO-V2] ❌ 订单#{order_id} 3次下载均失败，标记失败")
-                            _processed_share_links.discard(dedup_key)
-                            self.update_order_status(order_id, "failed")
-
-                    except Exception as e:
-                        print(f"[AUTO-V2] 下载视频出错 订单#{order_id}: {str(e)[:100]}")
-                        _processed_share_links.discard(f"order_{order_id}")
-
-                except Exception:
-                    continue
-
-            if completed_count > 0 or processing_count > 0:
-                print(f"[AUTO-V2] 📊 扫描结果: 完成{completed_count}个, 生成中{processing_count}个")
-
-            # 清理_account_orders中已完成/失败的订单，避免无意义的重复扫描
+            # 检查账号上有哪些类型的订单，决定扫描哪个页面
+            order_types = set()
             if account_id in self._account_orders:
-                done_ids = set()
-                for oid in self._account_orders[account_id]:
-                    with Session(engine) as session:
-                        o = session.get(VideoOrder, oid)
-                        if o and o.status in ("completed", "failed"):
-                            done_ids.add(oid)
-                if done_ids:
-                    self._account_orders[account_id] -= done_ids
-
+                with Session(engine) as session:
+                    for oid in self._account_orders[account_id]:
+                        order = session.get(VideoOrder, oid)
+                        if order and order.status == "generating":
+                            video_type = getattr(order, 'video_type', 'image_to_video')
+                            order_types.add(video_type)
+            
+            # 如果没有订单信息，默认扫描两个页面
+            if not order_types:
+                order_types = {'image_to_video', 'text_to_video'}
+            
+            # 扫描需要的页面
+            pages_to_scan = []
+            if 'image_to_video' in order_types:
+                pages_to_scan.append(('图生视频', HAILUO_URL))
+            if 'text_to_video' in order_types:
+                pages_to_scan.append(('文生视频', HAILUO_TEXT_URL))
+            
+            total_completed = 0
+            total_processing = 0
+            
+            for page_name, target_url in pages_to_scan:
+                try:
+                    print(f"[AUTO-V2] 🔍 账号{account_id} 扫描{page_name}页面...")
+                    await asyncio.wait_for(
+                        page.goto(target_url, timeout=30000, wait_until="domcontentloaded"),
+                        timeout=35
+                    )
+                    await asyncio.sleep(3)
+                except asyncio.TimeoutError:
+                    print(f"[AUTO-V2] ⚠️ 账号{account_id} {page_name}页面操作超时(>35s)，跳过")
+                    continue
+                except Exception as e:
+                    print(f"[AUTO-V2] {page_name}页面导航失败: {str(e)[:80]}")
+                    continue
+                
+                completed, processing = await self._scan_current_page(page, account_id)
+                total_completed += completed
+                total_processing += processing
+            
+            if total_completed > 0 or total_processing > 0:
+                print(f"[AUTO-V2] � 账号{account_id}总扫描结果: 完成{total_completed}个, 生成中{total_processing}个")
+                
         except Exception as e:
             print(f"[AUTO-V2] 扫描页面出错: {str(e)[:100]}")
         finally:
             self._scanning_accounts.discard(account_id)
+
+    async def _scan_current_page(self, page, account_id: str):
+        """扫描当前页面上的视频卡片"""
+        prompt_spans = await page.locator("span.prompt-plain-span").all()
+        if not prompt_spans:
+            print(f"[AUTO-V2] 📭 账号{account_id}当前页面无视频卡片")
+            return 0, 0
+
+        SCAN_LIMIT = 50
+        if len(prompt_spans) > SCAN_LIMIT:
+            prompt_spans = prompt_spans[:SCAN_LIMIT]
+        print(f"[AUTO-V2] 🔍 扫描 {len(prompt_spans)} 个视频卡片（上限{SCAN_LIMIT}）")
+        completed_count = 0
+        processing_count = 0
+
+        for span in prompt_spans:
+            try:
+                prompt_text = await span.text_content()
+                if not prompt_text:
+                    continue
+
+                order_id = extract_order_id_from_text(prompt_text)
+                if not order_id:
+                    continue
+
+                with Session(engine) as session:
+                    order = session.get(VideoOrder, order_id)
+                    if not order or order.status == "completed" or order.status == "failed":
+                        continue
+
+                print(f"[AUTO-V2] 🎯 发现订单#{order_id} (状态: {order.status if order else '?'})")
+
+                parent = span.locator("xpath=ancestor::div[contains(@class, 'group/video-card')]").first
+
+                still_processing = False
+                processing_reason = ""
+
+                try:
+                    if await parent.locator("div:has-text('低速生成中')").is_visible():
+                        still_processing = True
+                        processing_reason = "排队中"
+                        self._update_order_progress(order_id, -1)
+                except:
+                    pass
+
+                if not still_processing:
+                    try:
+                        if await parent.locator("div:has-text('正在优化提示词')").is_visible():
+                            still_processing = True
+                            processing_reason = "优化提示词中"
+                    except:
+                        pass
+
+                if not still_processing:
+                    try:
+                        has_loading = await parent.locator("img[alt*='hailuo AI video loading']").count() > 0
+                        has_cancel = await parent.locator("div:has-text('取消')").count() > 0
+                        if has_loading or has_cancel:
+                            still_processing = True
+                            processing_reason = "加载中(loading图/取消按钮)"
+                    except:
+                        pass
+
+                if not still_processing:
+                    try:
+                        progress = parent.locator(".ant-progress-text")
+                        if await progress.is_visible():
+                            progress_text = await progress.text_content() or "0%"
+                            still_processing = True
+                            processing_reason = f"进度条 {progress_text}"
+                            try:
+                                val = int(progress_text.replace("%", "").strip())
+                                self._update_order_progress(order_id, val)
+                            except:
+                                pass
+                    except:
+                        pass
+
+                if still_processing:
+                    print(f"[AUTO-V2] ⏳ 订单#{order_id} {processing_reason}")
+                    processing_count += 1
+                    continue
+
+                print(f"[AUTO-V2] ✅ 订单#{order_id}生成完成，开始自动化下载")
+                try:
+                    dedup_key = f"order_{order_id}"
+                    if dedup_key in _processed_share_links:
+                        continue
+                    if len(_processed_share_links) > _MAX_SHARE_LINKS:
+                        _processed_share_links.clear()
+                    _processed_share_links.add(dedup_key)
+
+                    filename = f"order_{order_id}.mp4"
+                    filepath = os.path.join(VIDEOS_DIR, filename)
+                    download_ok = False
+
+                    for dl_attempt in range(3):
+                        try:
+                            dl_trigger = None
+                            for trigger_sel in [
+                                "button:has(path[d*='M2 9.26074'])",
+                                "button:has(path[d*='M8.65991'])",
+                                "button.bg-hl_bg_10_legacy",
+                            ]:
+                                try:
+                                    candidate = parent.locator(trigger_sel).first
+                                    if await candidate.is_visible(timeout=2000):
+                                        dl_trigger = candidate
+                                        print(f"[AUTO-V2] 找到触发按钮: {trigger_sel}")
+                                        break
+                                except:
+                                    pass
+                            if dl_trigger is None:
+                                print(f"[AUTO-V2] ⚠️ 订单#{order_id} 第{dl_attempt+1}次未找到触发按钮")
+                                await asyncio.sleep(2)
+                                continue
+
+                            await dl_trigger.hover()
+                            await asyncio.sleep(1.0)
+
+                            dropdown_locator = page.locator(".ant-dropdown:not(.ant-dropdown-hidden)").first
+                            try:
+                                await dropdown_locator.wait_for(state="visible", timeout=3000)
+                            except:
+                                print(f"[AUTO-V2] ⚠️ 订单#{order_id} 浮窗未出现，重试")
+                                await asyncio.sleep(1)
+                                continue
+
+                            sw_count = await dropdown_locator.locator("button[role='switch']").count()
+                            for sw_idx in range(sw_count):
+                                try:
+                                    sw = dropdown_locator.locator("button[role='switch']").nth(sw_idx)
+                                    checked = await sw.get_attribute("aria-checked", timeout=2000)
+                                    if checked != "false":
+                                        print(f"[AUTO-V2] 订单#{order_id} 开关[{sw_idx}]已开启，跳过")
+                                        continue
+                                    print(f"[AUTO-V2] 订单#{order_id} 点击水印开关[{sw_idx}]")
+                                    await sw.click()
+                                    await asyncio.sleep(0.8)
+                                    for confirm_sel in [
+                                        "button:has-text('同意')",
+                                        "button:has-text('确认')",
+                                        "button:has-text('确定')",
+                                        ".ant-modal-footer .ant-btn-primary",
+                                        ".ant-modal .ant-btn-primary",
+                                    ]:
+                                        try:
+                                            confirm_btn = page.locator(confirm_sel).first
+                                            if await confirm_btn.is_visible(timeout=1000):
+                                                await confirm_btn.click()
+                                                print(f"[AUTO-V2] 订单#{order_id} 开关[{sw_idx}]同意协议弹窗")
+                                                await asyncio.sleep(0.5)
+                                                break
+                                        except:
+                                            pass
+                                    dropdown_visible = False
+                                    try:
+                                        dropdown_visible = await dropdown_locator.is_visible(timeout=800)
+                                    except:
+                                        pass
+                                    if not dropdown_visible:
+                                        print(f"[AUTO-V2] 订单#{order_id} 浮窗已关闭，重新hover")
+                                        await dl_trigger.hover()
+                                        await asyncio.sleep(1.0)
+                                        try:
+                                            await dropdown_locator.wait_for(state="visible", timeout=3000)
+                                        except:
+                                            print(f"[AUTO-V2] ⚠️ 订单#{order_id} 重新hover后浮窗未出现")
+                                            break
+                                except Exception as sw_err:
+                                    print(f"[AUTO-V2] ⚠️ 订单#{order_id} 处理开关[{sw_idx}]出错: {str(sw_err)[:80]}")
+
+                            dropdown_dl_btn = None
+                            for btn_sel in [
+                                "button.cl_hl_H9_M",
+                                "button:has-text('下载')",
+                            ]:
+                                try:
+                                    candidate = dropdown_locator.locator(btn_sel).first
+                                    if await candidate.is_visible(timeout=1500):
+                                        dropdown_dl_btn = candidate
+                                        print(f"[AUTO-V2] 找到浮窗下载按钮: {btn_sel}")
+                                        break
+                                except:
+                                    pass
+
+                            if dropdown_dl_btn is None:
+                                print(f"[AUTO-V2] ⚠️ 订单#{order_id} 未找到浮窗下载按钮，跳过")
+                                await asyncio.sleep(2)
+                                continue
+
+                            async with page.expect_download(timeout=60000) as dl_info:
+                                await dropdown_dl_btn.click()
+
+                            download = await dl_info.value
+                            await download.save_as(filepath)
+                            size_mb = os.path.getsize(filepath) / (1024 * 1024)
+                            print(f"[AUTO-V2] 📥 订单#{order_id} 下载完成 ({size_mb:.1f}MB)")
+                            download_ok = True
+                            break
+
+                        except Exception as dl_err:
+                            print(f"[AUTO-V2] ⚠️ 订单#{order_id} 第{dl_attempt+1}次下载异常: {str(dl_err)[:120]}")
+                            await asyncio.sleep(3)
+
+                    if download_ok:
+                        self.update_order_result(order_id, f"/videos/{filename}", "completed")
+                        print(f"[AUTO-V2] 🎉 订单#{order_id}完成!")
+                        completed_count += 1
+                    else:
+                        print(f"[AUTO-V2] ❌ 订单#{order_id} 3次下载均失败，标记失败")
+                        _processed_share_links.discard(dedup_key)
+                        self.update_order_status(order_id, "failed")
+
+                except Exception as e:
+                    print(f"[AUTO-V2] 下载视频出错 订单#{order_id}: {str(e)[:100]}")
+                    _processed_share_links.discard(f"order_{order_id}")
+
+            except Exception:
+                continue
+
+        if completed_count > 0 or processing_count > 0:
+            print(f"[AUTO-V2] 📊 扫描结果: 完成{completed_count}个, 生成中{processing_count}个")
+
+        if account_id in self._account_orders:
+            found_on_page = set()
+            for span in prompt_spans:
+                try:
+                    text = await span.text_content()
+                    if text:
+                        oid = extract_order_id_from_text(text)
+                        if oid:
+                            found_on_page.add(oid)
+                except:
+                    pass
+            
+            missing_orders = self._account_orders[account_id] - found_on_page
+            if missing_orders:
+                print(f"[AUTO-V2] ⚠️ 账号{account_id}有 {len(missing_orders)} 个订单在页面上未找到: {missing_orders}")
+
+        if account_id in self._account_orders:
+            done_ids = set()
+            for oid in self._account_orders[account_id]:
+                with Session(engine) as session:
+                    o = session.get(VideoOrder, oid)
+                    if o and o.status in ("completed", "failed"):
+                        done_ids.add(oid)
+            if done_ids:
+                self._account_orders[account_id] -= done_ids
+
+        return completed_count, processing_count
 
     def _check_stuck_orders(self):
         """检查卡在generating/processing状态超久的订单 - 仅处理真正卡住的"""
