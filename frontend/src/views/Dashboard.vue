@@ -384,12 +384,22 @@ const forceScanOrder = async (orderId) => {
 
 // 判断订单是否卡住（生成中但进度为0%超过2分钟）
 const isOrderStuck = (order) => {
+  // 条件1: 状态必须是 generating 或 processing
   if (order.status !== 'generating' && order.status !== 'processing') return false
-  if (order.progress > 0) return false
-  // 检查是否超过2分钟
-  const createdAt = new Date(order.created_at)
+  
+  // 条件2: 进度必须为 0、null 或 undefined（无进度更新）
+  const progress = order.progress ?? 0
+  if (progress > 0) return false
+  
+  // 条件3: 订单创建时间超过 2 分钟
+  // 注意：服务器返回的是 UTC 时间字符串，需要正确解析
+  const createdAt = new Date(order.created_at + 'Z')  // 添加 Z 表示 UTC
   const now = new Date()
   const minutesDiff = (now - createdAt) / 1000 / 60
+  
+  // 调试日志
+  console.log(`[isOrderStuck] 订单#${order.id}: status=${order.status}, progress=${progress}, minutesDiff=${minutesDiff.toFixed(1)}`)
+  
   return minutesDiff > 2
 }
 
