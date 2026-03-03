@@ -371,52 +371,48 @@ class HailuoAutomationV2:
                 self._last_heartbeat = datetime.utcnow()
                 poll_interval = _get_v2_config('task_poll_interval', 5)
 
-                # 统计当前状态
+                # 统计当前状态：只统计未超时的 generating 订单
                 generating_count = 0
+                timeout_hours = _get_v2_config('order_timeout_hours', 2)
+                timeout_threshold = datetime.utcnow() - timedelta(hours=timeout_hours)
                 with Session(engine) as session:
-                    generating_count = len(session.exec(
-                        select(VideoOrder).where(VideoOrder.status == "generating")
-                    ).all())
+                    generating_orders = session.exec(
+                        select(VideoOrder).where(
+                            VideoOrder.status == "generating",
+                            VideoOrder.created_at >= timeout_threshold
+                        )
+                    ).all()
+                    generating_count = len(generating_orders)
 
                 # 有任务或每20次循环才打印状态，避免空循环刷屏
                 if generating_count > 0 or len(self.task_handlers) > 0 or loop_count % 20 == 1:
                     print(f"[AUTO-V2] 🔁 第{loop_count}次循环 | 活跃任务: {len(self.task_handlers)} | 生成中订单: {generating_count}")
 
                 # ========== 第1步: 扫描有未完成订单的账号页面 ==========
+                # 只要数据库有未超时的 generating 订单，就无条件扫描所有已登录账号
+                # 完全不依赖 _account_orders 内存状态，彻底解决长时间运行后内存状态丢失的问题
                 scanned_accounts = 0
                 all_pages = list(self.manager.pages.keys())
-                
-                # 调试日志：显示扫描条件
+
                 if generating_count > 0:
-                    print(f"[AUTO-V2] 🔍 扫描条件检查:")
-                    print(f"[AUTO-V2]   - all_pages: {all_pages}")
-                    print(f"[AUTO-V2]   - verified_accounts: {list(self.manager._verified_accounts)}")
-                    print(f"[AUTO-V2]   - _account_orders: {dict(self._account_orders)}")
-                    for aid in all_pages:
-                        acc = self.manager.accounts.get(aid)
-                        if acc:
-                            print(f"[AUTO-V2]   - 账号{aid}: current_tasks={acc.current_tasks}, is_active={acc.is_active}")
-                
-                # 只扫描已登录且当前没有正在提交任务的账号
-                # 触发条件：数据库有 generating 订单 OR _account_orders 有记录（两者取并集，不依赖单一内存状态）
-                accounts_with_orders = [aid for aid in all_pages
+                    # 扫描所有已登录且不在提交中的账号
+                    accounts_to_scan = [aid for aid in all_pages
                                         if aid in self.manager._verified_accounts
                                         and aid in self.manager.accounts
-                                        and (self._account_orders.get(aid) or generating_count > 0)
                                         and self.manager.accounts[aid].current_tasks == 0]
-                if accounts_with_orders:
-                    print(f"[AUTO-V2] 📋 需扫描账号: {accounts_with_orders}")
-                elif generating_count > 0:
-                    print(f"[AUTO-V2] ⚠️ 有{generating_count}个generating订单但无账号满足扫描条件!")
-                for account_id in accounts_with_orders:
-                    page = self.manager.pages.get(account_id)
-                    if not page:
-                        continue
-                    try:
-                        await self._scan_completed_videos(page, account_id)
-                        scanned_accounts += 1
-                    except Exception as e:
-                        print(f"[AUTO-V2] 扫描账号页面出错: {str(e)[:100]}")
+                    if accounts_to_scan:
+                        print(f"[AUTO-V2] 🔍 有{generating_count}个生成中订单，扫描账号: {accounts_to_scan}")
+                    else:
+                        print(f"[AUTO-V2] ⚠️ 有{generating_count}个生成中订单但所有账号正忙（current_tasks>0）")
+                    for account_id in accounts_to_scan:
+                        page = self.manager.pages.get(account_id)
+                        if not page:
+                            continue
+                        try:
+                            await self._scan_completed_videos(page, account_id)
+                            scanned_accounts += 1
+                        except Exception as e:
+                            print(f"[AUTO-V2] 扫描账号页面出错: {str(e)[:100]}")
 
                 if scanned_accounts > 0:
                     print(f"[AUTO-V2] 📹 已扫描 {scanned_accounts} 个账号页面")
