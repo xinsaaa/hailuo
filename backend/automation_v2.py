@@ -395,27 +395,30 @@ class HailuoAutomationV2:
                 all_pages = list(self.manager.pages.keys())
 
                 if generating_count > 0:
-                    # 扫描所有已登录且不在提交中的账号
+                    # 扫描所有已登录且不在提交中、也不在扫描中的账号
+                    # 用 create_task 异步启动扫描，不阻塞主循环处理 pending 订单
                     accounts_to_scan = [aid for aid in all_pages
                                         if aid in self.manager._verified_accounts
                                         and aid in self.manager.accounts
-                                        and self.manager.accounts[aid].current_tasks == 0]
+                                        and self.manager.accounts[aid].current_tasks == 0
+                                        and aid not in self._scanning_accounts]
                     if accounts_to_scan:
-                        print(f"[AUTO-V2] 🔍 有{generating_count}个生成中订单，扫描账号: {accounts_to_scan}")
+                        print(f"[AUTO-V2] 🔍 有{generating_count}个生成中订单，异步扫描账号: {accounts_to_scan}")
+                        for account_id in accounts_to_scan:
+                            page = self.manager.pages.get(account_id)
+                            if page:
+                                asyncio.create_task(self._scan_completed_videos(page, account_id))
+                                scanned_accounts += 1
                     else:
-                        print(f"[AUTO-V2] ⚠️ 有{generating_count}个生成中订单但所有账号正忙（current_tasks>0）")
-                    for account_id in accounts_to_scan:
-                        page = self.manager.pages.get(account_id)
-                        if not page:
-                            continue
-                        try:
-                            await self._scan_completed_videos(page, account_id)
-                            scanned_accounts += 1
-                        except Exception as e:
-                            print(f"[AUTO-V2] 扫描账号页面出错: {str(e)[:100]}")
+                        busy = [aid for aid in all_pages
+                                if aid in self.manager._verified_accounts
+                                and (self.manager.accounts.get(aid, None) and self.manager.accounts[aid].current_tasks > 0
+                                     or aid in self._scanning_accounts)]
+                        if busy:
+                            print(f"[AUTO-V2] ⏳ 有{generating_count}个生成中订单，账号正忙/扫描中: {busy}")
 
                 if scanned_accounts > 0:
-                    print(f"[AUTO-V2] 📹 已扫描 {scanned_accounts} 个账号页面")
+                    print(f"[AUTO-V2] 📹 已异步启动 {scanned_accounts} 个账号的扫描任务")
 
                 # ========== 第2步: 检查数据库中的待处理订单并分配 ==========
                 pending_orders = self.get_pending_orders()
@@ -883,29 +886,30 @@ class HailuoAutomationV2:
         try:
             stuck_order_ids = []
             with Session(engine) as session:
-                cutoff_generating = datetime.utcnow() - timedelta(minutes=30)
-                cutoff_processing = datetime.utcnow() - timedelta(minutes=10)
+                # generating 超时：用 created_at 判断，给足2小时（海螺生成时间不定）
+                # 注意：不能用 updated_at，因为扫描停止时 updated_at 就不更新，会误杀正在生成的订单
+                cutoff_generating = datetime.utcnow() - timedelta(hours=2)
+                cutoff_processing = datetime.utcnow() - timedelta(minutes=30)
 
-                # 检查generating超时（30分钟，不论有无进度都算卡死）
                 stuck_generating = session.exec(
                     select(VideoOrder).where(
                         VideoOrder.status == "generating",
-                        VideoOrder.updated_at < cutoff_generating
+                        VideoOrder.created_at < cutoff_generating
                     )
                 ).all()
                 for order in stuck_generating:
-                    print(f"[AUTO-V2] ⚠️ 订单#{order.id}卡在generating超过30分钟（进度:{order.progress}），标记失败")
+                    print(f"[AUTO-V2] ⚠️ 订单#{order.id}创建超过2小时仍在generating（进度:{order.progress}），标记失败")
                     stuck_order_ids.append(order.id)
 
-                # 检查processing超时（10分钟）
+                # processing 超时：用 created_at 判断，放宽到30分钟
                 stuck_processing = session.exec(
                     select(VideoOrder).where(
                         VideoOrder.status == "processing",
-                        VideoOrder.updated_at < cutoff_processing
+                        VideoOrder.created_at < cutoff_processing
                     )
                 ).all()
                 for order in stuck_processing:
-                    print(f"[AUTO-V2] ⚠️ 订单#{order.id}卡在processing超过10分钟，标记失败")
+                    print(f"[AUTO-V2] ⚠️ 订单#{order.id}创建超过30分钟仍在processing，标记失败")
                     stuck_order_ids.append(order.id)
 
             # 统一走update_order_status处理退款，避免双重退款
