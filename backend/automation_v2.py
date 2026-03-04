@@ -361,7 +361,7 @@ class HailuoAutomationV2:
                 await asyncio.sleep(60)
         
     async def task_processing_loop(self):
-        """任务处理主循环 - 严格参照V1的automation_worker主循环"""
+        """任务处理主循环"""
         print("[AUTO-V2] 📋 任务处理循环已启动")
         loop_count = 0
 
@@ -371,7 +371,9 @@ class HailuoAutomationV2:
                 self._last_heartbeat = datetime.utcnow()
                 poll_interval = _get_v2_config('task_poll_interval', 5)
 
-                # 统计当前状态：只统计未超时的 generating 订单
+                print(f"[AUTO-V2] 🔁 第{loop_count}次循环 [步骤0: 开始]")
+
+                # 统计未超时的 generating 订单
                 generating_count = 0
                 timeout_hours = _get_v2_config('order_timeout_hours', 2)
                 timeout_threshold = datetime.utcnow() - timedelta(hours=timeout_hours)
@@ -384,59 +386,39 @@ class HailuoAutomationV2:
                     ).all()
                     generating_count = len(generating_orders)
 
-                # 有任务或每20次循环才打印状态，避免空循环刷屏
-                if generating_count > 0 or len(self.task_handlers) > 0 or loop_count % 20 == 1:
-                    print(f"[AUTO-V2] 🔁 第{loop_count}次循环 | 活跃任务: {len(self.task_handlers)} | 生成中订单: {generating_count}")
+                print(f"[AUTO-V2] 🔁 第{loop_count}次循环 [步骤1] 活跃任务={len(self.task_handlers)} 生成中={generating_count}")
 
-                # ========== 第1步: 扫描有未完成订单的账号页面 ==========
-                # 只要数据库有未超时的 generating 订单，就无条件扫描所有已登录账号
-                # 完全不依赖 _account_orders 内存状态，彻底解决长时间运行后内存状态丢失的问题
-                scanned_accounts = 0
+                # ========== 第1步: 异步触发扫描（不阻塞主循环）==========
                 all_pages = list(self.manager.pages.keys())
-
                 if generating_count > 0:
-                    # 扫描所有已登录且不在提交中、也不在扫描中的账号
-                    # 用 create_task 异步启动扫描，不阻塞主循环处理 pending 订单
                     accounts_to_scan = [aid for aid in all_pages
                                         if aid in self.manager._verified_accounts
                                         and aid in self.manager.accounts
                                         and self.manager.accounts[aid].current_tasks == 0
                                         and aid not in self._scanning_accounts]
                     if accounts_to_scan:
-                        print(f"[AUTO-V2] 🔍 有{generating_count}个生成中订单，异步扫描账号: {accounts_to_scan}")
+                        print(f"[AUTO-V2] 🔍 有{generating_count}个生成中订单，异步扫描: {accounts_to_scan}")
                         for account_id in accounts_to_scan:
                             page = self.manager.pages.get(account_id)
                             if page:
                                 asyncio.create_task(self._scan_completed_videos(page, account_id))
-                                scanned_accounts += 1
                     else:
-                        busy = [aid for aid in all_pages
-                                if aid in self.manager._verified_accounts
-                                and (self.manager.accounts.get(aid, None) and self.manager.accounts[aid].current_tasks > 0
-                                     or aid in self._scanning_accounts)]
-                        if busy:
-                            print(f"[AUTO-V2] ⏳ 有{generating_count}个生成中订单，账号正忙/扫描中: {busy}")
+                        print(f"[AUTO-V2] ⏳ 有{generating_count}个生成中订单，所有账号正忙/扫描中")
 
-                if scanned_accounts > 0:
-                    print(f"[AUTO-V2] 📹 已异步启动 {scanned_accounts} 个账号的扫描任务")
+                print(f"[AUTO-V2] 🔁 第{loop_count}次循环 [步骤2: 扫描任务已启动]")
 
-                # ========== 第2步: 检查数据库中的待处理订单并分配 ==========
+                # ========== 第2步: 分配 pending 订单 ==========
                 pending_orders = self.get_pending_orders()
-
                 if pending_orders:
                     print(f"[AUTO-V2] 发现 {len(pending_orders)} 个待处理订单")
-
                     for order in pending_orders:
-                        # 防止重复分配
                         if order['id'] in self._processing_order_ids:
                             continue
-                        model_name = order.get('model_name', '')
                         account_id = self.manager.get_best_account_for_task(
-                            model_name=model_name,
+                            model_name=order.get('model_name', ''),
                             account_credits=getattr(self, '_account_credits', {})
                         )
                         if account_id:
-                            # 禁止并发：该账号已有任何运行中的任务则跳过（过滤已完成的僵尸任务）
                             account_has_task = any(
                                 k.startswith(f"{account_id}_") for k, t in self.task_handlers.items()
                                 if not t.done()
@@ -445,45 +427,43 @@ class HailuoAutomationV2:
                                 print(f"[AUTO-V2] 账号 {account_id} 已有任务运行，订单#{order['id']} 等下次循环")
                                 continue
                             self._processing_order_ids.add(order['id'])
-                            # 记录订单分配到哪个账号
                             if account_id not in self._account_orders:
                                 self._account_orders[account_id] = set()
                             self._account_orders[account_id].add(order['id'])
-                            task = asyncio.create_task(
-                                self.process_order(account_id, order)
-                            )
+                            task = asyncio.create_task(self.process_order(account_id, order))
                             self.task_handlers[f"{account_id}_{order['id']}"] = task
                         else:
                             print(f"[AUTO-V2] 暂无可用账号处理订单 {order['id']}，等待下次循环")
-                            continue
 
-                # 清理完成的任务，回收异常信息
-                completed_tasks = [
-                    task_id for task_id, task in self.task_handlers.items()
-                    if task.done()
-                ]
-                for task_id in completed_tasks:
+                print(f"[AUTO-V2] 🔁 第{loop_count}次循环 [步骤3: 清理任务]")
+
+                # ========== 第3步: 清理已完成任务 ==========
+                for task_id in [k for k, t in self.task_handlers.items() if t.done()]:
                     task = self.task_handlers.pop(task_id)
-                    # 回收异常信息，避免"Task exception was never retrieved"
                     if not task.cancelled():
                         exc = task.exception()
                         if exc:
                             log_warn(f"任务{task_id}异常: {exc}")
-                    # 从processing集合中移除对应的order_id
                     try:
                         oid = int(task_id.split('_')[-1])
                         self._processing_order_ids.discard(oid)
                     except (ValueError, IndexError):
                         pass
 
-                # ========== 第3步: 检查generating状态超时的订单 ==========
+                print(f"[AUTO-V2] 🔁 第{loop_count}次循环 [步骤4: 超时检查]")
+
+                # ========== 第4步: 检查超时订单 ==========
                 self._check_stuck_orders()
 
-                # ========== 第4步: 空闲时后台刷新账号积分（异步，不阻塞主循环）==========
+                print(f"[AUTO-V2] 🔁 第{loop_count}次循环 [步骤5: 积分刷新]")
+
+                # ========== 第5步: 空闲时异步刷新积分（绝不阻塞主循环）==========
                 if generating_count == 0 and len(self.task_handlers) == 0:
                     asyncio.create_task(self._refresh_account_credits())
 
-                # 动态等待：空闲时最长等60秒，但新订单到来时立刻唤醒
+                print(f"[AUTO-V2] 🔁 第{loop_count}次循环 [步骤6: 等待]")
+
+                # ========== 第6步: 等待下次循环 ==========
                 has_pending = bool(self.get_pending_orders())
                 if generating_count > 0 or len(self.task_handlers) > 0 or has_pending:
                     self._idle_count = 0
@@ -492,7 +472,6 @@ class HailuoAutomationV2:
                     self._idle_count = getattr(self, '_idle_count', 0) + 1
                     wait_interval = min(poll_interval * 3 + self._idle_count * 15, 60)
 
-                # 使用延迟初始化的事件，避免事件循环问题
                 event = _get_new_order_event()
                 event.clear()
                 try:
@@ -504,7 +483,7 @@ class HailuoAutomationV2:
             except Exception as e:
                 log_error(f"任务循环错误: {e}")
                 await asyncio.sleep(10)
-    
+
     def get_pending_orders(self) -> List[dict]:
         """获取待处理的订单（返回dict避免detached ORM对象问题）"""
         with Session(engine) as session:

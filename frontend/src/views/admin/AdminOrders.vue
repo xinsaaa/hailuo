@@ -7,6 +7,7 @@ const total = ref(0)
 const page = ref(1)
 const statusFilter = ref('')
 const loading = ref(false)
+const scanning = ref(false)
 const showModal = ref(false)
 const editingOrder = ref(null)
 const editForm = ref({ status: '', video_url: '' })
@@ -26,6 +27,28 @@ const toast = (msg, type = 'info') => {
   toastType.value = type
   showToast.value = true
   setTimeout(() => { showToast.value = false }, 3000)
+}
+
+const forceScanAll = async () => {
+  scanning.value = true
+  try {
+    const token = localStorage.getItem('adminToken') || localStorage.getItem('token')
+    const res = await fetch('/api/admin/force-scan-all', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+    const data = await res.json()
+    if (res.ok) {
+      toast(`已触发扫描，账号: ${data.accounts?.join(', ') || '无'}`, 'success')
+      setTimeout(() => loadOrders(page.value), 3000)
+    } else {
+      toast(data.detail || '扫描失败', 'error')
+    }
+  } catch (e) {
+    toast('请求失败', 'error')
+  } finally {
+    scanning.value = false
+  }
 }
 
 const loadOrders = async (p = 1) => {
@@ -90,18 +113,31 @@ onMounted(() => loadOrders())
 
     <div class="flex items-center justify-between">
         <h2 class="text-2xl font-bold text-white">订单管理</h2>
-        
-        <select 
-            v-model="statusFilter"
-            class="px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white outline-none focus:border-blue-500"
-        >
-            <option value="">全部状态</option>
-            <option value="pending">待处理</option>
-            <option value="processing">处理中</option>
-            <option value="generating">生成中</option>
-            <option value="completed">已完成</option>
-            <option value="failed">失败</option>
-        </select>
+
+        <div class="flex items-center gap-3">
+            <button
+                @click="forceScanAll"
+                :disabled="scanning"
+                class="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-white text-sm font-medium transition-all"
+            >
+                <svg :class="scanning ? 'animate-spin' : ''" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+                </svg>
+                {{ scanning ? '扫描中...' : '强制扫描' }}
+            </button>
+
+            <select
+                v-model="statusFilter"
+                class="px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white outline-none focus:border-blue-500"
+            >
+                <option value="">全部状态</option>
+                <option value="pending">待处理</option>
+                <option value="processing">处理中</option>
+                <option value="generating">生成中</option>
+                <option value="completed">已完成</option>
+                <option value="failed">失败</option>
+            </select>
+        </div>
     </div>
 
     <!-- Table -->

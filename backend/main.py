@@ -1215,6 +1215,27 @@ async def force_scan_order(order_id: int, current_user: User = Depends(get_curre
         raise HTTPException(status_code=503, detail="自动化服务未运行")
 
 
+@app.post("/api/admin/force-scan-all")
+async def force_scan_all(current_user: User = Depends(get_current_admin_user)):
+    """强制扫描所有生成中的订单（管理员专用）"""
+    from backend.automation_v2 import automation_v2
+    if not automation_v2 or not automation_v2.is_running:
+        raise HTTPException(status_code=503, detail="自动化服务未运行")
+
+    # 唤醒主循环
+    from backend.automation_v2 import _get_new_order_event
+    _get_new_order_event().set()
+
+    # 对所有已登录账号异步触发扫描
+    scanned = []
+    for account_id, page in list(automation_v2.manager.pages.items()):
+        if account_id in automation_v2.manager._verified_accounts:
+            asyncio.create_task(automation_v2._scan_completed_videos(page, account_id))
+            scanned.append(account_id)
+
+    return {"message": f"已触发扫描", "accounts": scanned}
+
+
 @app.post("/api/hailuo/code")
 def upload_verification_code(request: VerificationCodeRequest, session: Session = Depends(get_session)):
     match = re.search(r'【海螺AI】(\d{6})', request.text)
