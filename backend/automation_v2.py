@@ -479,9 +479,9 @@ class HailuoAutomationV2:
                 # ========== 第3步: 检查generating状态超时的订单 ==========
                 self._check_stuck_orders()
 
-                # ========== 第4步: 空闲时后台刷新账号积分 ==========
+                # ========== 第4步: 空闲时后台刷新账号积分（异步，不阻塞主循环）==========
                 if generating_count == 0 and len(self.task_handlers) == 0:
-                    await self._refresh_account_credits()
+                    asyncio.create_task(self._refresh_account_credits())
 
                 # 动态等待：空闲时最长等60秒，但新订单到来时立刻唤醒
                 has_pending = bool(self.get_pending_orders())
