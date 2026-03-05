@@ -113,6 +113,7 @@ class HailuoAutomationV2:
         # 核心循环任务引用，用于监控和重启
         self._loop_task: Optional[asyncio.Task] = None
         self._health_task: Optional[asyncio.Task] = None
+        self._scan_task: Optional[asyncio.Task] = None
         # 系统启动时间，用于定时重启
         self._start_time: Optional[datetime] = None
         # 重启间隔（秒），默认1小时
@@ -177,6 +178,9 @@ class HailuoAutomationV2:
             log_info("启动任务处理循环...")
             self._loop_task = asyncio.create_task(self.task_processing_loop())
 
+            # 启动独立扫描循环（完全独立，不受主循环影响）
+            self._scan_task = asyncio.create_task(self._scan_loop())
+
             # 启动账号健康检查循环
             log_info("启动账号健康检查循环...")
             self._health_task = asyncio.create_task(self.account_health_check_loop())
@@ -233,6 +237,10 @@ class HailuoAutomationV2:
                     exc = self._health_task.exception() if not self._health_task.cancelled() else None
                     log_warn(f"健康检查循环已死亡{f': {exc}' if exc else ''}，正在重启...")
                     self._health_task = asyncio.create_task(self.account_health_check_loop())
+                if self._scan_task and self._scan_task.done():
+                    exc = self._scan_task.exception() if not self._scan_task.cancelled() else None
+                    log_warn(f"扫描循环已死亡{f': {exc}' if exc else ''}，正在重启...")
+                    self._scan_task = asyncio.create_task(self._scan_loop())
             except Exception as e:
                 log_error(f"监控循环错误: {e}")
                 await asyncio.sleep(10)
@@ -242,7 +250,7 @@ class HailuoAutomationV2:
         log_info("🔄 开始定时重启...")
 
         # 1. 取消并等待核心循环任务结束
-        for task, name in [(self._loop_task, "任务循环"), (self._health_task, "健康检查")]:
+        for task, name in [(self._loop_task, "任务循环"), (self._health_task, "健康检查"), (self._scan_task, "扫描循环")]:
             if task and not task.done():
                 task.cancel()
                 try:
@@ -313,6 +321,7 @@ class HailuoAutomationV2:
         # 5. 重启核心循环
         self._loop_task = asyncio.create_task(self.task_processing_loop())
         self._health_task = asyncio.create_task(self.account_health_check_loop())
+        self._scan_task = asyncio.create_task(self._scan_loop())
 
         # 6. 重置计时器
         self._start_time = datetime.utcnow()
@@ -360,6 +369,34 @@ class HailuoAutomationV2:
                 print(f"[AUTO-V2] 健康检查循环错误: {e}")
                 await asyncio.sleep(60)
         
+    async def _scan_loop(self):
+        """独立扫描循环：只要有 generating 订单就持续扫描，和主循环完全分离"""
+        print("[AUTO-V2] 🔍 独立扫描循环已启动")
+        while self.is_running:
+            try:
+                # 查数据库有没有 generating 订单
+                with Session(engine) as session:
+                    generating_count = session.exec(
+                        select(VideoOrder).where(VideoOrder.status == "generating")
+                    ).all()
+                    generating_count = len(generating_count)
+
+                if generating_count > 0:
+                    print(f"[SCAN-LOOP] 发现{generating_count}个生成中订单，触发扫描")
+                    for account_id, page in list(self.manager.pages.items()):
+                        if account_id not in self.manager._verified_accounts:
+                            continue
+                        if account_id in self._scanning_accounts:
+                            print(f"[SCAN-LOOP] 账号{account_id}已在扫描中，跳过")
+                            continue
+                        asyncio.create_task(self._scan_completed_videos(page, account_id))
+
+                await asyncio.sleep(15)  # 每15秒扫一次
+
+            except Exception as e:
+                print(f"[SCAN-LOOP] 错误: {e}")
+                await asyncio.sleep(15)
+
     async def task_processing_loop(self):
         """任务处理主循环"""
         print("[AUTO-V2] 📋 任务处理循环已启动")
