@@ -29,7 +29,7 @@ from backend.security import (
     check_rate_limit, is_ip_banned, record_fail, record_success,
     get_ban_remaining_seconds, get_fail_count
 )
-from backend.admin import router as admin_router
+from backend.admin import router as admin_router, get_admin_user
 from backend.email_service import send_verification_code, verify_email_code
 from backend.admin_multi_account import include_multi_account_routes
 
@@ -1216,7 +1216,7 @@ async def force_scan_order(order_id: int, current_user: User = Depends(get_curre
 
 
 @app.post("/api/admin/force-scan-all")
-async def force_scan_all(current_user: User = Depends(get_current_admin_user)):
+async def force_scan_all(admin=Depends(get_admin_user)):
     """强制扫描所有生成中的订单（管理员专用）"""
     from backend.automation_v2 import automation_v2
     if not automation_v2 or not automation_v2.is_running:
