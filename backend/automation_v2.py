@@ -455,6 +455,16 @@ class HailuoAutomationV2:
                 # ========== 第4步: 检查超时订单 ==========
                 self._check_stuck_orders()
 
+                # ========== 兜底清理: 超过10分钟的扫描任务强制解锁 ==========
+                if hasattr(self, '_scanning_start_times'):
+                    now = datetime.utcnow()
+                    stuck_scanning = [aid for aid, t in self._scanning_start_times.items()
+                                      if (now - t).total_seconds() > 600]
+                    for aid in stuck_scanning:
+                        print(f"[AUTO-V2] ⚠️ 账号{aid}扫描超过10分钟，强制解锁")
+                        self._scanning_accounts.discard(aid)
+                        self._scanning_start_times.pop(aid, None)
+
                 print(f"[AUTO-V2] 🔁 第{loop_count}次循环 [步骤5: 积分刷新]")
 
                 # ========== 第5步: 空闲时异步刷新积分（绝不阻塞主循环）==========
@@ -514,7 +524,25 @@ class HailuoAutomationV2:
             print(f"[AUTO-V2] ⏭️ 账号{account_id}正在扫描中，跳过重入")
             return
         self._scanning_accounts.add(account_id)
-        
+        # 记录扫描开始时间，用于主循环兜底清理
+        if not hasattr(self, '_scanning_start_times'):
+            self._scanning_start_times = {}
+        self._scanning_start_times[account_id] = datetime.utcnow()
+
+        try:
+            # 整体超时保护：最长5分钟，超时后 finally 强制清除 _scanning_accounts
+            await asyncio.wait_for(self._do_scan(page, account_id), timeout=300)
+        except asyncio.TimeoutError:
+            print(f"[AUTO-V2] ⚠️ 账号{account_id}扫描超时(5分钟)，强制结束")
+        except Exception as e:
+            print(f"[AUTO-V2] 扫描页面出错: {str(e)[:100]}")
+        finally:
+            self._scanning_accounts.discard(account_id)
+            if hasattr(self, '_scanning_start_times'):
+                self._scanning_start_times.pop(account_id, None)
+
+    async def _do_scan(self, page, account_id: str):
+        """实际扫描逻辑，由 _scan_completed_videos 包裹超时"""
         try:
             # 检查账号上有哪些类型的订单，决定扫描哪个页面
             order_types = set()
