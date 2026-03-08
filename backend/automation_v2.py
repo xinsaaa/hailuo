@@ -560,6 +560,11 @@ class HailuoAutomationV2:
         if account_id in self._scanning_accounts:
             print(f"[AUTO-V2] ⏭️ 账号{account_id}正在扫描中，跳过重入")
             return
+        # 如果该账号正在提交表单，跳过本次扫描，避免 goto/reload 打断提交
+        submit_lock = self._submit_locks.get(account_id)
+        if submit_lock and submit_lock.locked():
+            print(f"[AUTO-V2] ⏭️ 账号{account_id}正在提交订单，跳过本次扫描")
+            return
         self._scanning_accounts.add(account_id)
         # 记录扫描开始时间，用于主循环兜底清理
         if not hasattr(self, '_scanning_start_times'):

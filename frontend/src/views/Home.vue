@@ -257,43 +257,46 @@ const handleModelSeriesGenerate = (series) => {
           </div>
         </div>
         
-        <!-- Runway Gen 模型 -->
-        <div class="group relative opacity-60 hover:opacity-100 transition-all duration-500 md:col-start-auto lg:col-start-auto">
-          <div class="absolute -inset-0.5 bg-white/5 rounded-3xl opacity-0"></div>
-          
-          <div class="relative bg-white/5 border border-white/5 border-t-white/10 rounded-2xl p-6 shadow-xl h-full backdrop-blur-3xl transition-all duration-500 hover:bg-white/10 hover:border-white/10 hover:-translate-y-1">
+        <!-- 即梦AI卡片 -->
+        <div class="group relative transition-all duration-500 md:col-start-auto lg:col-start-auto">
+          <div class="absolute -inset-0.5 bg-gradient-to-b from-violet-500/20 to-fuchsia-500/5 rounded-3xl blur opacity-20 group-hover:opacity-60 transition-opacity duration-700"></div>
+
+          <div class="relative bg-white/5 border border-white/5 border-t-white/20 rounded-2xl p-6 shadow-2xl h-full cursor-pointer transition-all duration-500 hover:scale-[1.02] hover:-translate-y-1 backdrop-blur-3xl hover:bg-white/10 hover:shadow-violet-500/10">
             <div class="flex justify-between items-center mb-4">
-              <div class="px-2.5 py-1 rounded-full bg-white/5 text-gray-400 text-xs font-bold border border-white/5">
-                筹备中
+              <div class="px-2.5 py-1 rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white text-xs font-bold shadow-sm ring-1 ring-white/10">
+                NEW
               </div>
-              <div class="text-3xl font-black text-gray-600">
+              <div class="text-xl font-bold text-white drop-shadow-sm tracking-wide">
                 ¥?
               </div>
             </div>
-            
-            <h3 class="text-xl font-bold text-gray-500 mb-3 group-hover:text-gray-300 transition-colors">
-              Runway Gen
+
+            <h3 class="text-xl font-bold text-white mb-4 flex items-center gap-2">
+              即梦 AI <span class="text-[10px] text-violet-400 font-normal px-1.5 py-0.5 border border-violet-400/30 rounded tracking-wider uppercase">Seedance</span>
+              <div class="w-1.5 h-1.5 rounded-full bg-violet-400 shadow-[0_0_8px_rgba(167,139,250,0.8)] animate-pulse"></div>
             </h3>
-            
-            <div class="space-y-2 mb-4">
-              <div class="px-3 py-1.5 rounded-lg border border-white/5 bg-black/20 text-gray-500 text-xs font-medium group-hover:text-gray-400">
-                专业级质量
+
+            <div class="space-y-2 mb-6">
+              <div class="px-3 py-2 rounded-lg bg-black/20 text-gray-300 text-xs font-medium flex items-center gap-2 border border-white/5 group-hover:border-white/10 transition-colors">
+                <svg class="w-3.5 h-3.5 text-violet-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.069A1 1 0 0121 8.82v6.36a1 1 0 01-1.447.893L15 14M3 8a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"/></svg>
+                字节跳动出品
               </div>
-              <div class="px-3 py-1.5 rounded-lg border border-white/5 bg-black/20 text-gray-500 text-xs font-medium group-hover:text-gray-400">
-                电影级效果
+              <div class="px-3 py-2 rounded-lg bg-black/20 text-gray-300 text-xs font-medium border border-white/5 group-hover:border-white/10 transition-colors">
+                高质量视频生成，流畅自然
               </div>
             </div>
-            
-            <div class="text-center mb-3">
-              <div class="text-sm font-semibold text-gray-500 mb-1">
-                敬请期待
+
+            <div class="text-center mb-6">
+              <div class="text-sm font-medium text-gray-400">
+                单次生成仅需 <span class="text-white font-bold mx-1">?元</span>
               </div>
-              <p class="text-xs text-gray-600">筹备中</p>
             </div>
-            
-            <button class="w-full py-2 bg-gray-700 text-gray-500 rounded-xl font-bold text-sm cursor-not-allowed">
-              即将推出
-            </button>
+
+            <div>
+              <button @click.stop="router.push({ name: 'Dashboard', query: { platform: 'jimeng' } })" class="w-full py-3.5 bg-white text-black hover:bg-gray-50 rounded-xl font-bold text-sm transition-all duration-300 shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-95">
+                使用即梦生成
+              </button>
+            </div>
           </div>
         </div>
         
