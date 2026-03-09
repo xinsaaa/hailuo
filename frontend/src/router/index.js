@@ -104,6 +104,11 @@ const routes = [
                 component: AdminMultiAccounts
             },
             {
+                path: 'jimeng-accounts',
+                name: '即梦账号',
+                component: () => import('../views/admin/AdminJimengAccounts.vue')
+            },
+            {
                 path: 'settings',
                 name: '系统设置',
                 component: () => import('../views/admin/AdminSettings.vue')

@@ -59,6 +59,10 @@ app.include_router(admin_router)
 # 注册多账号管理路由
 include_multi_account_routes(app)
 
+# 注册即梦账号管理路由
+from backend.admin_jimeng_account import router as jimeng_router
+app.include_router(jimeng_router)
+
 
 # ============ Rate Limiting 中间件 ============
 # 敏感接口（需要严格限制）

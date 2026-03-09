@@ -150,6 +150,22 @@ class HailuoAutomationV2:
             self.is_running = True
             self._start_time = datetime.utcnow()
             log_success("系统状态已设置为运行中")
+
+            # ===== 重启恢复：把上次中断的 processing 订单重置回 pending =====
+            # processing 说明已经开始提交但还没确认，重启后页面丢失，必须重新处理
+            # generating 不重置：它可能在海螺那边还在生成，扫描循环会继续跟踪
+            try:
+                with Session(engine) as session:
+                    orphaned = session.exec(
+                        select(VideoOrder).where(VideoOrder.status == "processing")
+                    ).all()
+                    if orphaned:
+                        log_warn(f"发现 {len(orphaned)} 个遗留 processing 订单，重置为 pending 重新处理")
+                        for o in orphaned:
+                            o.status = "pending"
+                        session.commit()
+            except Exception as e:
+                log_error(f"重置遗留订单失败: {e}")
             
             # 并行登录所有激活的账号（先加载Cookie再登录）
             login_tasks = []
@@ -208,7 +224,16 @@ class HailuoAutomationV2:
                     heartbeat_elapsed = (datetime.utcnow() - self._last_heartbeat).total_seconds()
                     if heartbeat_elapsed > self._heartbeat_timeout:
                         log_warn(f"🚨 主循环心跳超时 {heartbeat_elapsed:.0f}秒，可能卡住，强制重启")
-                        await self._scheduled_restart()
+                        try:
+                            await asyncio.wait_for(self._scheduled_restart(), timeout=300)
+                        except asyncio.TimeoutError:
+                            log_error("🚨 心跳重启超时(5分钟)，强制重置计时器")
+                            self._start_time = datetime.utcnow()
+                            self._last_heartbeat = datetime.utcnow()
+                        except Exception as e:
+                            log_error(f"🚨 心跳重启异常: {e}，强制重置")
+                            self._start_time = datetime.utcnow()
+                            self._last_heartbeat = datetime.utcnow()
                         continue
 
                 # 定时重启：检查运行时长是否超过重启间隔
@@ -226,7 +251,14 @@ class HailuoAutomationV2:
                                 log_warn(f"⏰ 已运行{elapsed/60:.0f}分钟，超期{overdue/60:.0f}分钟强制重启（{active_tasks}个任务可能卡死）")
                             else:
                                 log_info(f"⏰ 已运行{elapsed/60:.0f}分钟，开始定时重启...")
-                            await self._scheduled_restart()
+                            try:
+                                await asyncio.wait_for(self._scheduled_restart(), timeout=300)
+                            except asyncio.TimeoutError:
+                                log_error("🚨 定时重启超时(5分钟)，强制重置计时器")
+                                self._start_time = datetime.utcnow()
+                            except Exception as e:
+                                log_error(f"🚨 定时重启异常: {e}，强制重置计时器")
+                                self._start_time = datetime.utcnow()
                             continue
 
                 if self._loop_task and self._loop_task.done():
@@ -270,6 +302,10 @@ class HailuoAutomationV2:
         self.task_handlers.clear()
         self._processing_order_ids.clear()
         self._account_orders.clear()
+        self._scanning_accounts.clear()
+        if hasattr(self, '_scanning_start_times'):
+            self._scanning_start_times.clear()
+        self._submit_locks.clear()  # 重置所有提交锁，防止 cancel 后锁永远持有
 
         # 4. 重新初始化并登录
         print("[AUTO-V2] 重新加载账号配置并登录...")
@@ -936,8 +972,11 @@ class HailuoAutomationV2:
             stuck_order_ids = []
             with Session(engine) as session:
                 # generating 超时：用 created_at 判断，给足2小时（海螺生成时间不定）
-                # 注意：不能用 updated_at，因为扫描停止时 updated_at 就不更新，会误杀正在生成的订单
+                # 不能用 updated_at：扫描停止时 updated_at 不更新，会误杀仍在生成的订单
                 cutoff_generating = datetime.utcnow() - timedelta(hours=2)
+
+                # processing 超时：用 updated_at 判断（状态变为processing的时间）
+                # 不能用 created_at：旧订单重启后重新变为processing，created_at仍是老时间，会立刻被误杀
                 cutoff_processing = datetime.utcnow() - timedelta(minutes=30)
 
                 stuck_generating = session.exec(
@@ -950,18 +989,21 @@ class HailuoAutomationV2:
                     print(f"[AUTO-V2] ⚠️ 订单#{order.id}创建超过2小时仍在generating（进度:{order.progress}），标记失败")
                     stuck_order_ids.append(order.id)
 
-                # processing 超时：用 created_at 判断，放宽到30分钟
+                # processing 用 updated_at，超时后重置回 pending 而非直接 failed，给一次重试机会
                 stuck_processing = session.exec(
                     select(VideoOrder).where(
                         VideoOrder.status == "processing",
-                        VideoOrder.created_at < cutoff_processing
+                        VideoOrder.updated_at < cutoff_processing
                     )
                 ).all()
                 for order in stuck_processing:
-                    print(f"[AUTO-V2] ⚠️ 订单#{order.id}创建超过30分钟仍在processing，标记失败")
-                    stuck_order_ids.append(order.id)
+                    print(f"[AUTO-V2] ⚠️ 订单#{order.id}进入processing超过30分钟无进展，重置为pending重试")
+                    order.status = "pending"
+                    order.updated_at = datetime.utcnow()
+                    session.add(order)
+                session.commit()
 
-            # 统一走update_order_status处理退款，避免双重退款
+            # generating 超时才真正标记失败（退款）
             for oid in stuck_order_ids:
                 self.update_order_status(oid, "failed")
                 self._processing_order_ids.discard(oid)

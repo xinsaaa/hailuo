@@ -1,24 +1,30 @@
 <template>
-  <div class="min-h-screen bg-gray-900 text-white">
+  <div class="space-y-6">
+    <!-- Toast 通知 -->
+    <div v-if="showToast" class="fixed top-4 right-4 z-50 px-4 py-3 rounded-xl shadow-lg text-sm font-medium transition-all"
+      :class="toastType === 'success' ? 'bg-green-500/90 text-white' : toastType === 'error' ? 'bg-red-500/90 text-white' : 'bg-blue-500/90 text-white'">
+      {{ toastMessage }}
+    </div>
+
     <!-- 页面头部 -->
-    <div class="bg-gray-800 px-6 py-4 border-b border-gray-700">
-      <div class="flex items-center justify-between">
-        <h1 class="text-2xl font-bold text-white">多账号智能调度系统</h1>
-        <div class="flex items-center space-x-4">
-          <div class="flex items-center space-x-2">
-            <div class="w-3 h-3 rounded-full" :class="systemStatus.is_running ? 'bg-green-400' : 'bg-yellow-400'"></div>
-            <span class="text-sm">{{ systemStatus.is_running ? '系统运行中' : '系统启动中...' }}</span>
-          </div>
-          <div class="px-4 py-2 bg-gray-700 text-gray-300 rounded-lg text-sm">
-            自动管理系统
-          </div>
-        </div>
+    <div class="flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-2 h-2 rounded-full shadow-[0_0_8px_rgba(59,130,246,0.8)]"
+          :class="systemStatus.is_running ? 'bg-green-400 shadow-[0_0_8px_rgba(74,222,128,0.8)]' : 'bg-yellow-400 shadow-[0_0_8px_rgba(250,204,21,0.8)]'"></div>
+        <h1 class="text-2xl font-bold text-white">多账号智能调度</h1>
+        <span class="px-2 py-0.5 text-xs font-bold bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded">
+          {{ systemStatus.is_running ? '运行中' : '启动中' }}
+        </span>
+      </div>
+      <div class="text-sm text-gray-400">
+        共 <span class="text-white font-bold">{{ performance.total_accounts }}</span> 个账号，
+        <span class="text-green-400 font-bold">{{ performance.active_accounts }}</span> 个活跃，
+        <span class="text-blue-400 font-bold">{{ performance.available_slots }}</span> 个可用槽位
       </div>
     </div>
 
-    <div class="p-6 max-w-7xl mx-auto">
-      <!-- 系统状态概览 -->
-      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+    <!-- 系统状态概览 -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <div class="bg-gray-800 p-6 rounded-xl border border-gray-700">
           <div class="flex items-center justify-between">
             <div>
@@ -76,45 +82,47 @@
               </svg>
             </div>
           </div>
-        </div>
       </div>
 
-      <!-- 操作按钮栏 -->
-      <div class="flex items-center justify-between mb-6">
-        <div class="flex items-center space-x-4">
-          <button 
-            @click="showAddModal = true"
-            class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center"
-          >
-            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
-            </svg>
-            添加账号
-          </button>
-          <button 
-            @click="refreshAccounts"
-            :disabled="loading"
-            class="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center"
-          >
-            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-            </svg>
-            {{ loading ? '刷新中...' : '刷新状态' }}
-          </button>
-        </div>
-        <div class="flex items-center space-x-2">
-          <span class="text-sm text-gray-400">性能等级:</span>
-          <span class="px-3 py-1 rounded-full text-sm font-medium" :class="getPerformanceClass(performance.performance_level)">
-            {{ performance.performance_level }}
-          </span>
-        </div>
+    <!-- 操作按钮栏 -->
+    <div class="flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <button
+          @click="showAddModal = true"
+          class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2"
+        >
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
+          </svg>
+          添加账号
+        </button>
+        <button
+          @click="refreshAccounts"
+          :disabled="loading"
+          class="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2"
+        >
+          <svg class="w-4 h-4" :class="{ 'animate-spin': loading }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+          </svg>
+          {{ loading ? '刷新中...' : '刷新状态' }}
+        </button>
       </div>
+      <div class="flex items-center gap-2">
+        <span class="text-sm text-gray-400">性能等级:</span>
+        <span class="px-3 py-1 rounded-full text-sm font-medium" :class="getPerformanceClass(performance.performance_level)">
+          {{ performance.performance_level }}
+        </span>
+      </div>
+    </div>
 
-      <!-- 账号列表 -->
-      <div class="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
-        <div class="p-4 border-b border-gray-700">
-          <h3 class="text-lg font-semibold text-white">账号管理</h3>
-        </div>
+    <!-- 账号列表 -->
+    <div class="bg-gray-800/50 rounded-2xl border border-gray-700/50 shadow-xl overflow-hidden">
+      <div class="p-4 border-b border-gray-700 flex items-center gap-2">
+        <svg class="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
+        </svg>
+        <h3 class="text-lg font-semibold text-white">账号管理</h3>
+      </div>
         
         <div class="overflow-x-auto">
           <table class="w-full">
@@ -238,13 +246,16 @@
             </tbody>
           </table>
         </div>
-      </div>
     </div>
 
     <!-- 添加账号弹窗 -->
-    <div v-if="showAddModal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div class="bg-gray-800 p-6 rounded-xl border border-gray-700 w-full max-w-md">
-        <h3 class="text-lg font-semibold text-white mb-4">添加新账号</h3>
+    <div v-if="showAddModal" class="fixed inset-0 bg-black/60 flex items-center justify-center z-50" @click.self="showAddModal = false">
+      <div class="bg-gray-800 p-6 rounded-xl border border-gray-700 w-full max-w-md mx-4">
+        <h3 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+          <span class="w-1.5 h-5 bg-blue-500 rounded-full"></span>
+          添加海螺账号
+        </h3>
+
         <form @submit.prevent="addAccount">
           <div class="space-y-4">
             <div>
@@ -294,41 +305,34 @@
         </form>
       </div>
     </div>
-  </div>
 
-  <!-- 验证码登录弹窗 -->
-  <div v-if="verificationModal.show" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-    <div class="bg-slate-800 rounded-xl p-6 w-full max-w-md mx-4">
-      <h3 class="text-xl font-bold text-white mb-4">
-        {{ verificationModal.step === 'send' ? '发送验证码' : '验证码登录' }}
-      </h3>
-      
-      <div class="mb-4">
-        <p class="text-gray-300 mb-2">账号：{{ verificationModal.accountName }}</p>
-        
-        <div v-if="verificationModal.step === 'send'" class="text-gray-400 text-sm">
-          <p>将向绑定手机发送验证码</p>
-          <p>请确认手机号正确并保持畅通</p>
+    <!-- 验证码登录弹窗 -->
+    <div v-if="verificationModal.show" class="fixed inset-0 bg-black/60 flex items-center justify-center z-50" @click.self="closeVerificationModal">
+      <div class="bg-gray-800 p-6 rounded-xl border border-gray-700 w-full max-w-md mx-4">
+        <h3 class="text-lg font-semibold text-white mb-1 flex items-center gap-2">
+          <span class="w-1.5 h-5 bg-blue-500 rounded-full"></span>
+          {{ verificationModal.step === 'send' ? '发送验证码' : '验证码登录' }}
+        </h3>
+        <p class="text-sm text-gray-400 mb-4">账号：{{ verificationModal.accountName }}</p>
+
+        <div v-if="verificationModal.step === 'send'" class="mb-4 text-sm text-gray-400 bg-black/30 rounded-lg p-3 space-y-1">
+          <p>将向绑定手机发送验证码，请确认手机保持畅通</p>
         </div>
-        
-        <div v-else class="space-y-3">
+
+        <div v-else class="space-y-3 mb-4">
           <div>
-            <label class="block text-sm font-medium text-gray-300 mb-1">
-              验证码
-            </label>
+            <label class="block text-sm font-medium text-gray-300 mb-1">验证码</label>
             <input
               v-model="verificationModal.code"
               type="text"
               placeholder="请输入6位验证码"
               maxlength="6"
-              class="w-full px-3 py-2 bg-slate-700 border border-slate-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
+              class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-blue-500"
               @keyup.enter="verifyAndLogin"
             />
           </div>
           <div class="flex items-center justify-between">
-            <p class="text-gray-400 text-sm">
-              请输入收到的短信验证码
-            </p>
+            <p class="text-gray-400 text-sm">请输入收到的短信验证码</p>
             <button
               @click="resendVerificationCode"
               :disabled="verificationModal.loading || resendCountdown > 0"
@@ -338,43 +342,41 @@
             </button>
           </div>
         </div>
-      </div>
-      
-      <div class="flex justify-end space-x-3">
-        <button
-          type="button"
-          @click="closeVerificationModal"
-          :disabled="verificationModal.loading"
-          class="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors disabled:opacity-50"
-        >
-          取消
-        </button>
-        
-        <button
-          v-if="verificationModal.step === 'send'"
-          @click="sendVerificationCode"
-          :disabled="verificationModal.loading"
-          class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-50 flex items-center"
-        >
-          <svg v-if="verificationModal.loading" class="animate-spin h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24">
-            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-            <path class="opacity-75" fill="currentColor" d="m4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-          </svg>
-          {{ verificationModal.loading ? '发送中...' : '发送验证码' }}
-        </button>
-        
-        <button
-          v-else
-          @click="verifyAndLogin"
-          :disabled="verificationModal.loading || !verificationModal.code.trim()"
-          class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors disabled:opacity-50 flex items-center"
-        >
-          <svg v-if="verificationModal.loading" class="animate-spin h-4 w-4 mr-2" fill="none" viewBox="0 0 24 24">
-            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-            <path class="opacity-75" fill="currentColor" d="m4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-          </svg>
-          {{ verificationModal.loading ? '登录中...' : '确认登录' }}
-        </button>
+
+        <div class="flex justify-end gap-3">
+          <button
+            type="button"
+            @click="closeVerificationModal"
+            :disabled="verificationModal.loading"
+            class="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors disabled:opacity-50"
+          >取消</button>
+
+          <button
+            v-if="verificationModal.step === 'send'"
+            @click="sendVerificationCode"
+            :disabled="verificationModal.loading"
+            class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors disabled:opacity-50 flex items-center gap-2"
+          >
+            <svg v-if="verificationModal.loading" class="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="m4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            {{ verificationModal.loading ? '发送中...' : '发送验证码' }}
+          </button>
+
+          <button
+            v-else
+            @click="verifyAndLogin"
+            :disabled="verificationModal.loading || !verificationModal.code.trim()"
+            class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors disabled:opacity-50 flex items-center gap-2"
+          >
+            <svg v-if="verificationModal.loading" class="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="m4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            {{ verificationModal.loading ? '登录中...' : '确认登录' }}
+          </button>
+        </div>
       </div>
     </div>
   </div>

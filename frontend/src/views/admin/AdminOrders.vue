@@ -98,6 +98,14 @@ const statusColors = {
     failed: 'bg-red-500/10 text-red-500',
 }
 
+const statusLabels = {
+    pending: '待处理',
+    processing: '处理中',
+    generating: '生成中',
+    completed: '已完成',
+    failed: '失败',
+}
+
 const totalPages = computed(() => Math.ceil(total.value / 20))
 
 onMounted(() => loadOrders())
@@ -172,7 +180,7 @@ onMounted(() => loadOrders())
                                 'bg-red-500/10 text-red-400 border-red-500/20': order.status === 'failed'
                             }"
                         >
-                            {{ order.status.toUpperCase() }}
+                            {{ statusLabels[order.status] || order.status }}
                         </span>
                     </td>
                     <td class="px-6 py-4 text-sm">
