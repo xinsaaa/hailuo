@@ -26,6 +26,8 @@ api.interceptors.response.use(
 
 export const getJimengModels = () => api.get('/jimeng/models')
 
+export const getJimengStatus = () => api.get('/jimeng/status')
+
 export const getJimengOrders = () => api.get('/jimeng/orders')
 
 export const jimengCreateOrder = async (data) => {
