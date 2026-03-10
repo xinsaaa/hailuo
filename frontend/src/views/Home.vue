@@ -3,16 +3,21 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '../stores/user'
 import { getPublicConfig, getAvailableModels } from '../api'
+import { getJimengStatus, getJimengModels } from '../api/jimeng'
 
 const prompt = ref('')
 const router = useRouter()
 const userStore = useUserStore()
 const videoPrice23 = ref(0.99)
 const videoPrice31 = ref(0.99)
+const jimengPrice = ref(0.99)
 const modelsList = ref([])
+const jimengEnabled = ref(true)
+const jimengModels = ref([])
 
 const has23Series = computed(() => modelsList.value.some(m => m.id.includes('2_0') || m.id.includes('2_3') || m.id.includes('hailuo_1_0')))
 const has31Series = computed(() => modelsList.value.some(m => m.id.includes('3_1') || m.id.includes('beta_3')))
+const hasJimeng = computed(() => jimengEnabled.value && jimengModels.value.length > 0)
 
 const siteName = ref(localStorage.getItem('site_name') || '大帝AI')
 const isLoggedIn = computed(() => !!userStore.token)
@@ -33,7 +38,7 @@ const loadConfig = async () => {
     try {
         const config = await getPublicConfig()
         
-        // 从模型API分别获取2.3和3.1系列最低价格
+        // 加载海螺模型
         try {
             const modelsData = await getAvailableModels()
             if (modelsData && modelsData.models && modelsData.models.length > 0) {
@@ -49,6 +54,20 @@ const loadConfig = async () => {
             }
         } catch (e) {
             // 保持默认价格
+        }
+        
+        // 加载即梦模型状态
+        try {
+            const jimengData = await getJimengModels()
+            if (jimengData && jimengData.models && jimengData.models.length > 0) {
+                jimengModels.value = jimengData.models
+                jimengEnabled.value = true
+                jimengPrice.value = Math.min(...jimengData.models.map(m => m.price || 0.99))
+            } else {
+                jimengEnabled.value = false
+            }
+        } catch (e) {
+            jimengEnabled.value = false
         }
         
         // 生成赠送信息
@@ -258,24 +277,28 @@ const handleModelSeriesGenerate = (series) => {
         </div>
         
         <!-- 即梦AI卡片 -->
-        <div class="group relative md:col-start-2 lg:col-start-auto cursor-pointer" @click="router.push('/jimeng')">
-          <div class="absolute -inset-0.5 bg-gradient-to-b from-violet-500/20 to-fuchsia-500/5 rounded-3xl blur opacity-20 group-hover:opacity-60 transition-opacity duration-700"></div>
+        <div :class="['group relative md:col-start-2 lg:col-start-auto', { 'opacity-60 cursor-not-allowed': !hasJimeng }]" @click="hasJimeng && router.push('/jimeng')">
+          <!-- 发光边框 -->
+          <div v-if="hasJimeng" class="absolute -inset-0.5 bg-gradient-to-b from-violet-500/20 to-fuchsia-500/5 rounded-3xl blur opacity-20 group-hover:opacity-60 transition-opacity duration-700"></div>
 
           <div class="relative bg-white/5 border border-white/5 border-t-white/20 rounded-2xl p-6 shadow-2xl h-full transition-all duration-500 hover:scale-[1.02] hover:-translate-y-1 backdrop-blur-3xl hover:bg-white/10 hover:shadow-violet-500/10">
+            <!-- 顶部标签 -->
             <div class="flex justify-between items-center mb-4">
               <div class="px-2.5 py-1 rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white text-xs font-bold shadow-sm ring-1 ring-white/10">
                 NEW
               </div>
               <div class="text-xl font-bold text-white drop-shadow-sm tracking-wide">
-                ¥0.99
+                ¥{{ jimengPrice }}
               </div>
             </div>
 
+            <!-- 模型名称 -->
             <h3 class="text-xl font-bold text-white mb-4 flex items-center gap-2">
               即梦 AI <span class="text-[10px] text-violet-400 font-normal px-1.5 py-0.5 border border-violet-400/30 rounded tracking-wider uppercase">Seedance</span>
-              <div class="w-1.5 h-1.5 rounded-full bg-violet-400 shadow-[0_0_8px_rgba(167,139,250,0.8)] animate-pulse"></div>
+              <div v-if="hasJimeng" class="w-1.5 h-1.5 rounded-full bg-violet-400 shadow-[0_0_8px_rgba(167,139,250,0.8)] animate-pulse"></div>
             </h3>
 
+            <!-- 特性标签 -->
             <div class="space-y-2 mb-6">
               <div class="px-3 py-2 rounded-lg bg-black/20 text-gray-300 text-xs font-medium flex items-center gap-2 border border-white/5 group-hover:border-white/10 transition-colors">
                 <svg class="w-3.5 h-3.5 text-violet-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.069A1 1 0 0121 8.82v6.36a1 1 0 01-1.447.893L15 14M3 8a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"/></svg>
@@ -286,15 +309,20 @@ const handleModelSeriesGenerate = (series) => {
               </div>
             </div>
 
+            <!-- 价格说明 -->
             <div class="text-center mb-6">
               <div class="text-sm font-medium text-gray-400">
-                单次生成仅需 <span class="text-white font-bold mx-1">0.99元</span>
+                单次生成仅需 <span class="text-white font-bold mx-1">{{ jimengPrice }}元</span>
               </div>
             </div>
 
+            <!-- 生成按钮 -->
             <div>
-              <button class="w-full py-3.5 bg-gradient-to-r from-violet-500 to-fuchsia-600 hover:from-violet-400 hover:to-fuchsia-500 text-white rounded-xl font-bold text-sm transition-all duration-300 shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-95">
+              <button v-if="hasJimeng" class="w-full py-3.5 bg-white text-black hover:bg-gray-50 rounded-xl font-bold text-sm transition-all duration-300 shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-95">
                 使用即梦生成
+              </button>
+              <button v-else class="w-full py-3.5 bg-gray-700 text-gray-500 rounded-xl font-bold text-sm cursor-not-allowed">
+                暂未开放
               </button>
             </div>
           </div>

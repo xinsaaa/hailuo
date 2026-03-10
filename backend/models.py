@@ -128,6 +128,7 @@ class AIModel(SQLModel, table=True):
     description: str  # 模型描述
     price: float = Field(default=0.99)  # 模型价格（元/次）
     model_type: str = Field(default="image_to_video")  # 模型类型
+    platform: str = Field(default="hailuo")  # 平台：hailuo / jimeng
     features: str = Field(default="[]")  # 功能列表 JSON
     badge: Optional[str] = None  # 标签，如 NEW, 5折
     supports_last_frame: bool = Field(default=False)  # 是否支持尾帧

@@ -2,16 +2,32 @@
 即梦订单 API
 """
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
-from typing import Optional
+from typing import Optional, List
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
+import json
 
 from backend.database import get_db, SessionLocal
-from backend.models import User, JimengOrder
+from backend.models import User, JimengOrder, AIModel
 from backend.auth import get_current_user
 from backend.jimeng_automation import submit_video_task, scan_video_status
 
 router = APIRouter(prefix="/api/jimeng", tags=["jimeng"])
+
+
+class JimengModelResponse(BaseModel):
+    id: str
+    name: str
+    display_name: str
+    description: str
+    price: float
+    badge: Optional[str] = None
+    features: List[str] = []
+    is_default: bool = False
+    is_enabled: bool = True
+    
+    class Config:
+        from_attributes = True
 
 
 class JimengOrderResponse(BaseModel):
@@ -28,27 +44,75 @@ class JimengOrderResponse(BaseModel):
 
 
 @router.get("/models")
-async def get_jimeng_models():
-    """获取即梦可用模型"""
+async def get_jimeng_models(
+    db: Session = Depends(get_db),
+):
+    """获取即梦可用模型列表"""
+    models = db.query(AIModel).filter(
+        AIModel.platform == "jimeng",
+        AIModel.is_enabled == True
+    ).order_by(AIModel.sort_order).all()
+    
+    # 如果数据库中没有即梦模型，返回默认列表
+    if not models:
+        return {
+            "models": [
+                {
+                    "id": "seedance_fast",
+                    "name": "Seedance 2.0 Fast",
+                    "display_name": "Seedance 2.0 Fast",
+                    "description": "快速生成，性价比高",
+                    "price": 0.99,
+                    "badge": None,
+                    "features": ["快速生成", "高性价比"],
+                    "is_default": True,
+                    "is_enabled": True,
+                },
+                {
+                    "id": "seedance",
+                    "name": "Seedance 2.0",
+                    "display_name": "Seedance 2.0",
+                    "description": "更高质量，细节更丰富",
+                    "price": 1.49,
+                    "badge": None,
+                    "features": ["高质量", "细节丰富"],
+                    "is_default": False,
+                    "is_enabled": True,
+                },
+            ]
+        }
+    
     return {
         "models": [
             {
-                "id": "seedance_fast",
-                "name": "Seedance 2.0 Fast",
-                "display_name": "Seedance 2.0 Fast",
-                "price": 0.99,
-                "description": "快速生成，性价比高",
-                "is_default": True,
-            },
-            {
-                "id": "seedance",
-                "name": "Seedance 2.0",
-                "display_name": "Seedance 2.0",
-                "price": 1.49,
-                "description": "更高质量，细节更丰富",
-                "is_default": False,
-            },
+                "id": m.model_id,
+                "name": m.name,
+                "display_name": m.display_name,
+                "description": m.description,
+                "price": m.price,
+                "badge": m.badge,
+                "features": json.loads(m.features) if m.features else [],
+                "is_default": m.is_default,
+                "is_enabled": m.is_enabled,
+            }
+            for m in models
         ]
+    }
+
+
+@router.get("/status")
+async def get_jimeng_status(
+    db: Session = Depends(get_db),
+):
+    """获取即梦服务状态（是否有启用的模型）"""
+    enabled_count = db.query(AIModel).filter(
+        AIModel.platform == "jimeng",
+        AIModel.is_enabled == True
+    ).count()
+    
+    return {
+        "enabled": enabled_count > 0,
+        "model_count": enabled_count,
     }
 
 

@@ -14,12 +14,10 @@ const orders = ref([])
 const prompt = ref('')
 const loading = ref(false)
 
-const availableModels = ref([
-  { id: 'seedance_fast', name: 'Seedance 2.0 Fast', display_name: 'Seedance 2.0 Fast', price: 0.99, description: '快速生成，性价比高', is_default: true },
-  { id: 'seedance', name: 'Seedance 2.0', display_name: 'Seedance 2.0', price: 1.49, description: '更高质量，细节更丰富', is_default: false },
-])
-const selectedModel = ref(availableModels.value[0])
+const availableModels = ref([])
+const selectedModel = ref(null)
 const showModelSelector = ref(false)
+const jimengEnabled = ref(true)
 
 const videoMode = ref('text')
 const firstFrameImage = ref(null)
@@ -112,16 +110,31 @@ const showNotification = (message, type = 'info') => {
 
 const loadData = async () => {
   try {
-    const [userData, ordersData, configData] = await Promise.all([
+    const [userData, ordersData, configData, modelsData] = await Promise.all([
       getCurrentUser(),
       getJimengOrders().catch(() => []),
       getPublicConfig().catch(() => null),
+      getJimengModels().catch(() => null),
     ])
     user.value = userData
     orders.value = ordersData || []
     if (configData) {
       config.value = configData
       if (configData.site_announcement) siteAnnouncement.value = configData.site_announcement
+    }
+    
+    // 加载即梦模型列表
+    if (modelsData && modelsData.models && modelsData.models.length > 0) {
+      availableModels.value = modelsData.models
+      jimengEnabled.value = true
+      // 选择默认模型或第一个模型
+      const defaultModel = modelsData.models.find(m => m.is_default) || modelsData.models[0]
+      selectedModel.value = defaultModel
+    } else {
+      jimengEnabled.value = false
+      // 如果没有模型，跳转到首页
+      showNotification('即梦服务暂未开放', 'error')
+      setTimeout(() => router.push('/'), 2000)
     }
   } catch (err) {
     if (err.response?.status === 401) {
