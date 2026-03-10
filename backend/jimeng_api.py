@@ -7,10 +7,10 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 import json
 
-from .database import get_db, SessionLocal
-from .models import User, JimengOrder, AIModel
-from .auth import get_current_user
-from .jimeng_automation import submit_video_task, scan_video_status
+from backend.database import get_db, SessionLocal
+from backend.models import User, JimengOrder, AIModel
+from backend.auth import get_current_user
+from backend.jimeng_automation import submit_video_task, scan_video_status
 
 router = APIRouter(prefix="/api/jimeng", tags=["jimeng"])
 
