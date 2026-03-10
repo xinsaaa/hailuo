@@ -272,6 +272,7 @@ async def submit_video_task(
                 prompt_input = page.locator(".lv-textarea.prompt-textarea, textarea.lv-textarea").first
             await prompt_input.click()
             await prompt_input.fill(prompt)
+            await page.wait_for_timeout(1000)  # 输入后等待1秒
             await page.screenshot(path=_debug_path("submit_02_prompt_filled"))
 
             # 步骤4：点击生成按钮
