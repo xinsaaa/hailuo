@@ -260,11 +260,16 @@ async def submit_video_task(
             await prompt_input.fill(prompt)
             await page.screenshot(path=_debug_path("submit_02_prompt_filled"))
 
-            # 步骤4：点击生成
+            # 步骤4：点击生成按钮
             print(f"[JIMENG-SUBMIT] [{account_id}] 点击生成按钮")
-            generate_btn = page.get_by_role("button", name="生成")
-            if not await generate_btn.count():
-                generate_btn = page.get_by_text("生成", exact=True)
+            # 通过固定的 class 元素定位提交按钮
+            generate_btn = page.locator("button[class*='submit-button']").first
+            if await generate_btn.count() == 0:
+                # 备用方案：通过文字定位
+                generate_btn = page.get_by_role("button", name="生成")
+            if await generate_btn.count() == 0:
+                # 再备用：通过组合 class 定位
+                generate_btn = page.locator(".lv-btn-primary.submit-button, button.lv-btn-primary").first
             await generate_btn.click()
             await page.wait_for_timeout(2000)
             await page.screenshot(path=_debug_path("submit_03_after_generate"))
