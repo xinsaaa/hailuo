@@ -277,15 +277,35 @@ async def submit_video_task(
 
             # 步骤4：点击生成按钮
             print(f"[JIMENG-SUBMIT] [{account_id}] 点击生成按钮")
+            await page.wait_for_timeout(500)
+            
             # 通过固定的 class 元素定位提交按钮
-            generate_btn = page.locator("button[class*='submit-button']").first
-            if await generate_btn.count() == 0:
+            submit_btns = page.locator("button[class*='submit-button']")
+            btn_count = await submit_btns.count()
+            print(f"[JIMENG-SUBMIT] [{account_id}] 找到 {btn_count} 个 submit-button 元素")
+            
+            if btn_count > 0:
+                # 遍历找到可见的按钮
+                for i in range(btn_count):
+                    btn = submit_btns.nth(i)
+                    is_visible = await btn.is_visible()
+                    btn_class = await btn.get_attribute("class") or ""
+                    print(f"[JIMENG-SUBMIT] [{account_id}] 按钮 {i+1}: visible={is_visible}, class={btn_class[:50]}...")
+                    if is_visible:
+                        await btn.click()
+                        print(f"[JIMENG-SUBMIT] [{account_id}] 已点击按钮 {i+1}")
+                        break
+            else:
                 # 备用方案：通过文字定位
+                print(f"[JIMENG-SUBMIT] [{account_id}] 未找到 submit-button，尝试备用方案")
                 generate_btn = page.get_by_role("button", name="生成")
-            if await generate_btn.count() == 0:
-                # 再备用：通过组合 class 定位
-                generate_btn = page.locator(".lv-btn-primary.submit-button, button.lv-btn-primary").first
-            await generate_btn.click()
+                if await generate_btn.count() > 0:
+                    await generate_btn.click()
+                else:
+                    # 再备用：通过组合 class 定位
+                    generate_btn = page.locator(".lv-btn-primary").first
+                    await generate_btn.click()
+            
             await page.wait_for_timeout(2000)
             await page.screenshot(path=_debug_path("submit_03_after_generate"))
 
