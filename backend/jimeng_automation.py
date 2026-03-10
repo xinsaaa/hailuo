@@ -627,7 +627,6 @@ async def scan_video_status(
                         elif "造梦中" in badge_text:
                             video_info["status"] = JIMENG_STATUS_GENERATING
                             # 提取进度百分比
-                            import re
                             match = re.search(r"(\d+)%", badge_text)
                             if match:
                                 video_info["progress"] = int(match.group(1))
@@ -638,10 +637,12 @@ async def scan_video_status(
                             video_info["status"] = JIMENG_STATUS_COMPLETED
                             video_info["progress"] = 100
                             
-                            # 尝试获取视频URL
-                            video_el = record.locator("video source")
+                            # 尝试获取视频URL（从 video 标签的 src 属性）
+                            video_el = record.locator("video")
                             if await video_el.count() > 0:
-                                video_info["video_url"] = await video_el.first.get_attribute("src") or ""
+                                video_src = await video_el.first.get_attribute("src") or ""
+                                if video_src:
+                                    video_info["video_url"] = video_src
 
                     # 如果指定了提示词，只返回匹配的视频
                     if prompt is None or prompt in video_info.get("prompt", ""):
