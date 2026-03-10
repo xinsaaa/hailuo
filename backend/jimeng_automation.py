@@ -70,7 +70,7 @@ class JimengLoginSession:
                 # ===== 步骤 2：点击登录按钮 =====
                 print(f"[JIMENG-LOGIN] [{self.account_id}] 步骤2: 点击登录按钮")
                 await page.get_by_text("登录", exact=True).click()
-                await page.wait_for_timeout(1000)
+                await page.wait_for_timeout(500)
                 await page.screenshot(path=_debug_path("02_after_login_click"))
 
                 # ===== 步骤 3：点击同意按钮（用户协议弹窗）=====
@@ -85,15 +85,15 @@ class JimengLoginSession:
                 await agree_btn.click()
                 auth_page: Page = await asyncio.wait_for(popup_promise, timeout=15)
                 await auth_page.wait_for_load_state("networkidle")
-                await asyncio.sleep(3)
+                await asyncio.sleep(1)
                 await auth_page.screenshot(path=_debug_path("04_auth_popup"))
 
                 # ===== 步骤 5：截取二维码图片 =====
                 print(f"[JIMENG-LOGIN] [{self.account_id}] 步骤5: 截取二维码")
-                # 等待二维码图片加载（最多等待 15 秒）
+                # 等待二维码图片加载（最多等待 30 秒）
                 qr_img = auth_page.locator("img.semi-image-img").first
                 try:
-                    await qr_img.wait_for(state="visible", timeout=15000)
+                    await qr_img.wait_for(state="visible", timeout=30000)
                 except Exception:
                     await auth_page.screenshot(path=_debug_path("05_qr_not_found"))
                     self.status = "failed"
@@ -117,13 +117,14 @@ class JimengLoginSession:
                     return
 
                 print(f"[JIMENG-LOGIN] [{self.account_id}] 步骤6: popup已关闭，等待主页登录态")
+                await page.wait_for_timeout(500)
                 await page.screenshot(path=_debug_path("06_popup_closed"))
 
                 # ===== 步骤 7：等待头像出现，判定登录成功 =====
                 print(f"[JIMENG-LOGIN] [{self.account_id}] 步骤7: 检测头像登录态")
                 avatar = page.locator("img.dreamina-component-avatar")
                 try:
-                    await avatar.wait_for(state="visible", timeout=20000)
+                    await avatar.wait_for(state="visible", timeout=15000)
                 except Exception:
                     await page.screenshot(path=_debug_path("07_avatar_not_found"))
                     self.status = "failed"
@@ -234,7 +235,7 @@ async def submit_video_task(
             # 步骤1：直接跳转到视频生成页（通过 URL 参数控制模式，更稳定）
             print(f"[JIMENG-SUBMIT] [{account_id}] 进入视频生成页")
             await page.goto(JIMENG_VIDEO_URL, wait_until="domcontentloaded", timeout=60000)
-            await page.wait_for_timeout(3000)
+            await page.wait_for_timeout(500)
             
             # 步骤1.5：关闭可能的"绑定剪映账号"弹窗
             try:
@@ -242,9 +243,9 @@ async def submit_video_task(
                 if await bind_modal.count() > 0:
                     print(f"[JIMENG-SUBMIT] [{account_id}] 检测到绑定剪映弹窗，尝试关闭")
                     close_btn = bind_modal.locator("[class*='close-icon']").first
-                    if await close_btn.is_visible(timeout=2000):
+                    if await close_btn.is_visible(timeout=1000):
                         await close_btn.click()
-                        await page.wait_for_timeout(1000)
+                        await page.wait_for_timeout(500)
                         print(f"[JIMENG-SUBMIT] [{account_id}] 已关闭绑定剪映弹窗")
             except Exception as e:
                 print(f"[JIMENG-SUBMIT] [{account_id}] 关闭弹窗异常（继续）: {e}")
@@ -272,7 +273,7 @@ async def submit_video_task(
                 prompt_input = page.locator(".lv-textarea.prompt-textarea, textarea.lv-textarea").first
             await prompt_input.click()
             await prompt_input.fill(prompt)
-            await page.wait_for_timeout(1000)  # 输入后等待1秒
+            await page.wait_for_timeout(500)  # 输入后等待
             await page.screenshot(path=_debug_path("submit_02_prompt_filled"))
 
             # 步骤4：点击生成按钮
@@ -306,7 +307,7 @@ async def submit_video_task(
                     generate_btn = page.locator(".lv-btn-primary").first
                     await generate_btn.click()
             
-            await page.wait_for_timeout(2000)
+            await page.wait_for_timeout(1000)
             
             # 步骤4.5：点击确认弹窗（如果有）
             try:
