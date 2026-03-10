@@ -294,7 +294,7 @@ const handleModelSeriesGenerate = (series) => {
 
             <!-- 模型名称 -->
             <h3 class="text-xl font-bold text-white mb-4 flex items-center gap-2">
-              即梦 AI <span class="text-[10px] text-violet-400 font-normal px-1.5 py-0.5 border border-violet-400/30 rounded tracking-wider uppercase">Seedance</span>
+              Seedance-即梦
               <div v-if="hasJimeng" class="w-1.5 h-1.5 rounded-full bg-violet-400 shadow-[0_0_8px_rgba(167,139,250,0.8)] animate-pulse"></div>
             </h3>
 
