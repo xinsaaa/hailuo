@@ -178,20 +178,38 @@ def _auto_migrate():
     import sqlite3
     conn = sqlite3.connect(sqlite_file_name)
     cursor = conn.cursor()
-    # 获取videoorder表现有列
-    cursor.execute("PRAGMA table_info(videoorder)")
-    existing_cols = {row[1] for row in cursor.fetchall()}
+
     migrations = [
+        # videoorder 表
         ("videoorder", "video_type", "TEXT DEFAULT 'image_to_video'"),
         ("videoorder", "resolution", "TEXT DEFAULT '768p'"),
         ("videoorder", "duration", "TEXT DEFAULT '6s'"),
+        # aimodel 表
+        ("aimodel", "model_type", "TEXT DEFAULT 'image_to_video'"),
+        ("aimodel", "platform", "TEXT DEFAULT 'hailuo'"),
+        ("aimodel", "features", "TEXT DEFAULT '[]'"),
+        ("aimodel", "badge", "TEXT"),
+        ("aimodel", "supports_last_frame", "INTEGER DEFAULT 0"),
+        ("aimodel", "is_default", "INTEGER DEFAULT 0"),
+        ("aimodel", "is_enabled", "INTEGER DEFAULT 1"),
+        ("aimodel", "sort_order", "INTEGER DEFAULT 0"),
+        ("aimodel", "created_at", "TEXT"),
+        ("aimodel", "updated_at", "TEXT"),
     ]
+
+    # 缓存每张表的现有列
+    table_cols_cache = {}
     for table, col, col_type in migrations:
-        if col not in existing_cols:
+        if table not in table_cols_cache:
+            cursor.execute(f"PRAGMA table_info({table})")
+            table_cols_cache[table] = {row[1] for row in cursor.fetchall()}
+        if col not in table_cols_cache[table]:
             try:
                 cursor.execute(f"ALTER TABLE {table} ADD COLUMN {col} {col_type}")
+                table_cols_cache[table].add(col)
                 print(f"[DB迁移] 添加列 {table}.{col}")
             except Exception as e:
                 print(f"[DB迁移] 跳过 {table}.{col}: {e}")
+
     conn.commit()
     conn.close()
