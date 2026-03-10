@@ -466,8 +466,15 @@ const startQrLogin = async () => {
   qrLoginModal.loading = true
   
   try {
-    const res = await api.post(`/admin/jimeng-accounts/${qrLoginModal.accountId}/qr-login/start`, {}, {
-      timeout: 60000  // 二维码获取可能需要较长时间
+    // 创建一个新的 axios 实例，设置更长的超时时间
+    const axios = require('axios')
+    const res = await axios({
+      method: 'post',
+      url: `/api/admin/jimeng-accounts/${qrLoginModal.accountId}/qr-login/start`,
+      timeout: 0,  // 0 表示不超时
+      headers: {
+        'Authorization': `Bearer ${localStorage.getItem('adminToken')}`
+      }
     })
     if (res.data.qr_base64) {
       qrLoginModal.qrBase64 = res.data.qr_base64
