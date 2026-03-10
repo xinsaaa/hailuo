@@ -126,6 +126,10 @@ class HailuoAutomationV2:
         self._last_heartbeat: Optional[datetime] = None
         # 心跳超时阈值（秒），超过此时间无心跳则认为主循环卡住
         self._heartbeat_timeout = 300
+        # 每个账号上次提交完成的时间，用于冷却控制
+        self._account_last_submit: Dict[str, datetime] = {}
+        # 提交冷却时间（秒）：同一账号两次提交之间的最小间隔
+        self._submit_cooldown = 10
         
     async def start(self):
         """启动多账号自动化系统"""
@@ -480,10 +484,17 @@ class HailuoAutomationV2:
 
                 print(f"[AUTO-V2] 🔁 第{loop_count}次循环 [步骤2: 扫描任务已启动]")
 
-                # ========== 第2步: 分配 pending 订单 ==========
+                # ========== 第2步: 分配 pending 订单（严格排队：每个账号同一时间只处理一个）==========
                 pending_orders = self.get_pending_orders()
                 if pending_orders:
                     print(f"[AUTO-V2] 发现 {len(pending_orders)} 个待处理订单")
+                    # 收集当前哪些账号正忙（有未完成的task_handler）
+                    busy_accounts = set()
+                    for k, t in self.task_handlers.items():
+                        if not t.done():
+                            aid = k.rsplit("_", 1)[0]
+                            busy_accounts.add(aid)
+
                     for order in pending_orders:
                         if order['id'] in self._processing_order_ids:
                             continue
@@ -492,19 +503,26 @@ class HailuoAutomationV2:
                             account_credits=getattr(self, '_account_credits', {})
                         )
                         if account_id:
-                            account_has_task = any(
-                                k.startswith(f"{account_id}_") for k, t in self.task_handlers.items()
-                                if not t.done()
-                            )
-                            if account_has_task:
-                                print(f"[AUTO-V2] 账号 {account_id} 已有任务运行，订单#{order['id']} 等下次循环")
+                            # 检查1：账号是否有正在运行的任务
+                            if account_id in busy_accounts:
+                                print(f"[AUTO-V2] 账号 {account_id} 已有任务运行，订单#{order['id']} 排队等待")
                                 continue
+                            # 检查2：账号冷却时间（上次提交后需冷却一段时间）
+                            last_submit = self._account_last_submit.get(account_id)
+                            if last_submit:
+                                elapsed = (datetime.utcnow() - last_submit).total_seconds()
+                                if elapsed < self._submit_cooldown:
+                                    print(f"[AUTO-V2] 账号 {account_id} 冷却中（{elapsed:.0f}/{self._submit_cooldown}秒），订单#{order['id']} 稍后处理")
+                                    continue
+
                             self._processing_order_ids.add(order['id'])
                             if account_id not in self._account_orders:
                                 self._account_orders[account_id] = set()
                             self._account_orders[account_id].add(order['id'])
                             task = asyncio.create_task(self.process_order(account_id, order))
                             self.task_handlers[f"{account_id}_{order['id']}"] = task
+                            # 标记该账号为忙碌，本轮不再分配
+                            busy_accounts.add(account_id)
                         else:
                             print(f"[AUTO-V2] 暂无可用账号处理订单 {order['id']}，等待下次循环")
 
@@ -1259,6 +1277,8 @@ class HailuoAutomationV2:
                     if submit_confirmed:
                         print(f"[AUTO-V2] ✅ 订单#{order_id}已确认提交生成")
                         self.update_order_status(order_id, "generating")
+                        # 记录提交完成时间，用于冷却控制
+                        self._account_last_submit[account_id] = datetime.utcnow()
                         # 提交成功后重新加入扫描队列，让扫描循环跟踪下载
                         if account_id not in self._account_orders:
                             self._account_orders[account_id] = set()

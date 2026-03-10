@@ -132,8 +132,24 @@ class JimengLoginSession:
 
                 await page.screenshot(path=_debug_path("07_logged_in"))
 
-                # ===== 步骤 8：提取 Cookie =====
-                print(f"[JIMENG-LOGIN] [{self.account_id}] 步骤8: 提取Cookie")
+                # ===== 步骤 8：关闭可能的"绑定剪映账号"弹窗 =====
+                print(f"[JIMENG-LOGIN] [{self.account_id}] 步骤8: 检查并关闭弹窗")
+                try:
+                    # 检测"绑定剪映账号"弹窗（class 前缀: bind-capcut-account-first-screen-modal-content）
+                    bind_modal = page.locator("[class*='bind-capcut-account-first-screen-modal-content']")
+                    if await bind_modal.count() > 0:
+                        print(f"[JIMENG-LOGIN] [{self.account_id}] 检测到绑定剪映弹窗，尝试关闭")
+                        # 点击弹窗内的关闭按钮
+                        close_btn = bind_modal.locator("[class*='close-icon']").first
+                        if await close_btn.is_visible(timeout=2000):
+                            await close_btn.click()
+                            await asyncio.sleep(1)
+                            print(f"[JIMENG-LOGIN] [{self.account_id}] 已关闭绑定剪映弹窗")
+                except Exception as e:
+                    print(f"[JIMENG-LOGIN] [{self.account_id}] 关闭弹窗异常（继续）: {e}")
+
+                # ===== 步骤 9：提取 Cookie =====
+                print(f"[JIMENG-LOGIN] [{self.account_id}] 步骤9: 提取Cookie")
                 cookies = await context.cookies()
                 cookie_str = "; ".join(f"{c['name']}={c['value']}" for c in cookies)
                 self.cookie = cookie_str
@@ -187,7 +203,7 @@ async def submit_video_task(
         return {"success": False, "error": "账号未登录（无Cookie）"}
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
+        browser = await p.chromium.launch(headless=False)  # 测试时使用非无头模式
         context = await browser.new_context(
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         )
@@ -208,8 +224,22 @@ async def submit_video_task(
         try:
             # 步骤1：直接跳转到视频生成页（通过 URL 参数控制模式，更稳定）
             print(f"[JIMENG-SUBMIT] [{account_id}] 进入视频生成页")
-            await page.goto(JIMENG_VIDEO_URL, wait_until="networkidle")
-            await page.wait_for_timeout(2000)
+            await page.goto(JIMENG_VIDEO_URL, wait_until="domcontentloaded", timeout=60000)
+            await page.wait_for_timeout(3000)
+            
+            # 步骤1.5：关闭可能的"绑定剪映账号"弹窗
+            try:
+                bind_modal = page.locator("[class*='bind-capcut-account-first-screen-modal-content']")
+                if await bind_modal.count() > 0:
+                    print(f"[JIMENG-SUBMIT] [{account_id}] 检测到绑定剪映弹窗，尝试关闭")
+                    close_btn = bind_modal.locator("[class*='close-icon']").first
+                    if await close_btn.is_visible(timeout=2000):
+                        await close_btn.click()
+                        await page.wait_for_timeout(1000)
+                        print(f"[JIMENG-SUBMIT] [{account_id}] 已关闭绑定剪映弹窗")
+            except Exception as e:
+                print(f"[JIMENG-SUBMIT] [{account_id}] 关闭弹窗异常（继续）: {e}")
+            
             await page.screenshot(path=_debug_path("submit_01_gen_page"))
 
             # 步骤2：选择模型（稳定写法）
@@ -246,30 +276,43 @@ async def submit_video_task(
 
 async def _select_video_model(page: Page, target_model: str, account_id: str):
     """
-    选择视频模型（稳定写法，参照 jimeng_playwright_stable_guide.md）
+    选择视频模型
     
-    关键点：
-    1. 页面中 .lv-select-view 会重复出现，不能直接点击全局选择器
-    2. 先通过当前选中值定位正确的模型选择框
-    3. 模型选项在悬浮层中，需要用 page.getByText() 在页面级别定位
+    流程：
+    1. 找到包含模型名称的 .lv-select-view 容器
+    2. 点击其中的 .lv-select-view-selector 打开下拉框
+    3. 在页面级别点击目标模型选项
     """
-    # 支持的模型列表
     supported_models = ["Seedance 2.0 Fast", "Seedance 2.0"]
     if target_model not in supported_models:
         print(f"[JIMENG-SUBMIT] [{account_id}] 不支持的模型: {target_model}，使用默认模型")
         target_model = "Seedance 2.0 Fast"
     
     try:
-        # 通过当前选中值定位模型选择框（页面中可能有多个下拉框）
-        # 使用正则匹配当前显示的模型名称
-        model_select = page.locator(".lv-select-view").filter(
-            has_text=re.compile(r"Seedance 2\.0 Fast|Seedance 2\.0")
+        await page.wait_for_timeout(1000)
+        await page.screenshot(path=_debug_path("model_00_before_select"))
+        
+        # 方法1：找到包含 "Seedance" 文本的下拉框容器
+        print(f"[JIMENG-SUBMIT] [{account_id}] 查找模型选择器...")
+        
+        # 先尝试找到包含 Seedance 的元素
+        seedance_container = page.locator(".lv-select-view").filter(
+            has_text="Seedance"
         ).first
         
-        # 点击选择区域打开下拉框
-        selector_trigger = model_select.locator(".lv-select-view-selector")
-        await selector_trigger.click()
-        await page.wait_for_timeout(500)
+        if await seedance_container.count() == 0:
+            print(f"[JIMENG-SUBMIT] [{account_id}] 未找到 Seedance 模型选择器，可能已是默认模型")
+            return
+        
+        # 点击 .lv-select-view-selector 打开下拉框
+        selector_btn = seedance_container.locator(".lv-select-view-selector")
+        if await selector_btn.count() == 0:
+            # 尝试直接点击容器
+            await seedance_container.click()
+        else:
+            await selector_btn.click()
+            
+        await page.wait_for_timeout(800)
         await page.screenshot(path=_debug_path("model_01_dropdown_open"))
         
         # 在页面级别点击目标模型（悬浮层不在 model_select 内）
@@ -281,4 +324,5 @@ async def _select_video_model(page: Page, target_model: str, account_id: str):
         print(f"[JIMENG-SUBMIT] [{account_id}] 模型已切换为 {target_model}")
         
     except Exception as e:
-        print(f"[JIMENG-SUBMIT] [{account_id}] 模型选择失败（继续）: {e}")
+        print(f"[JIMENG-SUBMIT] [{account_id}] 模型选择失败（继续）: {str(e)[:100]}")
+        await page.screenshot(path=_debug_path("model_error"))
