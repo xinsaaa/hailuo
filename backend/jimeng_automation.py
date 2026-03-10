@@ -11,7 +11,7 @@ import time
 from typing import Optional
 from playwright.async_api import async_playwright, Page, BrowserContext
 
-JIMENG_URL = "https://jimeng.jianying.com"
+JIMENG_URL = "https://jimeng.jianying.com/ai-tool/home"
 JIMENG_VIDEO_URL = "https://jimeng.jianying.com/ai-tool/generate?type=video"
 DEBUG_DIR = os.path.join(os.path.dirname(__file__), "jimeng_debug")
 
@@ -54,7 +54,7 @@ class JimengLoginSession:
 
     async def _do_login(self):
         async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
+            browser = await p.chromium.launch(headless=False)
             context = await browser.new_context(
                 user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
             )
@@ -74,7 +74,7 @@ class JimengLoginSession:
 
                 # ===== 步骤 3：点击同意按钮（用户协议弹窗）=====
                 print(f"[JIMENG-LOGIN] [{self.account_id}] 步骤3: 点击同意按钮")
-                agree_btn = page.get_by_role("button", name="同意")
+                agree_btn = page.get_by_role("button", name="同意", exact=True)
                 await agree_btn.wait_for(state="visible", timeout=10000)
                 await page.screenshot(path=_debug_path("03_agree_dialog"))
 
@@ -83,13 +83,21 @@ class JimengLoginSession:
                 popup_promise = page.wait_for_event("popup")
                 await agree_btn.click()
                 auth_page: Page = await asyncio.wait_for(popup_promise, timeout=15)
-                await auth_page.wait_for_load_state("domcontentloaded")
+                await auth_page.wait_for_load_state("networkidle")
+                await asyncio.sleep(3)
                 await auth_page.screenshot(path=_debug_path("04_auth_popup"))
 
                 # ===== 步骤 5：截取二维码图片 =====
                 print(f"[JIMENG-LOGIN] [{self.account_id}] 步骤5: 截取二维码")
-                qr_img = auth_page.locator(".semi-image-img").first
-                await qr_img.wait_for(state="visible", timeout=10000)
+                # 等待二维码图片加载（最多等待 15 秒）
+                qr_img = auth_page.locator("img.semi-image-img").first
+                try:
+                    await qr_img.wait_for(state="visible", timeout=15000)
+                except Exception:
+                    await auth_page.screenshot(path=_debug_path("05_qr_not_found"))
+                    self.status = "failed"
+                    self.error = "未找到二维码图片"
+                    return
                 await auth_page.screenshot(path=_debug_path("05_qr_page"))
 
                 qr_bytes = await qr_img.screenshot()
@@ -175,7 +183,7 @@ async def submit_video_task(
         return {"success": False, "error": "账号未登录（无Cookie）"}
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=True)
+        browser = await p.chromium.launch(headless=False)
         context = await browser.new_context(
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         )
