@@ -519,3 +519,142 @@ async def _upload_reference_images(
     except Exception as e:
         print(f"[JIMENG-SUBMIT] [{account_id}] 参考图片上传失败（继续）: {str(e)[:100]}")
         await page.screenshot(path=_debug_path("upload_error"))
+
+
+# ===== 视频状态扫描 =====
+
+# 视频状态枚举
+JIMENG_STATUS_QUEUING = "queuing"      # 排队中
+JIMENG_STATUS_GENERATING = "generating"  # 生成中
+JIMENG_STATUS_COMPLETED = "completed"    # 已完成
+JIMENG_STATUS_UNKNOWN = "unknown"        # 未知
+
+
+async def scan_video_status(
+    account: dict,
+    prompt: Optional[str] = None,
+) -> dict:
+    """
+    扫描即梦视频生成状态
+    
+    参数:
+        account: 账号信息，包含 cookie
+        prompt: 提示词（可选，用于匹配特定视频）
+    
+    返回: {
+        "success": bool,
+        "videos": [
+            {
+                "prompt": str,
+                "model": str,
+                "status": str,  # queuing/generating/completed
+                "progress": int,  # 0-100，排队中为-1
+                "video_url": str,  # 仅 completed 状态有
+            }
+        ]
+    }
+    """
+    cookie = account.get("cookie", "")
+    if not cookie:
+        return {"success": False, "error": "账号未登录（无Cookie）"}
+
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        context = await browser.new_context(
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        )
+
+        # 注入 Cookie
+        parsed = []
+        for part in cookie.split(";"):
+            part = part.strip()
+            if "=" in part:
+                name, _, value = part.partition("=")
+                parsed.append({"name": name.strip(), "value": value.strip(), "domain": ".jianying.com", "path": "/"})
+        if parsed:
+            await context.add_cookies(parsed)
+
+        page = await context.new_page()
+        account_id = account.get("account_id", "unknown")
+
+        try:
+            # 进入视频生成页面（包含历史记录）
+            print(f"[JIMENG-SCAN] [{account_id}] 扫描视频状态...")
+            await page.goto(JIMENG_VIDEO_URL, wait_until="domcontentloaded", timeout=60000)
+            await page.wait_for_timeout(3000)
+
+            # 关闭可能的弹窗
+            try:
+                bind_modal = page.locator("[class*='bind-capcut-account-first-screen-modal-content']")
+                if await bind_modal.count() > 0:
+                    close_btn = bind_modal.locator("[class*='close-icon']").first
+                    if await close_btn.is_visible(timeout=2000):
+                        await close_btn.click()
+                        await page.wait_for_timeout(1000)
+            except:
+                pass
+
+            videos = []
+
+            # 查找所有视频记录卡片
+            video_records = page.locator("[class*='video-record']")
+            record_count = await video_records.count()
+            print(f"[JIMENG-SCAN] [{account_id}] 找到 {record_count} 个视频记录")
+
+            for i in range(record_count):
+                record = video_records.nth(i)
+                video_info = {"status": JIMENG_STATUS_UNKNOWN, "progress": 0}
+
+                try:
+                    # 获取提示词
+                    prompt_el = record.locator("[class*='prompt-value-container']").first
+                    if await prompt_el.count() > 0:
+                        video_info["prompt"] = await prompt_el.text_content() or ""
+
+                    # 获取模型
+                    label_el = record.locator("[class*='label-lhnDlt']").first
+                    if await label_el.count() > 0:
+                        video_info["model"] = await label_el.text_content() or ""
+
+                    # 检测状态：排队中
+                    progress_badge = record.locator("[class*='progress-badge']")
+                    if await progress_badge.count() > 0:
+                        badge_text = await progress_badge.first.text_content() or ""
+                        
+                        if "排队中" in badge_text:
+                            video_info["status"] = JIMENG_STATUS_QUEUING
+                            video_info["progress"] = -1
+                        elif "造梦中" in badge_text:
+                            video_info["status"] = JIMENG_STATUS_GENERATING
+                            # 提取进度百分比
+                            import re
+                            match = re.search(r"(\d+)%", badge_text)
+                            if match:
+                                video_info["progress"] = int(match.group(1))
+                    else:
+                        # 没有 progress-badge，检查是否有视频卡片（已完成）
+                        video_card = record.locator("[class*='video-card-wrapper']")
+                        if await video_card.count() > 0:
+                            video_info["status"] = JIMENG_STATUS_COMPLETED
+                            video_info["progress"] = 100
+                            
+                            # 尝试获取视频URL
+                            video_el = record.locator("video source")
+                            if await video_el.count() > 0:
+                                video_info["video_url"] = await video_el.first.get_attribute("src") or ""
+
+                    # 如果指定了提示词，只返回匹配的视频
+                    if prompt is None or prompt in video_info.get("prompt", ""):
+                        videos.append(video_info)
+
+                except Exception as e:
+                    print(f"[JIMENG-SCAN] [{account_id}] 解析视频记录 {i+1} 失败: {str(e)[:50]}")
+
+            print(f"[JIMENG-SCAN] [{account_id}] 扫描完成，找到 {len(videos)} 个视频")
+            return {"success": True, "videos": videos}
+
+        except Exception as e:
+            print(f"[JIMENG-SCAN] [{account_id}] 扫描失败: {e}")
+            return {"success": False, "error": str(e)}
+        finally:
+            await browser.close()
