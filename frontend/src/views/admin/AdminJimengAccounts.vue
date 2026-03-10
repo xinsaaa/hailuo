@@ -295,10 +295,10 @@
             </p>
           </div>
 
-          <!-- 倒计时 -->
-          <div v-if="qrLoginModal.qrBase64 && ['pending', 'scanning'].includes(qrLoginModal.status)" 
+          <!-- 等待提示 -->
+          <div v-if="qrLoginModal.qrBase64 && ['pending', 'scanning'].includes(qrLoginModal.status)"
                class="mt-2 text-xs text-gray-500">
-            二维码有效期：{{ qrLoginModal.countdown }}秒
+            等待扫码中...
           </div>
         </div>
 
@@ -464,18 +464,13 @@ const openQrLoginModal = async (account) => {
 const startQrLogin = async () => {
   qrLoginModal.status = 'loading'
   qrLoginModal.loading = true
-  
+
   try {
-    // 创建一个新的 axios 实例，设置更长的超时时间
-    const axios = require('axios')
-    const res = await axios({
-      method: 'post',
-      url: `/api/admin/jimeng-accounts/${qrLoginModal.accountId}/qr-login/start`,
-      timeout: 0,  // 0 表示不超时
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('adminToken')}`
-      }
-    })
+    const res = await api.post(
+      `/admin/jimeng-accounts/${qrLoginModal.accountId}/qr-login/start`,
+      null,
+      { timeout: 120000 }  // 二维码生成最多等 2 分钟
+    )
     if (res.data.qr_base64) {
       qrLoginModal.qrBase64 = res.data.qr_base64
       qrLoginModal.status = res.data.status || 'pending'
@@ -533,24 +528,8 @@ const stopPolling = () => {
   }
 }
 
-const startCountdown = () => {
-  stopCountdown()
-  qrLoginModal.countdown = 180
-  qrLoginModal.countdownTimer = setInterval(() => {
-    qrLoginModal.countdown--
-    if (qrLoginModal.countdown <= 0) {
-      qrLoginModal.status = 'timeout'
-      stopCountdown()
-      stopPolling()
-    }
-  }, 1000)
-}
-
 const stopCountdown = () => {
-  if (qrLoginModal.countdownTimer) {
-    clearInterval(qrLoginModal.countdownTimer)
-    qrLoginModal.countdownTimer = null
-  }
+  // 保留空函数，兼容其他位置调用
 }
 
 const refreshQrCode = async () => {
