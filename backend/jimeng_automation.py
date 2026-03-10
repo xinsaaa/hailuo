@@ -307,6 +307,17 @@ async def submit_video_task(
                     await generate_btn.click()
             
             await page.wait_for_timeout(2000)
+            
+            # 步骤4.5：点击确认弹窗（如果有）
+            try:
+                confirm_btn = page.get_by_role("button", name="确认")
+                if await confirm_btn.count() > 0 and await confirm_btn.is_visible():
+                    print(f"[JIMENG-SUBMIT] [{account_id}] 检测到确认弹窗，点击确认")
+                    await confirm_btn.click()
+                    await page.wait_for_timeout(1000)
+            except Exception as e:
+                print(f"[JIMENG-SUBMIT] [{account_id}] 确认弹窗处理: {str(e)[:50]}")
+            
             await page.screenshot(path=_debug_path("submit_03_after_generate"))
 
             return {"success": True, "task_id": f"jimeng_{int(time.time())}"}
