@@ -466,7 +466,9 @@ const startQrLogin = async () => {
   qrLoginModal.loading = true
   
   try {
-    const res = await api.post(`/admin/jimeng-accounts/${qrLoginModal.accountId}/qr-login/start`)
+    const res = await api.post(`/admin/jimeng-accounts/${qrLoginModal.accountId}/qr-login/start`, {}, {
+      timeout: 60000  // 二维码获取可能需要较长时间
+    })
     if (res.data.qr_base64) {
       qrLoginModal.qrBase64 = res.data.qr_base64
       qrLoginModal.status = res.data.status || 'pending'
