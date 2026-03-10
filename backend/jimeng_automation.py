@@ -184,7 +184,7 @@ def remove_session(account_id: str):
         session.cancel()
 
 
-# ===== 视频生成（文生视频）=====
+# ===== 视频生成（文生视频/图生视频）=====
 JIMENG_VIDEO_URL = "https://jimeng.jianying.com/ai-tool/generate?type=video"
 
 
@@ -192,10 +192,19 @@ async def submit_video_task(
     account: dict,
     prompt: str,
     model: str = "Seedance 2.0 Fast",
-    image_url: Optional[str] = None,
+    first_frame_url: Optional[str] = None,
+    last_frame_url: Optional[str] = None,
 ) -> dict:
     """
     提交即梦视频生成任务
+    
+    参数:
+        account: 账号信息，包含 cookie
+        prompt: 提示词
+        model: 模型名称，支持 "Seedance 2.0 Fast" 和 "Seedance 2.0"
+        first_frame_url: 首帧图片URL（可选，用于图生视频）
+        last_frame_url: 尾帧图片URL（可选，用于图生视频）
+    
     返回: {"success": bool, "task_id": str, "error": str}
     """
     cookie = account.get("cookie", "")
@@ -245,6 +254,11 @@ async def submit_video_task(
             # 步骤2：选择模型（稳定写法）
             print(f"[JIMENG-SUBMIT] [{account_id}] 选择模型: {model}")
             await _select_video_model(page, model, account_id)
+
+            # 步骤2.5：上传首帧和尾帧图片（如果有）
+            if first_frame_url or last_frame_url:
+                print(f"[JIMENG-SUBMIT] [{account_id}] 上传参考图片")
+                await _upload_reference_images(page, first_frame_url, last_frame_url, account_id)
 
             # 步骤3：输入提示词
             print(f"[JIMENG-SUBMIT] [{account_id}] 输入提示词")
@@ -388,3 +402,88 @@ async def _select_video_model(page: Page, target_model: str, account_id: str):
     except Exception as e:
         print(f"[JIMENG-SUBMIT] [{account_id}] 模型选择失败（继续）: {str(e)[:100]}")
         await page.screenshot(path=_debug_path("model_error"))
+
+
+async def _upload_reference_images(
+    page: Page, 
+    first_frame_url: Optional[str], 
+    last_frame_url: Optional[str],
+    account_id: str
+):
+    """
+    上传首帧和尾帧参考图片
+    
+    定位方式：
+    - 首帧：包含"首帧"文字的容器内的 file input
+    - 尾帧：包含"尾帧"文字的容器内的 file input
+    """
+    import httpx
+    import tempfile
+    
+    async def download_and_upload(url: str, label: str, input_locator):
+        """下载图片并上传"""
+        try:
+            # 下载图片到临时文件
+            async with httpx.AsyncClient(timeout=30) as client:
+                response = await client.get(url)
+                response.raise_for_status()
+            
+            # 获取文件扩展名
+            content_type = response.headers.get("content-type", "image/png")
+            ext = content_type.split("/")[-1] if "/" in content_type else "png"
+            if ext not in ["jpg", "jpeg", "png", "webp", "bmp"]:
+                ext = "png"
+            
+            # 保存到临时文件
+            with tempfile.NamedTemporaryFile(suffix=f".{ext}", delete=False) as tmp:
+                tmp.write(response.content)
+                tmp_path = tmp.name
+            
+            print(f"[JIMENG-SUBMIT] [{account_id}] 上传{label}: {url[:50]}...")
+            
+            # 上传文件
+            await input_locator.set_input_files(tmp_path)
+            await page.wait_for_timeout(1000)
+            
+            # 删除临时文件
+            os.unlink(tmp_path)
+            
+            print(f"[JIMENG-SUBMIT] [{account_id}] {label}上传成功")
+            
+        except Exception as e:
+            print(f"[JIMENG-SUBMIT] [{account_id}] {label}上传失败: {str(e)[:100]}")
+    
+    try:
+        await page.screenshot(path=_debug_path("upload_00_before"))
+        
+        # 上传首帧
+        if first_frame_url:
+            # 定位首帧上传区域：包含"首帧"文字的容器
+            first_frame_container = page.locator("[class*='reference-upload']").filter(
+                has_text="首帧"
+            ).first
+            if await first_frame_container.count() > 0:
+                first_frame_input = first_frame_container.locator("input[type='file']")
+                if await first_frame_input.count() > 0:
+                    await download_and_upload(first_frame_url, "首帧", first_frame_input)
+            else:
+                print(f"[JIMENG-SUBMIT] [{account_id}] 未找到首帧上传区域")
+        
+        # 上传尾帧
+        if last_frame_url:
+            # 定位尾帧上传区域：包含"尾帧"文字的容器
+            last_frame_container = page.locator("[class*='reference-upload']").filter(
+                has_text="尾帧"
+            ).first
+            if await last_frame_container.count() > 0:
+                last_frame_input = last_frame_container.locator("input[type='file']")
+                if await last_frame_input.count() > 0:
+                    await download_and_upload(last_frame_url, "尾帧", last_frame_input)
+            else:
+                print(f"[JIMENG-SUBMIT] [{account_id}] 未找到尾帧上传区域")
+        
+        await page.screenshot(path=_debug_path("upload_01_after"))
+        
+    except Exception as e:
+        print(f"[JIMENG-SUBMIT] [{account_id}] 参考图片上传失败（继续）: {str(e)[:100]}")
+        await page.screenshot(path=_debug_path("upload_error"))
