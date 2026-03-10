@@ -596,41 +596,44 @@ async def scan_video_status(
 
             videos = []
 
-            # 查找所有视频记录卡片 - 使用更精确的定位器
-            # video-record-nlt6eI 是最外层的视频记录容器
-            video_records = page.locator("div[class*='video-record'][class*='nlt6eI'], div[class*='ai-generated-record-content']")
+            # 查找所有视频记录卡片 - 直接找包含 progress-badge 或 video 标签的容器
+            # 每个视频卡片都有 video-record-nlt6eI 这个 class
+            video_records = page.locator("div[class*='video-record'][class*='nlt6eI']")
             record_count = await video_records.count()
-            print(f"[JIMENG-SCAN] [{account_id}] 找到 {record_count} 个视频记录容器")
-
-            # 用于去重
-            seen_prompts = set()
+            print(f"[JIMENG-SCAN] [{account_id}] 找到 {record_count} 个视频记录")
 
             for i in range(record_count):
                 record = video_records.nth(i)
                 video_info = {"status": JIMENG_STATUS_UNKNOWN, "progress": 0}
 
                 try:
-                    # 获取提示词
-                    prompt_el = record.locator("[class*='prompt-value-container']").first
+                    # 调试：打印记录的 HTML 结构
+                    if i == 0:
+                        html = await record.inner_html()
+                        print(f"[JIMENG-SCAN] [{account_id}] 第一个记录 HTML 预览: {html[:200]}...")
+
+                    # 获取提示词 - prompt-value-container 内的 span
+                    prompt_el = record.locator("[class*='prompt-value-container'] > span").first
                     if await prompt_el.count() > 0:
                         video_info["prompt"] = await prompt_el.text_content() or ""
+                    else:
+                        # 备用：直接找 prompt-value-container
+                        prompt_el = record.locator("[class*='prompt-value-container']").first
+                        if await prompt_el.count() > 0:
+                            video_info["prompt"] = await prompt_el.text_content() or ""
                     
-                    # 去重：如果提示词相同，跳过
-                    prompt_key = video_info.get("prompt", "")[:50]
-                    if prompt_key and prompt_key in seen_prompts:
-                        continue
-                    if prompt_key:
-                        seen_prompts.add(prompt_key)
+                    print(f"[JIMENG-SCAN] [{account_id}] 视频 {i+1} 提示词: {video_info.get('prompt', '')[:30]}...")
 
-                    # 获取模型
+                    # 获取模型 - 第一个 label
                     label_el = record.locator("[class*='label-lhnDlt']").first
                     if await label_el.count() > 0:
                         video_info["model"] = await label_el.text_content() or ""
 
-                    # 检测状态：排队中
-                    progress_badge = record.locator("[class*='progress-badge']")
+                    # 检测状态
+                    progress_badge = record.locator("[class*='progress-badge']").first
                     if await progress_badge.count() > 0:
-                        badge_text = await progress_badge.first.text_content() or ""
+                        badge_text = await progress_badge.text_content() or ""
+                        print(f"[JIMENG-SCAN] [{account_id}] 视频 {i+1} badge: {badge_text[:30]}")
                         
                         if "排队中" in badge_text:
                             video_info["status"] = JIMENG_STATUS_QUEUING
@@ -642,18 +645,14 @@ async def scan_video_status(
                             if match:
                                 video_info["progress"] = int(match.group(1))
                     else:
-                        # 没有 progress-badge，检查是否有视频卡片（已完成）
-                        video_card = record.locator("[class*='video-card-wrapper']")
-                        if await video_card.count() > 0:
+                        # 没有 progress-badge，检查是否有视频（已完成）
+                        video_el = record.locator("video")
+                        if await video_el.count() > 0:
                             video_info["status"] = JIMENG_STATUS_COMPLETED
                             video_info["progress"] = 100
-                            
-                            # 尝试获取视频URL（从 video 标签的 src 属性）
-                            video_el = record.locator("video")
-                            if await video_el.count() > 0:
-                                video_src = await video_el.first.get_attribute("src") or ""
-                                if video_src:
-                                    video_info["video_url"] = video_src
+                            video_src = await video_el.first.get_attribute("src") or ""
+                            if video_src:
+                                video_info["video_url"] = video_src
 
                     # 如果指定了提示词，只返回匹配的视频
                     if prompt is None or prompt in video_info.get("prompt", ""):
