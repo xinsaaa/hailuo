@@ -596,10 +596,14 @@ async def scan_video_status(
 
             videos = []
 
-            # 查找所有视频记录卡片
-            video_records = page.locator("[class*='video-record']")
+            # 查找所有视频记录卡片 - 使用更精确的定位器
+            # video-record-nlt6eI 是最外层的视频记录容器
+            video_records = page.locator("div[class*='video-record'][class*='nlt6eI'], div[class*='ai-generated-record-content']")
             record_count = await video_records.count()
-            print(f"[JIMENG-SCAN] [{account_id}] 找到 {record_count} 个视频记录")
+            print(f"[JIMENG-SCAN] [{account_id}] 找到 {record_count} 个视频记录容器")
+
+            # 用于去重
+            seen_prompts = set()
 
             for i in range(record_count):
                 record = video_records.nth(i)
@@ -610,6 +614,13 @@ async def scan_video_status(
                     prompt_el = record.locator("[class*='prompt-value-container']").first
                     if await prompt_el.count() > 0:
                         video_info["prompt"] = await prompt_el.text_content() or ""
+                    
+                    # 去重：如果提示词相同，跳过
+                    prompt_key = video_info.get("prompt", "")[:50]
+                    if prompt_key and prompt_key in seen_prompts:
+                        continue
+                    if prompt_key:
+                        seen_prompts.add(prompt_key)
 
                     # 获取模型
                     label_el = record.locator("[class*='label-lhnDlt']").first
