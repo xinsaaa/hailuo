@@ -8,6 +8,7 @@ import base64
 import os
 import json
 import time
+import re
 from typing import Optional
 from playwright.async_api import async_playwright, Page, BrowserContext
 
@@ -54,7 +55,7 @@ class JimengLoginSession:
 
     async def _do_login(self):
         async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=False)
+            browser = await p.chromium.launch(headless=True)
             context = await browser.new_context(
                 user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
             )
@@ -168,6 +169,9 @@ def remove_session(account_id: str):
 
 
 # ===== 视频生成（文生视频）=====
+JIMENG_VIDEO_URL = "https://jimeng.jianying.com/ai-tool/generate?type=video"
+
+
 async def submit_video_task(
     account: dict,
     prompt: str,
@@ -183,7 +187,7 @@ async def submit_video_task(
         return {"success": False, "error": "账号未登录（无Cookie）"}
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=False)
+        browser = await p.chromium.launch(headless=True)
         context = await browser.new_context(
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         )
@@ -202,13 +206,13 @@ async def submit_video_task(
         account_id = account.get("account_id", "unknown")
 
         try:
-            # 步骤1：进入生成页
+            # 步骤1：直接跳转到视频生成页（通过 URL 参数控制模式，更稳定）
             print(f"[JIMENG-SUBMIT] [{account_id}] 进入视频生成页")
-            await page.goto(JIMENG_VIDEO_URL, wait_until="domcontentloaded")
+            await page.goto(JIMENG_VIDEO_URL, wait_until="networkidle")
             await page.wait_for_timeout(2000)
             await page.screenshot(path=_debug_path("submit_01_gen_page"))
 
-            # 步骤2：选择模型
+            # 步骤2：选择模型（稳定写法）
             print(f"[JIMENG-SUBMIT] [{account_id}] 选择模型: {model}")
             await _select_video_model(page, model, account_id)
 
@@ -241,26 +245,40 @@ async def submit_video_task(
 
 
 async def _select_video_model(page: Page, target_model: str, account_id: str):
-    """选择视频模型（稳定写法，参照 jimeng_playwright_stable_guide.md）"""
-    model_pattern = "Seedance 2\\.0 Fast|Seedance 2\\.0"
-    model_select = page.locator(".lv-select-view").filter(has_text=target_model).first
-    count = await model_select.count()
-
-    if count == 0:
-        # 尝试宽松匹配
-        model_select = page.locator(".lv-select-view").first
-
+    """
+    选择视频模型（稳定写法，参照 jimeng_playwright_stable_guide.md）
+    
+    关键点：
+    1. 页面中 .lv-select-view 会重复出现，不能直接点击全局选择器
+    2. 先通过当前选中值定位正确的模型选择框
+    3. 模型选项在悬浮层中，需要用 page.getByText() 在页面级别定位
+    """
+    # 支持的模型列表
+    supported_models = ["Seedance 2.0 Fast", "Seedance 2.0"]
+    if target_model not in supported_models:
+        print(f"[JIMENG-SUBMIT] [{account_id}] 不支持的模型: {target_model}，使用默认模型")
+        target_model = "Seedance 2.0 Fast"
+    
     try:
+        # 通过当前选中值定位模型选择框（页面中可能有多个下拉框）
+        # 使用正则匹配当前显示的模型名称
+        model_select = page.locator(".lv-select-view").filter(
+            has_text=re.compile(r"Seedance 2\.0 Fast|Seedance 2\.0")
+        ).first
+        
+        # 点击选择区域打开下拉框
         selector_trigger = model_select.locator(".lv-select-view-selector")
         await selector_trigger.click()
         await page.wait_for_timeout(500)
         await page.screenshot(path=_debug_path("model_01_dropdown_open"))
-
+        
         # 在页面级别点击目标模型（悬浮层不在 model_select 内）
         option = page.get_by_text(target_model, exact=True)
         await option.first.click()
         await page.wait_for_timeout(500)
         await page.screenshot(path=_debug_path("model_02_selected"))
+        
         print(f"[JIMENG-SUBMIT] [{account_id}] 模型已切换为 {target_model}")
+        
     except Exception as e:
         print(f"[JIMENG-SUBMIT] [{account_id}] 模型选择失败（继续）: {e}")
