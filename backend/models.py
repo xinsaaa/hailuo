@@ -94,6 +94,22 @@ class PaymentOrder(SQLModel, table=True):
     paid_at: Optional[datetime] = None
 
 
+class JimengOrder(SQLModel, table=True):
+    """即梦视频生成订单"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="user.id")
+    prompt: str  # 提示词
+    model_name: str = Field(default="Seedance 2.0 Fast")  # 模型名称
+    status: str = Field(default="pending")  # pending, processing, generating, completed, failed
+    progress: int = Field(default=0)  # 进度 0-100
+    video_url: Optional[str] = None  # 视频URL
+    first_frame_url: Optional[str] = None  # 首帧图片URL
+    last_frame_url: Optional[str] = None  # 尾帧图片URL
+    error_message: Optional[str] = None  # 错误信息
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    completed_at: Optional[datetime] = None
+
+
 class SystemConfig(SQLModel, table=True):
     """系统配置表"""
     id: Optional[int] = Field(default=None, primary_key=True)

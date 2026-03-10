@@ -63,6 +63,10 @@ include_multi_account_routes(app)
 from backend.admin_jimeng_account import router as jimeng_router
 app.include_router(jimeng_router)
 
+# 注册即梦订单路由
+from backend.jimeng_api import router as jimeng_api_router
+app.include_router(jimeng_api_router)
+
 
 # ============ Rate Limiting 中间件 ============
 # 敏感接口（需要严格限制）

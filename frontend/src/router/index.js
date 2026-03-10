@@ -34,6 +34,12 @@ const routes = [
         meta: { requiresAuth: true }
     },
     {
+        path: '/jimeng',
+        name: 'JimengDashboard',
+        component: () => import('../views/JimengDashboard.vue'),
+        meta: { requiresAuth: true }
+    },
+    {
         path: '/recharge',
         name: 'Recharge',
         component: () => import('../views/Recharge.vue'),
