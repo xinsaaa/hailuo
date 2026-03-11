@@ -194,7 +194,6 @@ async def submit_video_task(
     prompt: str,
     model: str = "Seedance 2.0 Fast",
     duration: int = 5,
-    resolution: str = "720P",
     ratio: str = "16:9",
     first_frame_url: Optional[str] = None,
     last_frame_url: Optional[str] = None,
@@ -208,7 +207,6 @@ async def submit_video_task(
         prompt: 提示词
         model: 模型名称，支持 "Seedance 2.0 Fast" 和 "Seedance 2.0"
         duration: 时长，4-12秒
-        resolution: 分辨率，720P 或 1080P
         ratio: 比例，21:9, 16:9, 4:3, 1:1, 3:4, 9:16
         first_frame_url: 首帧图片URL（可选，用于图生视频）
         last_frame_url: 尾帧图片URL（可选，用于图生视频）
@@ -284,9 +282,9 @@ async def submit_video_task(
             print(f"[JIMENG-SUBMIT] [{account_id}] 选择模型: {model}")
             await _select_video_model(page, model, account_id)
 
-            # 步骤2.1：选择分辨率和比例（按钮形式）
-            print(f"[JIMENG-SUBMIT] [{account_id}] 选择分辨率: {resolution}, 比例: {ratio}")
-            await _select_resolution_ratio(page, resolution, ratio, account_id)
+            # 步骤2.1：选择比例（按钮形式）
+            print(f"[JIMENG-SUBMIT] [{account_id}] 选择比例: {ratio}")
+            await _select_resolution_ratio(page, ratio, account_id)
 
             # 步骤2.2：选择时长（第四个下拉框）
             print(f"[JIMENG-SUBMIT] [{account_id}] 选择时长: {duration}s")
@@ -528,15 +526,13 @@ async def _select_duration(page: Page, duration: int, account_id: str):
         print(f"[JIMENG-SUBMIT] [{account_id}] 时长选择失败（继续）: {str(e)[:100]}")
 
 
-async def _select_resolution_ratio(page: Page, resolution: str, ratio: str, account_id: str):
+async def _select_resolution_ratio(page: Page, ratio: str, account_id: str):
     """
-    选择分辨率和比例（按钮形式）
+    选择比例（按钮形式）
     
     比例按钮：class 包含 toolbar-button，文本如 "9:16"
     比例选项：div.radio-content 包含比例文本
     """
-    if resolution not in ["720P", "1080P"]:
-        resolution = "720P"
     if ratio not in ["21:9", "16:9", "4:3", "1:1", "3:4", "9:16"]:
         ratio = "16:9"
     
@@ -548,7 +544,6 @@ async def _select_resolution_ratio(page: Page, resolution: str, ratio: str, acco
         btn_count = await toolbar_buttons.count()
         print(f"[JIMENG-SUBMIT] [{account_id}] 找到 {btn_count} 个 toolbar-button 按钮")
         
-        ratio_found = False
         for i in range(btn_count):
             btn = toolbar_buttons.nth(i)
             try:
@@ -567,7 +562,7 @@ async def _select_resolution_ratio(page: Page, resolution: str, ratio: str, acco
                     # 选择比例
                     print(f"[JIMENG-SUBMIT] [{account_id}] 尝试选择比例: {ratio}")
                     
-                    # 方法1：使用 radio-content class 定位（class 名可能变化，使用 contains）
+                    # 方法1：使用 radio-content class 定位
                     radio_items = page.locator("div[class*='radio-content']")
                     radio_count = await radio_items.count()
                     print(f"[JIMENG-SUBMIT] [{account_id}] 找到 {radio_count} 个 radio-content 元素")
@@ -582,14 +577,13 @@ async def _select_resolution_ratio(page: Page, resolution: str, ratio: str, acco
                             if j < 10:
                                 print(f"[JIMENG-SUBMIT] [{account_id}] radio {j+1}: '{radio_text_clean}'")
                             
-                            # 精确匹配或宽松匹配
+                            # 精确匹配
                             if radio_text_clean == ratio:
                                 print(f"[JIMENG-SUBMIT] [{account_id}] 精确匹配比例: '{radio_text_clean}'")
                                 await radio.click()
                                 await page.wait_for_timeout(300)
                                 print(f"[JIMENG-SUBMIT] [{account_id}] 已选择比例: {ratio}")
                                 ratio_selected = True
-                                ratio_found = True
                                 break
                         except Exception as e:
                             pass
@@ -606,20 +600,16 @@ async def _select_resolution_ratio(page: Page, resolution: str, ratio: str, acco
                                 span_text = await span.text_content() or ""
                                 span_text_clean = span_text.strip()
                                 
-                                # 只打印短文本（可能是比例）
                                 if len(span_text_clean) < 20 and j < 30:
                                     print(f"[JIMENG-SUBMIT] [{account_id}] span {j+1}: '{span_text_clean}'")
                                 
-                                # 精确匹配
                                 if span_text_clean == ratio:
                                     print(f"[JIMENG-SUBMIT] [{account_id}] 找到比例 span: '{span_text_clean}'")
-                                    # 点击父元素
                                     parent = span.locator("xpath=..")
                                     await parent.click()
                                     await page.wait_for_timeout(300)
                                     print(f"[JIMENG-SUBMIT] [{account_id}] 已选择比例: {ratio}")
                                     ratio_selected = True
-                                    ratio_found = True
                                     break
                             except Exception as e:
                                 pass
@@ -633,35 +623,8 @@ async def _select_resolution_ratio(page: Page, resolution: str, ratio: str, acco
             except Exception as e:
                 print(f"[JIMENG-SUBMIT] [{account_id}] toolbar-button {i+1} 检查失败: {str(e)[:50]}")
         
-        # 选择分辨率
-        if ratio_found:
-            await page.wait_for_timeout(300)
-            print(f"[JIMENG-SUBMIT] [{account_id}] 尝试选择分辨率: {resolution}")
-            
-            # 查找分辨率选项
-            all_text = page.locator(f"*:has-text('{resolution}')")
-            text_count = await all_text.count()
-            
-            for j in range(min(text_count, 30)):
-                try:
-                    el = all_text.nth(j)
-                    el_text = await el.text_content() or ""
-                    el_text_clean = el_text.strip()
-                    
-                    if el_text_clean == resolution or (resolution in el_text_clean and len(el_text_clean) < 30):
-                        print(f"[JIMENG-SUBMIT] [{account_id}] 找到分辨率选项: '{el_text_clean}'")
-                        await el.click()
-                        await page.wait_for_timeout(300)
-                        print(f"[JIMENG-SUBMIT] [{account_id}] 已选择分辨率: {resolution}")
-                        break
-                except Exception as e:
-                    pass
-        
-        if not ratio_found:
-            print(f"[JIMENG-SUBMIT] [{account_id}] 未找到比例按钮（继续）")
-        
     except Exception as e:
-        print(f"[JIMENG-SUBMIT] [{account_id}] 分辨率/比例选择失败（继续）: {str(e)[:100]}")
+        print(f"[JIMENG-SUBMIT] [{account_id}] 比例选择失败（继续）: {str(e)[:100]}")
 
 
 async def _upload_reference_images(

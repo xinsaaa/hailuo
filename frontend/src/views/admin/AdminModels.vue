@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { getAdminModels, updateAdminModel } from '../../api'
 
 const models = ref([])
@@ -7,6 +7,15 @@ const loading = ref(false)
 const updating = ref(null) // 正在更新的模型 ID
 const editingPrice = ref(null) // 正在编辑价格的模型 ID
 const tempPrice = ref('') // 临时价格输入
+const platformFilter = ref('all') // 平台筛选：all, hailuo, jimeng
+
+// 按平台筛选后的模型列表
+const filteredModels = computed(() => {
+  if (platformFilter.value === 'all') {
+    return models.value
+  }
+  return models.value.filter(m => m.platform === platformFilter.value)
+})
 
 // 加载模型列表
 const loadModels = async () => {
@@ -99,10 +108,36 @@ onMounted(() => {
         </span>
         模型管理
       </h1>
-      <button @click="loadModels" class="flex items-center gap-2 px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-all active:scale-95">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
-        刷新列表
-      </button>
+      <div class="flex items-center gap-3">
+        <!-- 平台筛选 -->
+        <div class="flex items-center gap-1 p-1 bg-gray-800 rounded-lg border border-gray-700">
+          <button 
+            @click="platformFilter = 'all'"
+            :class="platformFilter === 'all' ? 'bg-blue-500 text-white' : 'text-gray-400 hover:text-white'"
+            class="px-3 py-1.5 text-sm font-medium rounded-md transition-all"
+          >
+            全部
+          </button>
+          <button 
+            @click="platformFilter = 'hailuo'"
+            :class="platformFilter === 'hailuo' ? 'bg-blue-500 text-white' : 'text-gray-400 hover:text-white'"
+            class="px-3 py-1.5 text-sm font-medium rounded-md transition-all"
+          >
+            海螺
+          </button>
+          <button 
+            @click="platformFilter = 'jimeng'"
+            :class="platformFilter === 'jimeng' ? 'bg-violet-500 text-white' : 'text-gray-400 hover:text-white'"
+            class="px-3 py-1.5 text-sm font-medium rounded-md transition-all"
+          >
+            即梦
+          </button>
+        </div>
+        <button @click="loadModels" class="flex items-center gap-2 px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-all active:scale-95">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+          刷新列表
+        </button>
+      </div>
     </div>
     
     <!-- 模型列表 -->
@@ -132,12 +167,12 @@ onMounted(() => {
                 </div>
               </td>
             </tr>
-            <tr v-else-if="models.length === 0">
+            <tr v-else-if="filteredModels.length === 0">
               <td colspan="7" class="px-6 py-20 text-center text-gray-500">
                 暂无模型数据
               </td>
             </tr>
-            <tr v-for="model in models" :key="model.id" class="group hover:bg-gray-700/30 transition-colors duration-150">
+            <tr v-for="model in filteredModels" :key="model.id" class="group hover:bg-gray-700/30 transition-colors duration-150">
               <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-400 font-mono">
                 #{{ model.sort_order }}
               </td>

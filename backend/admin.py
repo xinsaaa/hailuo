@@ -889,6 +889,7 @@ def get_all_models(admin=Depends(get_admin_user), session: Session = Depends(get
             "display_name": m.display_name,
             "description": m.description,
             "model_type": m.model_type,
+            "platform": m.platform or "hailuo",  # 添加平台字段
             "features": json.loads(m.features) if m.features else [],
             "badge": m.badge,
             "supports_last_frame": m.supports_last_frame,
