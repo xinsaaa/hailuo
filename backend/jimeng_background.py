@@ -24,8 +24,9 @@ async def process_jimeng_order(order_id: int):
     """
     print(f"[JIMENG-BG] 开始处理订单 #{order_id}")
     
+    # 在 session 内获取订单数据
+    order_data = None
     with Session(engine) as session:
-        # 获取订单
         order = session.get(JimengOrder, order_id)
         if not order:
             print(f"[JIMENG-BG] 订单 #{order_id} 不存在")
@@ -39,6 +40,16 @@ async def process_jimeng_order(order_id: int):
         order.status = "processing"
         session.add(order)
         session.commit()
+        
+        # 提取订单数据（在 session 关闭前）
+        order_data = {
+            "prompt": order.prompt,
+            "model_name": order.model_name,
+            "duration": order.duration,
+            "ratio": order.ratio,
+            "first_frame_url": order.first_frame_url,
+            "last_frame_url": order.last_frame_url,
+        }
     
     try:
         # 获取可用账号
@@ -52,12 +63,12 @@ async def process_jimeng_order(order_id: int):
         # 提交视频生成任务
         result = await submit_video_task(
             account=account,
-            prompt=order.prompt,
-            model=order.model_name,
-            duration=order.duration,
-            ratio=order.ratio,
-            first_frame_url=order.first_frame_url,
-            last_frame_url=order.last_frame_url,
+            prompt=order_data["prompt"],
+            model=order_data["model_name"],
+            duration=order_data["duration"],
+            ratio=order_data["ratio"],
+            first_frame_url=order_data["first_frame_url"],
+            last_frame_url=order_data["last_frame_url"],
         )
         
         if not result.get("success"):
@@ -85,7 +96,7 @@ async def process_jimeng_order(order_id: int):
                 return
             
             # 扫描视频状态
-            scan_result = await scan_video_status(account, order.prompt)
+            scan_result = await scan_video_status(account, order_data["prompt"])
             
             if scan_result.get("success"):
                 videos = scan_result.get("videos", [])
