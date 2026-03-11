@@ -25,11 +25,9 @@ const lastFrameImage = ref(null)
 const firstFramePreview = ref(null)
 const lastFramePreview = ref(null)
 
-// 时长、分辨率、比例选项
+// 时长、比例选项
 const durationOptions = [4, 5, 6, 7, 8, 9, 10, 11, 12]
 const selectedDuration = ref(5)
-const resolutionOptions = ['720P', '1080P']
-const selectedResolution = ref('720P')
 const ratioOptions = ['21:9', '16:9', '4:3', '1:1', '3:4', '9:16']
 const selectedRatio = ref('16:9')
 
@@ -180,7 +178,6 @@ const handleCreateOrder = async () => {
       prompt: prompt.value,
       model: selectedModel.value.name,
       duration: selectedDuration.value,
-      resolution: selectedResolution.value,
       ratio: selectedRatio.value,
       first_frame: videoMode.value === 'image' ? firstFrameImage.value : null,
       last_frame: videoMode.value === 'image' ? lastFrameImage.value : null,
@@ -421,7 +418,7 @@ const handleLogout = () => {
               </button>
             </div>
 
-            <!-- 时长、分辨率、比例选择 -->
+            <!-- 时长、比例选择 -->
             <div class="flex flex-wrap items-center gap-4 mt-4">
               <!-- 时长选择 -->
               <div class="flex items-center gap-2">
@@ -437,24 +434,6 @@ const handleLogout = () => {
                       : 'text-gray-400 hover:text-white hover:bg-white/5'"
                   >
                     {{ d }}s
-                  </button>
-                </div>
-              </div>
-
-              <!-- 分辨率选择 -->
-              <div class="flex items-center gap-2">
-                <span class="text-xs text-gray-400">分辨率</span>
-                <div class="flex items-center gap-1 p-0.5 bg-black/30 rounded-lg border border-white/10">
-                  <button
-                    v-for="r in resolutionOptions"
-                    :key="r"
-                    @click="selectedResolution = r"
-                    class="px-3 py-1 text-xs font-medium rounded-md transition-all duration-200"
-                    :class="selectedResolution === r
-                      ? 'bg-violet-500/80 text-white'
-                      : 'text-gray-400 hover:text-white hover:bg-white/5'"
-                  >
-                    {{ r }}
                   </button>
                 </div>
               </div>

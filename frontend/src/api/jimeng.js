@@ -34,6 +34,8 @@ export const jimengCreateOrder = async (data) => {
   const formData = new FormData()
   formData.append('prompt', data.prompt)
   formData.append('model', data.model)
+  formData.append('duration', data.duration || 5)
+  formData.append('ratio', data.ratio || '16:9')
   if (data.first_frame) {
     formData.append('first_frame', data.first_frame)
   }
