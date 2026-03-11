@@ -103,7 +103,7 @@ class JimengLoginSession:
 
                 qr_bytes = await qr_img.screenshot()
                 self.qr_base64 = base64.b64encode(qr_bytes).decode()
-                self.status = "scanning"
+                self.status = "pending"  # 二维码已就绪，等待用户扫码
                 print(f"[JIMENG-LOGIN] [{self.account_id}] 二维码已就绪，等待用户扫码")
 
                 # ===== 步骤 6：等待 popup 关闭（扫码成功）=====

@@ -261,25 +261,12 @@
             <img :src="'data:image/png;base64,' + qrLoginModal.qrBase64" 
                  class="w-48 h-48 rounded-lg border-2 border-blue-500/30"
                  alt="登录二维码" />
-            <!-- 扫码成功遮罩 -->
-            <div v-if="qrLoginModal.status === 'scanning'" 
-                 class="absolute inset-0 bg-blue-500/20 rounded-lg flex items-center justify-center">
-              <div class="text-center">
-                <svg class="w-10 h-10 text-blue-400 mx-auto mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                </svg>
-                <p class="text-sm text-blue-300">已扫描，请在手机确认</p>
-              </div>
-            </div>
           </div>
 
           <!-- 状态提示 -->
           <div class="mt-4 text-center">
             <p v-if="qrLoginModal.status === 'pending'" class="text-sm text-gray-400">
               请使用 <span class="text-blue-400">抖音App</span> 扫描二维码
-            </p>
-            <p v-else-if="qrLoginModal.status === 'scanning'" class="text-sm text-blue-400">
-              已扫描，请在手机上确认登录
             </p>
             <p v-else-if="qrLoginModal.status === 'success'" class="text-sm text-green-400 flex items-center justify-center gap-1">
               <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -296,7 +283,7 @@
           </div>
 
           <!-- 等待提示 -->
-          <div v-if="qrLoginModal.qrBase64 && ['pending', 'scanning'].includes(qrLoginModal.status)"
+          <div v-if="qrLoginModal.qrBase64 && qrLoginModal.status === 'pending'"
                class="mt-2 text-xs text-gray-500">
             等待扫码中...
           </div>
