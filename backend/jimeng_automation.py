@@ -241,18 +241,38 @@ async def submit_video_task(
             # 步骤1：直接跳转到视频生成页（通过 URL 参数控制模式，更稳定）
             print(f"[JIMENG-SUBMIT] [{account_id}] 进入视频生成页")
             await page.goto(JIMENG_VIDEO_URL, wait_until="domcontentloaded", timeout=60000)
-            await page.wait_for_timeout(500)
+            await page.wait_for_timeout(1500)
             
             # 步骤1.5：关闭可能的"绑定剪映账号"弹窗
+            print(f"[JIMENG-SUBMIT] [{account_id}] 检查是否有绑定剪映弹窗...")
             try:
-                bind_modal = page.locator("[class*='bind-capcut-account-first-screen-modal-content']")
-                if await bind_modal.count() > 0:
+                # 等待页面稳定
+                await page.wait_for_timeout(1000)
+                
+                # 多种方式检测弹窗
+                bind_modal = page.locator("[class*='bind-capcut-account']")
+                modal_count = await bind_modal.count()
+                print(f"[JIMENG-SUBMIT] [{account_id}] 找到 {modal_count} 个可能的弹窗元素")
+                
+                if modal_count > 0:
                     print(f"[JIMENG-SUBMIT] [{account_id}] 检测到绑定剪映弹窗，尝试关闭")
-                    close_btn = bind_modal.locator("[class*='close-icon']").first
-                    if await close_btn.is_visible(timeout=1000):
+                    
+                    # 方式1：点击关闭按钮
+                    close_btn = bind_modal.first.locator("[class*='close-icon'], [class*='close-btn'], button[aria-label*='关闭']").first
+                    if await close_btn.count() > 0:
                         await close_btn.click()
                         await page.wait_for_timeout(500)
-                        print(f"[JIMENG-SUBMIT] [{account_id}] 已关闭绑定剪映弹窗")
+                        print(f"[JIMENG-SUBMIT] [{account_id}] 已点击关闭按钮")
+                    else:
+                        # 方式2：点击弹窗外区域
+                        await page.keyboard.press("Escape")
+                        await page.wait_for_timeout(500)
+                        print(f"[JIMENG-SUBMIT] [{account_id}] 已按Escape键关闭弹窗")
+                    
+                    await page.wait_for_timeout(500)
+                    print(f"[JIMENG-SUBMIT] [{account_id}] 已关闭绑定剪映弹窗")
+                else:
+                    print(f"[JIMENG-SUBMIT] [{account_id}] 未检测到绑定剪映弹窗")
             except Exception as e:
                 print(f"[JIMENG-SUBMIT] [{account_id}] 关闭弹窗异常（继续）: {e}")
             
