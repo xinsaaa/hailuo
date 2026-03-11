@@ -523,9 +523,19 @@ const refreshQrCode = async () => {
   await startQrLogin()
 }
 
-const closeQrModal = () => {
+const closeQrModal = async () => {
   stopPolling()
   stopCountdown()
+  
+  // 调用后端取消登录
+  if (qrLoginModal.accountId && qrLoginModal.status === 'pending') {
+    try {
+      await api.post(`/admin/jimeng-accounts/${qrLoginModal.accountId}/qr-login/cancel`)
+    } catch (e) {
+      // 忽略取消错误
+    }
+  }
+  
   qrLoginModal.show = false
 }
 
