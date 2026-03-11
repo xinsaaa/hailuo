@@ -515,8 +515,24 @@ const stopPolling = () => {
   }
 }
 
+const startCountdown = () => {
+  qrLoginModal.countdown = 180
+  if (qrLoginModal.countdownTimer) {
+    clearInterval(qrLoginModal.countdownTimer)
+  }
+  qrLoginModal.countdownTimer = setInterval(() => {
+    qrLoginModal.countdown--
+    if (qrLoginModal.countdown <= 0) {
+      stopCountdown()
+    }
+  }, 1000)
+}
+
 const stopCountdown = () => {
-  // 保留空函数，兼容其他位置调用
+  if (qrLoginModal.countdownTimer) {
+    clearInterval(qrLoginModal.countdownTimer)
+    qrLoginModal.countdownTimer = null
+  }
 }
 
 const refreshQrCode = async () => {
