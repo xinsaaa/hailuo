@@ -369,6 +369,57 @@ async def submit_video_task(
             await browser.close()
 
 
+async def verify_cookie(cookie: str) -> tuple[bool, str]:
+    """
+    验证 Cookie 是否有效
+    
+    返回: (is_valid: bool, username_or_error: str)
+    """
+    try:
+        async with async_playwright() as p:
+            browser = await p.chromium.launch(headless=True)
+            context = await browser.new_context()
+            
+            # 设置 Cookie
+            cookie_pairs = [c.strip().split("=", 1) for c in cookie_pairs if "=" in c]
+            cookies = [{"name": name, "value": value, "domain": ".jianying.com"} for name, value in cookie_pairs]
+            await context.add_cookies(cookies)
+            
+            # 访问即梦首页
+            page = await context.new_page()
+            await page.goto(JIMENG_URL, wait_until="domcontentloaded", timeout=30000)
+            await page.wait_for_timeout(2000)
+            
+            # 检查是否登录成功（查找头像元素）
+            avatar = page.locator("img.dreamina-component-avatar")
+            if await avatar.count() > 0:
+                # 获取用户名
+                username = await avatar.first.get_attribute("alt") or ""
+                if not username:
+                    username_el = page.locator("[class*='user-name'], [class*='username']")
+                    if await username_el.count() > 0:
+                        username = await username_el.first.text_content() or ""
+                
+                await browser.close()
+                return True, username or "用户"
+            
+            # 检查是否有登录按钮（未登录状态）
+            login_btn = page.locator("button:has-text('登录')")
+            if await login_btn.count() > 0:
+                await browser.close()
+                return False, "未检测到登录状态，请先登录"
+            
+            await browser.close()
+            return False, "Cookie无效或已过期"
+            
+    except Exception as e:
+        try:
+            await browser.close()
+        except:
+            pass
+        return False, f"验证失败: {str(e)}"
+
+
 async def _select_video_model(page: Page, target_model: str, account_id: str):
     """
     选择视频模型（第二个下拉框）

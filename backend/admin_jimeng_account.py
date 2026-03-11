@@ -104,8 +104,8 @@ def update_jimeng_account(account_id: str, body: JimengAccountUpdate, admin=Depe
 
 
 @router.post("/{account_id}/cookie-login")
-def cookie_login(account_id: str, body: JimengCookieLogin, admin=Depends(get_admin_user)):
-    """粘贴Cookie完成登录"""
+async def cookie_login(account_id: str, body: JimengCookieLogin, admin=Depends(get_admin_user)):
+    """粘贴Cookie完成登录（会验证Cookie有效性）"""
     data = _load_jimeng_accounts()
     accounts = data.get("accounts", [])
     account = next((a for a in accounts if a["account_id"] == account_id), None)
@@ -113,10 +113,20 @@ def cookie_login(account_id: str, body: JimengCookieLogin, admin=Depends(get_adm
         raise HTTPException(status_code=404, detail="账号不存在")
     if not body.cookie.strip():
         raise HTTPException(status_code=400, detail="Cookie不能为空")
+    
+    # 验证 Cookie 是否有效
+    from backend.jimeng_automation import verify_cookie
+    
+    is_valid, username_or_error = await verify_cookie(body.cookie.strip())
+    
+    if not is_valid:
+        raise HTTPException(status_code=400, detail=f"Cookie无效: {username_or_error}")
+    
     account["cookie"] = body.cookie.strip()
     account["is_logged_in"] = True
+    account["display_name"] = username_or_error  # 保存用户名
     _save_jimeng_accounts(data)
-    return {"message": "Cookie保存成功，账号已标记为已登录", "success": True}
+    return {"message": f"Cookie验证成功，账号 {username_or_error} 已登录", "success": True, "username": username_or_error}
 
 
 @router.post("/{account_id}/logout")
