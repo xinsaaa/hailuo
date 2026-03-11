@@ -198,6 +198,7 @@ async def submit_video_task(
     ratio: str = "16:9",
     first_frame_url: Optional[str] = None,
     last_frame_url: Optional[str] = None,
+    skip_generate: bool = False,
 ) -> dict:
     """
     提交即梦视频生成任务
@@ -211,6 +212,7 @@ async def submit_video_task(
         ratio: 比例，21:9, 16:9, 4:3, 1:1, 3:4, 9:16
         first_frame_url: 首帧图片URL（可选，用于图生视频）
         last_frame_url: 尾帧图片URL（可选，用于图生视频）
+        skip_generate: 是否跳过点击生成按钮（测试用）
     
     返回: {"success": bool, "task_id": str, "error": str}
     """
@@ -311,49 +313,53 @@ async def submit_video_task(
             await page.screenshot(path=_debug_path("submit_02_prompt_filled"))
 
             # 步骤4：点击生成按钮
-            print(f"[JIMENG-SUBMIT] [{account_id}] 点击生成按钮")
-            await page.wait_for_timeout(500)
-            
-            # 通过固定的 class 元素定位提交按钮
-            submit_btns = page.locator("button[class*='submit-button']")
-            btn_count = await submit_btns.count()
-            print(f"[JIMENG-SUBMIT] [{account_id}] 找到 {btn_count} 个 submit-button 元素")
-            
-            if btn_count > 0:
-                # 遍历找到可见的按钮
-                for i in range(btn_count):
-                    btn = submit_btns.nth(i)
-                    is_visible = await btn.is_visible()
-                    btn_class = await btn.get_attribute("class") or ""
-                    print(f"[JIMENG-SUBMIT] [{account_id}] 按钮 {i+1}: visible={is_visible}, class={btn_class[:50]}...")
-                    if is_visible:
-                        await btn.click()
-                        print(f"[JIMENG-SUBMIT] [{account_id}] 已点击按钮 {i+1}")
-                        break
+            if skip_generate:
+                print(f"[JIMENG-SUBMIT] [{account_id}] 跳过点击生成按钮（测试模式）")
+                await page.screenshot(path=_debug_path("submit_03_before_generate"))
             else:
-                # 备用方案：通过文字定位
-                print(f"[JIMENG-SUBMIT] [{account_id}] 未找到 submit-button，尝试备用方案")
-                generate_btn = page.get_by_role("button", name="生成")
-                if await generate_btn.count() > 0:
-                    await generate_btn.click()
+                print(f"[JIMENG-SUBMIT] [{account_id}] 点击生成按钮")
+                await page.wait_for_timeout(500)
+                
+                # 通过固定的 class 元素定位提交按钮
+                submit_btns = page.locator("button[class*='submit-button']")
+                btn_count = await submit_btns.count()
+                print(f"[JIMENG-SUBMIT] [{account_id}] 找到 {btn_count} 个 submit-button 元素")
+                
+                if btn_count > 0:
+                    # 遍历找到可见的按钮
+                    for i in range(btn_count):
+                        btn = submit_btns.nth(i)
+                        is_visible = await btn.is_visible()
+                        btn_class = await btn.get_attribute("class") or ""
+                        print(f"[JIMENG-SUBMIT] [{account_id}] 按钮 {i+1}: visible={is_visible}, class={btn_class[:50]}...")
+                        if is_visible:
+                            await btn.click()
+                            print(f"[JIMENG-SUBMIT] [{account_id}] 已点击按钮 {i+1}")
+                            break
                 else:
-                    # 再备用：通过组合 class 定位
-                    generate_btn = page.locator(".lv-btn-primary").first
-                    await generate_btn.click()
-            
-            await page.wait_for_timeout(1000)
-            
-            # 步骤4.5：点击确认弹窗（如果有）
-            try:
-                confirm_btn = page.get_by_role("button", name="确认")
-                if await confirm_btn.count() > 0 and await confirm_btn.is_visible():
-                    print(f"[JIMENG-SUBMIT] [{account_id}] 检测到确认弹窗，点击确认")
-                    await confirm_btn.click()
-                    await page.wait_for_timeout(1000)
-            except Exception as e:
-                print(f"[JIMENG-SUBMIT] [{account_id}] 确认弹窗处理: {str(e)[:50]}")
-            
-            await page.screenshot(path=_debug_path("submit_03_after_generate"))
+                    # 备用方案：通过文字定位
+                    print(f"[JIMENG-SUBMIT] [{account_id}] 未找到 submit-button，尝试备用方案")
+                    generate_btn = page.get_by_role("button", name="生成")
+                    if await generate_btn.count() > 0:
+                        await generate_btn.click()
+                    else:
+                        # 再备用：通过组合 class 定位
+                        generate_btn = page.locator(".lv-btn-primary").first
+                        await generate_btn.click()
+                
+                await page.wait_for_timeout(1000)
+                
+                # 步骤4.5：点击确认弹窗（如果有）
+                try:
+                    confirm_btn = page.get_by_role("button", name="确认")
+                    if await confirm_btn.count() > 0 and await confirm_btn.is_visible():
+                        print(f"[JIMENG-SUBMIT] [{account_id}] 检测到确认弹窗，点击确认")
+                        await confirm_btn.click()
+                        await page.wait_for_timeout(1000)
+                except Exception as e:
+                    print(f"[JIMENG-SUBMIT] [{account_id}] 确认弹窗处理: {str(e)[:50]}")
+                
+                await page.screenshot(path=_debug_path("submit_03_after_generate"))
 
             return {"success": True, "task_id": f"jimeng_{int(time.time())}"}
 
@@ -399,15 +405,23 @@ async def _select_video_model(page: Page, target_model: str, account_id: str):
                 await model_select.click()
             await page.wait_for_timeout(500)
             
-            # 点击目标模型
+            # 使用模糊匹配点击目标模型
+            # 先尝试精确匹配
             target_option = page.get_by_text(target_model, exact=True)
             if await target_option.count() > 0:
                 await target_option.first.click()
                 await page.wait_for_timeout(300)
                 print(f"[JIMENG-SUBMIT] [{account_id}] 模型已切换为 {target_model}")
             else:
-                await page.keyboard.press("Escape")
-                print(f"[JIMENG-SUBMIT] [{account_id}] 未找到模型选项: {target_model}")
+                # 再尝试模糊匹配
+                target_option = page.get_by_text(target_model, exact=False)
+                if await target_option.count() > 0:
+                    await target_option.first.click()
+                    await page.wait_for_timeout(300)
+                    print(f"[JIMENG-SUBMIT] [{account_id}] 模型已切换为 {target_model}（模糊匹配）")
+                else:
+                    await page.keyboard.press("Escape")
+                    print(f"[JIMENG-SUBMIT] [{account_id}] 未找到模型选项: {target_model}")
         else:
             print(f"[JIMENG-SUBMIT] [{account_id}] 下拉框数量不足，跳过模型选择")
         
