@@ -380,8 +380,8 @@ async def verify_cookie(cookie: str) -> tuple[bool, str]:
             browser = await p.chromium.launch(headless=True)
             context = await browser.new_context()
             
-            # 设置 Cookie
-            cookie_pairs = [c.strip().split("=", 1) for c in cookie_pairs if "=" in c]
+            # 设置 Cookie - 修复变量引用错误
+            cookie_pairs = [c.strip().split("=", 1) for c in cookie.split(";") if "=" in c.strip()]
             cookies = [{"name": name, "value": value, "domain": ".jianying.com"} for name, value in cookie_pairs]
             await context.add_cookies(cookies)
             
