@@ -193,6 +193,9 @@ async def submit_video_task(
     account: dict,
     prompt: str,
     model: str = "Seedance 2.0 Fast",
+    duration: int = 5,
+    resolution: str = "720P",
+    ratio: str = "16:9",
     first_frame_url: Optional[str] = None,
     last_frame_url: Optional[str] = None,
 ) -> dict:
@@ -203,6 +206,9 @@ async def submit_video_task(
         account: 账号信息，包含 cookie
         prompt: 提示词
         model: 模型名称，支持 "Seedance 2.0 Fast" 和 "Seedance 2.0"
+        duration: 时长，4-12秒
+        resolution: 分辨率，720P 或 1080P
+        ratio: 比例，21:9, 16:9, 4:3, 1:1, 3:4, 9:16
         first_frame_url: 首帧图片URL（可选，用于图生视频）
         last_frame_url: 尾帧图片URL（可选，用于图生视频）
     
@@ -255,6 +261,14 @@ async def submit_video_task(
             # 步骤2：选择模型（稳定写法）
             print(f"[JIMENG-SUBMIT] [{account_id}] 选择模型: {model}")
             await _select_video_model(page, model, account_id)
+
+            # 步骤2.1：选择时长
+            print(f"[JIMENG-SUBMIT] [{account_id}] 选择时长: {duration}s")
+            await _select_duration(page, duration, account_id)
+
+            # 步骤2.2：选择分辨率和比例
+            print(f"[JIMENG-SUBMIT] [{account_id}] 选择分辨率: {resolution}, 比例: {ratio}")
+            await _select_resolution_ratio(page, resolution, ratio, account_id)
 
             # 步骤2.5：上传首帧和尾帧图片（如果有）
             if first_frame_url or last_frame_url:
@@ -435,6 +449,126 @@ async def _select_video_model(page: Page, target_model: str, account_id: str):
     except Exception as e:
         print(f"[JIMENG-SUBMIT] [{account_id}] 模型选择失败（继续）: {str(e)[:100]}")
         await page.screenshot(path=_debug_path("model_error"))
+
+
+async def _select_duration(page: Page, duration: int, account_id: str):
+    """
+    选择视频时长
+    
+    时长选择器是一个下拉框，class 为 lv-select-view
+    当前选中的值显示在 .lv-select-view-value 中，如 "5s"
+    """
+    if duration not in [4, 5, 6, 7, 8, 9, 10, 11, 12]:
+        duration = 5
+    
+    try:
+        await page.wait_for_timeout(500)
+        
+        # 查找时长选择器：包含当前时长值（如 "5s"）的下拉框
+        duration_selects = page.locator(".lv-select-view")
+        select_count = await duration_selects.count()
+        
+        for i in range(select_count):
+            current_select = duration_selects.nth(i)
+            
+            try:
+                # 检查当前选中的值是否是时长格式（如 "4s", "5s" 等）
+                value_el = current_select.locator(".lv-select-view-value")
+                if await value_el.count() > 0:
+                    current_value = await value_el.text_content() or ""
+                    # 检查是否是时长格式
+                    if any(f"{d}s" in current_value for d in [4, 5, 6, 7, 8, 9, 10, 11, 12]):
+                        print(f"[JIMENG-SUBMIT] [{account_id}] 找到时长选择器，当前值: {current_value}")
+                        
+                        # 如果已经是目标时长，跳过
+                        if f"{duration}s" in current_value:
+                            print(f"[JIMENG-SUBMIT] [{account_id}] 时长已是 {duration}s，无需切换")
+                            return
+                        
+                        # 点击打开下拉框
+                        selector_btn = current_select.locator(".lv-select-view-selector")
+                        if await selector_btn.count() > 0:
+                            await selector_btn.click()
+                        else:
+                            await current_select.click()
+                        await page.wait_for_timeout(500)
+                        
+                        # 点击目标时长
+                        target_option = page.get_by_text(f"{duration}s", exact=True)
+                        if await target_option.count() > 0:
+                            await target_option.first.click()
+                            await page.wait_for_timeout(300)
+                            print(f"[JIMENG-SUBMIT] [{account_id}] 时长已切换为 {duration}s")
+                            return
+                        else:
+                            # 关闭下拉框
+                            await page.keyboard.press("Escape")
+                            
+            except Exception as e:
+                print(f"[JIMENG-SUBMIT] [{account_id}] 第 {i+1} 个下拉框检查失败: {str(e)[:50]}")
+        
+        print(f"[JIMENG-SUBMIT] [{account_id}] 未找到时长选择器（继续）")
+        
+    except Exception as e:
+        print(f"[JIMENG-SUBMIT] [{account_id}] 时长选择失败（继续）: {str(e)[:100]}")
+
+
+async def _select_resolution_ratio(page: Page, resolution: str, ratio: str, account_id: str):
+    """
+    选择分辨率和比例
+    
+    分辨率和比例在同一个按钮中，按钮文字格式如 "9:16 720P"
+    按钮的 class 包含 toolbar-button
+    点击后会出现下拉菜单，可以选择不同的比例和分辨率
+    """
+    if resolution not in ["720P", "1080P"]:
+        resolution = "720P"
+    if ratio not in ["21:9", "16:9", "4:3", "1:1", "3:4", "9:16"]:
+        ratio = "16:9"
+    
+    try:
+        await page.wait_for_timeout(500)
+        
+        # 查找分辨率/比例按钮：按钮中包含比例和分辨率文字
+        # 格式如 "9:16 720P" 或 "16:9 1080P"
+        buttons = page.locator("button[class*='toolbar-button']")
+        btn_count = await buttons.count()
+        
+        for i in range(btn_count):
+            btn = buttons.nth(i)
+            try:
+                btn_text = await btn.text_content() or ""
+                # 检查是否包含比例和分辨率格式
+                if any(r in btn_text for r in [":"]) and any(r in btn_text for r in ["P"]):
+                    print(f"[JIMENG-SUBMIT] [{account_id}] 找到分辨率/比例按钮: {btn_text[:30]}")
+                    
+                    # 点击按钮打开下拉菜单
+                    await btn.click()
+                    await page.wait_for_timeout(500)
+                    
+                    # 选择比例
+                    ratio_option = page.get_by_text(ratio, exact=True)
+                    if await ratio_option.count() > 0:
+                        await ratio_option.first.click()
+                        await page.wait_for_timeout(300)
+                        print(f"[JIMENG-SUBMIT] [{account_id}] 已选择比例: {ratio}")
+                    
+                    # 选择分辨率
+                    resolution_option = page.get_by_text(resolution, exact=True)
+                    if await resolution_option.count() > 0:
+                        await resolution_option.first.click()
+                        await page.wait_for_timeout(300)
+                        print(f"[JIMENG-SUBMIT] [{account_id}] 已选择分辨率: {resolution}")
+                    
+                    return
+                    
+            except Exception as e:
+                print(f"[JIMENG-SUBMIT] [{account_id}] 按钮 {i+1} 检查失败: {str(e)[:50]}")
+        
+        print(f"[JIMENG-SUBMIT] [{account_id}] 未找到分辨率/比例按钮（继续）")
+        
+    except Exception as e:
+        print(f"[JIMENG-SUBMIT] [{account_id}] 分辨率/比例选择失败（继续）: {str(e)[:100]}")
 
 
 async def _upload_reference_images(

@@ -100,6 +100,9 @@ class JimengOrder(SQLModel, table=True):
     user_id: int = Field(foreign_key="user.id")
     prompt: str  # 提示词
     model_name: str = Field(default="Seedance 2.0 Fast")  # 模型名称
+    duration: int = Field(default=5)  # 时长：4-12秒
+    ratio: str = Field(default="16:9")  # 比例：21:9, 16:9, 4:3, 1:1, 3:4, 9:16
+    resolution: str = Field(default="720P")  # 分辨率：720P, 1080P
     status: str = Field(default="pending")  # pending, processing, generating, completed, failed
     progress: int = Field(default=0)  # 进度 0-100
     video_url: Optional[str] = None  # 视频URL

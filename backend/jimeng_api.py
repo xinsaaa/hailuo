@@ -178,12 +178,23 @@ async def get_jimeng_orders(
 async def create_jimeng_order(
     prompt: str = Form(...),
     model: str = Form("Seedance 2.0 Fast"),
+    duration: int = Form(5),
+    resolution: str = Form("720P"),
+    ratio: str = Form("16:9"),
     first_frame: Optional[UploadFile] = File(None),
     last_frame: Optional[UploadFile] = File(None),
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
     """创建即梦视频生成订单"""
+
+    # 验证参数
+    if duration not in [4, 5, 6, 7, 8, 9, 10, 11, 12]:
+        duration = 5
+    if resolution not in ["720P", "1080P"]:
+        resolution = "720P"
+    if ratio not in ["21:9", "16:9", "4:3", "1:1", "3:4", "9:16"]:
+        ratio = "16:9"
 
     # 检查余额
     model_prices = {
@@ -203,6 +214,9 @@ async def create_jimeng_order(
         user_id=current_user.id,
         prompt=prompt,
         model_name=model,
+        duration=duration,
+        resolution=resolution,
+        ratio=ratio,
         status="pending",
         progress=0,
     )
