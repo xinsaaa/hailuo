@@ -532,8 +532,8 @@ async def _select_resolution_ratio(page: Page, resolution: str, ratio: str, acco
     """
     选择分辨率和比例（按钮形式）
     
-    分辨率和比例通过工具栏按钮选择，按钮文字格式如 "9:16 720P"
-    按钮的 class 包含 toolbar-button
+    比例按钮：class 包含 toolbar-button，文本如 "9:16"
+    分辨率：可能在比例选择后的下拉菜单中，或单独的按钮
     """
     if resolution not in ["720P", "1080P"]:
         resolution = "720P"
@@ -543,90 +543,79 @@ async def _select_resolution_ratio(page: Page, resolution: str, ratio: str, acco
     try:
         await page.wait_for_timeout(500)
         
-        # 方法1：查找包含 toolbar-button class 的按钮
+        # 查找比例按钮
         toolbar_buttons = page.locator("button[class*='toolbar-button']")
         btn_count = await toolbar_buttons.count()
         print(f"[JIMENG-SUBMIT] [{account_id}] 找到 {btn_count} 个 toolbar-button 按钮")
         
-        found = False
+        ratio_found = False
         for i in range(btn_count):
             btn = toolbar_buttons.nth(i)
             try:
+                # 获取按钮文本（可能在 span 中）
                 btn_text = await btn.text_content() or ""
                 print(f"[JIMENG-SUBMIT] [{account_id}] toolbar-button {i+1}: '{btn_text[:40]}'")
                 
-                # 检查是否包含比例格式（如 "9:16"）
+                # 检查是否是比例按钮
                 if any(r in btn_text for r in ["21:9", "16:9", "4:3", "1:1", "3:4", "9:16"]):
-                    print(f"[JIMENG-SUBMIT] [{account_id}] 找到分辨率/比例按钮")
+                    print(f"[JIMENG-SUBMIT] [{account_id}] 找到比例按钮")
                     
                     # 点击按钮打开下拉菜单
                     await btn.click()
                     await page.wait_for_timeout(500)
                     
-                    # 截图查看下拉内容
-                    await page.screenshot(path=_debug_path("resolution_dropdown_open"))
+                    # 截图
+                    await page.screenshot(path=_debug_path("ratio_dropdown_open"))
                     
-                    # 选择比例 - 查找包含目标比例的选项
+                    # 选择比例 - 点击包含目标比例的选项
                     print(f"[JIMENG-SUBMIT] [{account_id}] 尝试选择比例: {ratio}")
-                    ratio_options = page.locator(f"button:has-text('{ratio}')")
-                    if await ratio_options.count() > 0:
-                        await ratio_options.first.click()
+                    
+                    # 方法1：查找包含目标比例的按钮或选项
+                    ratio_btn = page.locator(f"button:has-text('{ratio}')")
+                    if await ratio_btn.count() > 0:
+                        await ratio_btn.first.click()
                         await page.wait_for_timeout(300)
                         print(f"[JIMENG-SUBMIT] [{account_id}] 已选择比例: {ratio}")
+                        ratio_found = True
+                    else:
+                        # 方法2：查找包含目标比例的 div 或 span
+                        ratio_opt = page.locator(f"div:has-text('{ratio}'), span:has-text('{ratio}')")
+                        if await ratio_opt.count() > 0:
+                            await ratio_opt.first.click()
+                            await page.wait_for_timeout(300)
+                            print(f"[JIMENG-SUBMIT] [{account_id}] 已选择比例: {ratio}")
+                            ratio_found = True
+                        else:
+                            print(f"[JIMENG-SUBMIT] [{account_id}] 未找到比例选项: {ratio}")
+                            await page.keyboard.press("Escape")
                     
-                    # 选择分辨率 - 查找包含目标分辨率的选项
-                    print(f"[JIMENG-SUBMIT] [{account_id}] 尝试选择分辨率: {resolution}")
-                    res_options = page.locator(f"button:has-text('{resolution}')")
-                    if await res_options.count() > 0:
-                        await res_options.first.click()
-                        await page.wait_for_timeout(300)
-                        print(f"[JIMENG-SUBMIT] [{account_id}] 已选择分辨率: {resolution}")
-                    
-                    found = True
                     break
                     
             except Exception as e:
                 print(f"[JIMENG-SUBMIT] [{account_id}] toolbar-button {i+1} 检查失败: {str(e)[:50]}")
         
-        if not found:
-            # 方法2：遍历所有按钮，查找包含比例格式的
-            print(f"[JIMENG-SUBMIT] [{account_id}] 方法1未找到，尝试遍历所有按钮...")
-            all_buttons = page.locator("button")
-            all_btn_count = await all_buttons.count()
+        # 选择分辨率 - 可能在同一个下拉菜单中，或需要重新打开
+        if ratio_found:
+            await page.wait_for_timeout(300)
+            print(f"[JIMENG-SUBMIT] [{account_id}] 尝试选择分辨率: {resolution}")
             
-            for i in range(all_btn_count):
-                btn = all_buttons.nth(i)
-                try:
-                    btn_text = await btn.text_content() or ""
-                    # 检查是否包含比例格式
-                    if any(r in btn_text for r in ["21:9", "16:9", "4:3", "1:1", "3:4", "9:16"]) and "P" in btn_text:
-                        print(f"[JIMENG-SUBMIT] [{account_id}] 找到分辨率/比例按钮（方法2）: '{btn_text[:40]}'")
-                        
-                        await btn.click()
-                        await page.wait_for_timeout(500)
-                        
-                        # 选择比例
-                        ratio_options = page.locator(f"button:has-text('{ratio}')")
-                        if await ratio_options.count() > 0:
-                            await ratio_options.first.click()
-                            await page.wait_for_timeout(300)
-                            print(f"[JIMENG-SUBMIT] [{account_id}] 已选择比例: {ratio}")
-                        
-                        # 选择分辨率
-                        res_options = page.locator(f"button:has-text('{resolution}')")
-                        if await res_options.count() > 0:
-                            await res_options.first.click()
-                            await page.wait_for_timeout(300)
-                            print(f"[JIMENG-SUBMIT] [{account_id}] 已选择分辨率: {resolution}")
-                        
-                        found = True
-                        break
-                        
-                except Exception as e:
-                    pass
+            # 查找分辨率选项
+            res_btn = page.locator(f"button:has-text('{resolution}')")
+            if await res_btn.count() > 0:
+                await res_btn.first.click()
+                await page.wait_for_timeout(300)
+                print(f"[JIMENG-SUBMIT] [{account_id}] 已选择分辨率: {resolution}")
+            else:
+                res_opt = page.locator(f"div:has-text('{resolution}'), span:has-text('{resolution}')")
+                if await res_opt.count() > 0:
+                    await res_opt.first.click()
+                    await page.wait_for_timeout(300)
+                    print(f"[JIMENG-SUBMIT] [{account_id}] 已选择分辨率: {resolution}")
+                else:
+                    print(f"[JIMENG-SUBMIT] [{account_id}] 未找到分辨率选项: {resolution}")
         
-        if not found:
-            print(f"[JIMENG-SUBMIT] [{account_id}] 未找到分辨率/比例按钮（继续）")
+        if not ratio_found:
+            print(f"[JIMENG-SUBMIT] [{account_id}] 未找到比例按钮（继续）")
         
     except Exception as e:
         print(f"[JIMENG-SUBMIT] [{account_id}] 分辨率/比例选择失败（继续）: {str(e)[:100]}")
