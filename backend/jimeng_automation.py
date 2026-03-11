@@ -403,27 +403,64 @@ async def _select_video_model(page: Page, target_model: str, account_id: str):
                 await selector_btn.click()
             else:
                 await model_select.click()
-            await page.wait_for_timeout(500)
+            await page.wait_for_timeout(800)
             
-            # 使用模糊匹配点击目标模型
-            # 先尝试精确匹配
-            target_option = page.get_by_text(target_model, exact=True)
-            if await target_option.count() > 0:
-                await target_option.first.click()
-                await page.wait_for_timeout(300)
-                print(f"[JIMENG-SUBMIT] [{account_id}] 模型已切换为 {target_model}")
-            else:
-                # 再尝试模糊匹配
-                target_option = page.get_by_text(target_model, exact=False)
-                if await target_option.count() > 0:
-                    await target_option.first.click()
-                    await page.wait_for_timeout(300)
-                    print(f"[JIMENG-SUBMIT] [{account_id}] 模型已切换为 {target_model}（模糊匹配）")
-                else:
-                    await page.keyboard.press("Escape")
-                    print(f"[JIMENG-SUBMIT] [{account_id}] 未找到模型选项: {target_model}")
+            # 截图查看下拉框内容
+            await page.screenshot(path=_debug_path("model_dropdown_open"))
+            
+            # 方法1：尝试包含文本的选项
+            # 使用 locator 配合 has_text
+            options = page.locator("[class*='select-option'], [class*='lv-select-option'], .lv-select-dropdown-item")
+            option_count = await options.count()
+            print(f"[JIMENG-SUBMIT] [{account_id}] 找到 {option_count} 个下拉选项")
+            
+            found = False
+            for i in range(option_count):
+                try:
+                    opt = options.nth(i)
+                    opt_text = await opt.text_content() or ""
+                    print(f"[JIMENG-SUBMIT] [{account_id}] 选项 {i+1}: '{opt_text.strip()}'")
+                    
+                    # 检查是否包含目标模型名称的关键词
+                    if "Fast" in target_model and "Fast" in opt_text:
+                        await opt.click()
+                        print(f"[JIMENG-SUBMIT] [{account_id}] 模型已切换为 {target_model}")
+                        found = True
+                        break
+                    elif "Seedance" in target_model and "Fast" not in target_model and "Seedance" in opt_text and "Fast" not in opt_text:
+                        await opt.click()
+                        print(f"[JIMENG-SUBMIT] [{account_id}] 模型已切换为 {target_model}")
+                        found = True
+                        break
+                except Exception as e:
+                    print(f"[JIMENG-SUBMIT] [{account_id}] 检查选项 {i+1} 失败: {str(e)[:30]}")
+            
+            if not found:
+                # 方法2：直接用 get_by_role 点击
+                print(f"[JIMENG-SUBMIT] [{account_id}] 方法1未找到，尝试方法2...")
+                
+                # 尝试点击包含 Seedance 的选项
+                seedance_options = page.get_by_role("option")
+                opt_count = await seedance_options.count()
+                print(f"[JIMENG-SUBMIT] [{account_id}] 找到 {opt_count} 个 role=option")
+                
+                for i in range(opt_count):
+                    opt = seedance_options.nth(i)
+                    opt_text = await opt.text_content() or ""
+                    if "Seedance" in opt_text:
+                        if ("Fast" in target_model and "Fast" in opt_text) or ("Fast" not in target_model and "Fast" not in opt_text):
+                            await opt.click()
+                            print(f"[JIMENG-SUBMIT] [{account_id}] 模型已切换为 {target_model}（方法2）")
+                            found = True
+                            break
+            
+            if not found:
+                await page.keyboard.press("Escape")
+                print(f"[JIMENG-SUBMIT] [{account_id}] 未找到模型选项: {target_model}")
         else:
             print(f"[JIMENG-SUBMIT] [{account_id}] 下拉框数量不足，跳过模型选择")
+        
+        await page.wait_for_timeout(300)
         
     except Exception as e:
         print(f"[JIMENG-SUBMIT] [{account_id}] 模型选择失败（继续）: {str(e)[:100]}")
