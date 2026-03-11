@@ -284,11 +284,11 @@ async def submit_video_task(
             print(f"[JIMENG-SUBMIT] [{account_id}] 选择模型: {model}")
             await _select_video_model(page, model, account_id)
 
-            # 步骤2.1：选择分辨率和比例（第四个下拉框）
+            # 步骤2.1：选择分辨率和比例（按钮形式）
             print(f"[JIMENG-SUBMIT] [{account_id}] 选择分辨率: {resolution}, 比例: {ratio}")
             await _select_resolution_ratio(page, resolution, ratio, account_id)
 
-            # 步骤2.2：选择时长（第五个下拉框）
+            # 步骤2.2：选择时长（第四个下拉框）
             print(f"[JIMENG-SUBMIT] [{account_id}] 选择时长: {duration}s")
             await _select_duration(page, duration, account_id)
 
@@ -469,14 +469,13 @@ async def _select_video_model(page: Page, target_model: str, account_id: str):
 
 async def _select_duration(page: Page, duration: int, account_id: str):
     """
-    选择视频时长（第五个下拉框）
+    选择视频时长（第四个下拉框）
     
     下拉框顺序：
     1. 第一个：选择模式（忽略）
     2. 第二个：选择模型
     3. 第三个：忽略
-    4. 第四个：选择分辨率和比例
-    5. 第五个：选择时长
+    4. 第四个：选择时长
     """
     if duration not in [4, 5, 6, 7, 8, 9, 10, 11, 12]:
         duration = 5
@@ -489,10 +488,10 @@ async def _select_duration(page: Page, duration: int, account_id: str):
         select_count = await all_selects.count()
         print(f"[JIMENG-SUBMIT] [{account_id}] 页面上找到 {select_count} 个下拉框")
         
-        # 第五个下拉框是时长选择器（索引4）
-        if select_count >= 5:
-            duration_select = all_selects.nth(4)  # 索引4 = 第五个
-            print(f"[JIMENG-SUBMIT] [{account_id}] 使用第五个下拉框作为时长选择器")
+        # 第四个下拉框是时长选择器（索引3）
+        if select_count >= 4:
+            duration_select = all_selects.nth(3)  # 索引3 = 第四个
+            print(f"[JIMENG-SUBMIT] [{account_id}] 使用第四个下拉框作为时长选择器")
             
             # 检查当前选中的值
             value_el = duration_select.locator(".lv-select-view-value")
@@ -531,14 +530,9 @@ async def _select_duration(page: Page, duration: int, account_id: str):
 
 async def _select_resolution_ratio(page: Page, resolution: str, ratio: str, account_id: str):
     """
-    选择分辨率和比例（第四个下拉框）
+    选择分辨率和比例（按钮形式）
     
-    下拉框顺序：
-    1. 第一个：选择模式（忽略）
-    2. 第二个：选择模型
-    3. 第三个：忽略
-    4. 第四个：选择分辨率和比例
-    5. 第五个：选择时长
+    分辨率和比例通过工具栏按钮选择，按钮文字格式如 "9:16 720P"
     """
     if resolution not in ["720P", "1080P"]:
         resolution = "720P"
@@ -548,45 +542,64 @@ async def _select_resolution_ratio(page: Page, resolution: str, ratio: str, acco
     try:
         await page.wait_for_timeout(500)
         
-        # 获取所有下拉框
-        all_selects = page.locator(".lv-select-view")
-        select_count = await all_selects.count()
-        print(f"[JIMENG-SUBMIT] [{account_id}] 页面上找到 {select_count} 个下拉框")
+        # 查找分辨率/比例按钮：按钮中包含比例和分辨率文字
+        # 格式如 "9:16 720P" 或 "16:9 1080P"
+        buttons = page.locator("button")
+        btn_count = await buttons.count()
+        print(f"[JIMENG-SUBMIT] [{account_id}] 页面上找到 {btn_count} 个按钮")
         
-        # 第四个下拉框是分辨率/比例选择器（索引3）
-        if select_count >= 4:
-            ratio_select = all_selects.nth(3)  # 索引3 = 第四个
-            print(f"[JIMENG-SUBMIT] [{account_id}] 使用第四个下拉框作为分辨率/比例选择器")
-            
-            # 检查当前选中的值
-            value_el = ratio_select.locator(".lv-select-view-value")
-            if await value_el.count() > 0:
-                current_value = await value_el.text_content() or ""
-                print(f"[JIMENG-SUBMIT] [{account_id}] 当前分辨率/比例值: {current_value}")
-            
-            # 点击打开下拉框
-            selector_btn = ratio_select.locator(".lv-select-view-selector")
-            if await selector_btn.count() > 0:
-                await selector_btn.click()
-            else:
-                await ratio_select.click()
-            await page.wait_for_timeout(500)
-            
-            # 选择比例
-            ratio_option = page.get_by_text(ratio, exact=True)
-            if await ratio_option.count() > 0:
-                await ratio_option.first.click()
-                await page.wait_for_timeout(300)
-                print(f"[JIMENG-SUBMIT] [{account_id}] 已选择比例: {ratio}")
-            
-            # 选择分辨率
-            resolution_option = page.get_by_text(resolution, exact=True)
-            if await resolution_option.count() > 0:
-                await resolution_option.first.click()
-                await page.wait_for_timeout(300)
-                print(f"[JIMENG-SUBMIT] [{account_id}] 已选择分辨率: {resolution}")
-        else:
-            print(f"[JIMENG-SUBMIT] [{account_id}] 下拉框数量不足，跳过分辨率/比例选择")
+        found = False
+        for i in range(btn_count):
+            btn = buttons.nth(i)
+            try:
+                btn_text = await btn.text_content() or ""
+                # 检查是否包含比例和分辨率格式
+                if ":" in btn_text and "P" in btn_text:
+                    print(f"[JIMENG-SUBMIT] [{account_id}] 找到分辨率/比例按钮: '{btn_text[:30]}'")
+                    
+                    # 点击按钮打开下拉菜单
+                    await btn.click()
+                    await page.wait_for_timeout(500)
+                    
+                    # 截图查看下拉内容
+                    await page.screenshot(path=_debug_path("resolution_dropdown_open"))
+                    
+                    # 选择比例
+                    ratio_option = page.get_by_text(ratio, exact=True)
+                    if await ratio_option.count() > 0:
+                        await ratio_option.first.click()
+                        await page.wait_for_timeout(300)
+                        print(f"[JIMENG-SUBMIT] [{account_id}] 已选择比例: {ratio}")
+                    else:
+                        # 尝试模糊匹配
+                        ratio_options = page.locator(f"button:has-text('{ratio}')")
+                        if await ratio_options.count() > 0:
+                            await ratio_options.first.click()
+                            await page.wait_for_timeout(300)
+                            print(f"[JIMENG-SUBMIT] [{account_id}] 已选择比例: {ratio}（模糊匹配）")
+                    
+                    # 选择分辨率
+                    resolution_option = page.get_by_text(resolution, exact=True)
+                    if await resolution_option.count() > 0:
+                        await resolution_option.first.click()
+                        await page.wait_for_timeout(300)
+                        print(f"[JIMENG-SUBMIT] [{account_id}] 已选择分辨率: {resolution}")
+                    else:
+                        # 尝试模糊匹配
+                        res_options = page.locator(f"button:has-text('{resolution}')")
+                        if await res_options.count() > 0:
+                            await res_options.first.click()
+                            await page.wait_for_timeout(300)
+                            print(f"[JIMENG-SUBMIT] [{account_id}] 已选择分辨率: {resolution}（模糊匹配）")
+                    
+                    found = True
+                    break
+                    
+            except Exception as e:
+                print(f"[JIMENG-SUBMIT] [{account_id}] 按钮 {i+1} 检查失败: {str(e)[:50]}")
+        
+        if not found:
+            print(f"[JIMENG-SUBMIT] [{account_id}] 未找到分辨率/比例按钮（继续）")
         
     except Exception as e:
         print(f"[JIMENG-SUBMIT] [{account_id}] 分辨率/比例选择失败（继续）: {str(e)[:100]}")
