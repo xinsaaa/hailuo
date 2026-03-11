@@ -8,8 +8,10 @@ from sqlmodel import Session, select
 from pydantic import BaseModel
 from jose import jwt, JWTError
 import json
+import os
+from datetime import datetime
 
-from backend.models import User, JimengOrder, AIModel, engine
+from backend.models import User, JimengOrder, AIModel, Transaction, engine
 from backend.auth import SECRET_KEY, ALGORITHM
 from backend.jimeng_automation import submit_video_task, scan_video_status
 
@@ -206,6 +208,32 @@ async def create_jimeng_order(
     # 扣除余额
     current_user.balance -= price
 
+    # 处理图片上传
+    import uuid as _uuid
+    user_upload_dir = os.path.join("user_images", f"user_{current_user.id}")
+    os.makedirs(user_upload_dir, exist_ok=True)
+    
+    first_frame_path = None
+    last_frame_path = None
+    
+    if first_frame:
+        file_ext = first_frame.filename.split('.')[-1]
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"jimeng_first_{timestamp}_{_uuid.uuid4().hex[:8]}.{file_ext}"
+        first_frame_path = os.path.join(user_upload_dir, filename)
+        with open(first_frame_path, "wb") as f:
+            content = await first_frame.read()
+            f.write(content)
+    
+    if last_frame:
+        file_ext = last_frame.filename.split('.')[-1]
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"jimeng_last_{timestamp}_{_uuid.uuid4().hex[:8]}.{file_ext}"
+        last_frame_path = os.path.join(user_upload_dir, filename)
+        with open(last_frame_path, "wb") as f:
+            content = await last_frame.read()
+            f.write(content)
+
     # 创建订单
     order = JimengOrder(
         user_id=current_user.id,
@@ -215,13 +243,28 @@ async def create_jimeng_order(
         ratio=ratio,
         status="pending",
         progress=0,
+        first_frame_url=first_frame_path,
+        last_frame_url=last_frame_path,
     )
     session.add(order)
+    
+    # 记录交易
+    transaction = Transaction(
+        user_id=current_user.id,
+        amount=price,
+        bonus=0,
+        type="expense"
+    )
+    session.add(transaction)
+    
     session.commit()
     session.refresh(order)
 
-    # TODO: 处理图片上传和启动后台任务
-    # 这里需要异步启动视频生成任务
+    # 启动后台任务处理订单
+    import asyncio
+    from backend.jimeng_background import process_jimeng_order
+    asyncio.create_task(process_jimeng_order(order.id))
+    print(f"[JIMENG-API] 订单#{order.id}已提交后台处理")
 
     return {
         "success": True,
