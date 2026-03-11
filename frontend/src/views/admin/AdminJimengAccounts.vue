@@ -499,6 +499,13 @@ const startPolling = () => {
         qrLoginModal.status = 'timeout'
         stopPolling()
         stopCountdown()
+      } else if (status === 'not_started') {
+        // session 已被删除（可能登录成功后端已处理）
+        // 继续轮询，等待下次获取到状态
+        console.log('Session not started, continuing polling...')
+      } else if (status === 'pending') {
+        // 等待扫码中
+        qrLoginModal.status = 'pending'
       } else if (status === 'scanning') {
         qrLoginModal.status = 'scanning'
       }
