@@ -1,0 +1,18 @@
+# 即梦服务定时任务配置
+# 
+# 使用方法：
+# 1. 编辑 crontab: crontab -e
+# 2. 添加以下行（根据需要选择）
+# 3. 保存退出
+
+# 每5分钟检查服务健康状态，如果异常则自动重启
+*/5 * * * * /home/ubuntu/hailuo/scripts/jimeng_service.sh health >> /home/ubuntu/hailuo/logs/health.log 2>&1
+
+# 每天凌晨3点重启服务（清理内存）
+0 3 * * * /home/ubuntu/hailuo/scripts/jimeng_service.sh scheduled >> /home/ubuntu/hailuo/logs/restart.log 2>&1
+
+# 每小时重启服务（可选，如果需要更频繁的重启）
+# 0 * * * * /home/ubuntu/hailuo/scripts/jimeng_service.sh scheduled >> /home/ubuntu/hailuo/logs/restart.log 2>&1
+
+# 每6小时重启服务
+# 0 */6 * * * /home/ubuntu/hailuo/scripts/jimeng_service.sh scheduled >> /home/ubuntu/hailuo/logs/restart.log 2>&1
