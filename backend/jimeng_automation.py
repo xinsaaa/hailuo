@@ -282,13 +282,13 @@ async def submit_video_task(
             print(f"[JIMENG-SUBMIT] [{account_id}] 选择模型: {model}")
             await _select_video_model(page, model, account_id)
 
-            # 步骤2.1：选择时长
-            print(f"[JIMENG-SUBMIT] [{account_id}] 选择时长: {duration}s")
-            await _select_duration(page, duration, account_id)
-
-            # 步骤2.2：选择分辨率和比例
+            # 步骤2.1：选择分辨率和比例（第四个下拉框）
             print(f"[JIMENG-SUBMIT] [{account_id}] 选择分辨率: {resolution}, 比例: {ratio}")
             await _select_resolution_ratio(page, resolution, ratio, account_id)
+
+            # 步骤2.2：选择时长（第五个下拉框）
+            print(f"[JIMENG-SUBMIT] [{account_id}] 选择时长: {duration}s")
+            await _select_duration(page, duration, account_id)
 
             # 步骤2.5：上传首帧和尾帧图片（如果有）
             if first_frame_url or last_frame_url:
@@ -367,10 +367,11 @@ async def submit_video_task(
 
 async def _select_video_model(page: Page, target_model: str, account_id: str):
     """
-    选择视频模型
+    选择视频模型（第二个下拉框）
     
-    页面有多个下拉框，class 类型一致，需要根据上方的标签文字来定位
-    模型选择器上方通常有"模型"或相关标签文字
+    下拉框顺序：
+    1. 第一个：选择模式（忽略）
+    2. 第二个：选择模型
     """
     supported_models = ["Seedance 2.0 Fast", "Seedance 2.0"]
     if target_model not in supported_models:
@@ -378,93 +379,37 @@ async def _select_video_model(page: Page, target_model: str, account_id: str):
         target_model = "Seedance 2.0 Fast"
     
     try:
-        await page.wait_for_timeout(1500)
-        await page.screenshot(path=_debug_path("model_00_before_select"))
+        await page.wait_for_timeout(500)
         
-        print(f"[JIMENG-SUBMIT] [{account_id}] 查找模型选择器...")
-        
-        # 方法1：通过标签文字定位模型选择器
-        # 查找包含"模型"文字的标签，然后找其下方的下拉框
-        model_labels = ["模型", "视频模型", "Model"]
-        
-        for label_text in model_labels:
-            try:
-                # 找到包含标签文字的元素
-                label = page.get_by_text(label_text, exact=True).first
-                if await label.count() > 0:
-                    # 获取父容器，然后找下拉框
-                    parent = label.locator("xpath=ancestor::div[contains(@class, 'lv-form-item') or contains(@class, 'form-item')]").first
-                    if await parent.count() > 0:
-                        selector = parent.locator(".lv-select-view").first
-                        if await selector.count() > 0:
-                            print(f"[JIMENG-SUBMIT] [{account_id}] 通过标签 '{label_text}' 找到模型选择器")
-                            
-                            # 点击打开下拉框
-                            selector_btn = selector.locator(".lv-select-view-selector")
-                            if await selector_btn.count() > 0:
-                                await selector_btn.click()
-                            else:
-                                await selector.click()
-                            await page.wait_for_timeout(800)
-                            await page.screenshot(path=_debug_path("model_01_dropdown_open"))
-                            
-                            # 点击目标模型
-                            target_option = page.get_by_text(target_model, exact=True)
-                            await target_option.first.click()
-                            await page.wait_for_timeout(500)
-                            await page.screenshot(path=_debug_path("model_02_selected"))
-                            
-                            print(f"[JIMENG-SUBMIT] [{account_id}] 模型已切换为 {target_model}")
-                            return
-            except Exception as e:
-                print(f"[JIMENG-SUBMIT] [{account_id}] 标签 '{label_text}' 定位失败: {str(e)[:50]}")
-        
-        # 方法2：遍历所有下拉框，通过打开后检查选项来判断
-        print(f"[JIMENG-SUBMIT] [{account_id}] 方法1失败，尝试遍历下拉框...")
-        
+        # 获取所有下拉框
         all_selects = page.locator(".lv-select-view")
         select_count = await all_selects.count()
         print(f"[JIMENG-SUBMIT] [{account_id}] 页面上找到 {select_count} 个下拉框")
         
-        for i in range(select_count):
-            current_select = all_selects.nth(i)
+        # 第二个下拉框是模型选择器（索引1）
+        if select_count >= 2:
+            model_select = all_selects.nth(1)  # 索引1 = 第二个
+            print(f"[JIMENG-SUBMIT] [{account_id}] 使用第二个下拉框作为模型选择器")
             
-            try:
-                # 点击打开下拉框
-                selector_btn = current_select.locator(".lv-select-view-selector")
-                if await selector_btn.count() > 0:
-                    await selector_btn.click()
-                else:
-                    await current_select.click()
-                await page.wait_for_timeout(500)
-                
-                # 检查是否出现了 Seedance 选项
-                seedance_option = page.get_by_text("Seedance 2.0", exact=True)
-                fast_option = page.get_by_text("Seedance 2.0 Fast", exact=True)
-                
-                if await seedance_option.count() > 0 or await fast_option.count() > 0:
-                    print(f"[JIMENG-SUBMIT] [{account_id}] 第 {i+1} 个下拉框是模型选择器")
-                    await page.screenshot(path=_debug_path("model_01_dropdown_open"))
-                    
-                    # 点击目标模型
-                    target_option = page.get_by_text(target_model, exact=True)
-                    await target_option.first.click()
-                    await page.wait_for_timeout(500)
-                    await page.screenshot(path=_debug_path("model_02_selected"))
-                    
-                    print(f"[JIMENG-SUBMIT] [{account_id}] 模型已切换为 {target_model}")
-                    return
-                else:
-                    # 不是模型选择器，关闭下拉框
-                    await page.keyboard.press("Escape")
-                    await page.wait_for_timeout(300)
-                    
-            except Exception as e:
-                print(f"[JIMENG-SUBMIT] [{account_id}] 第 {i+1} 个下拉框检查失败: {str(e)[:50]}")
-                await page.keyboard.press("Escape")
+            # 点击打开下拉框
+            selector_btn = model_select.locator(".lv-select-view-selector")
+            if await selector_btn.count() > 0:
+                await selector_btn.click()
+            else:
+                await model_select.click()
+            await page.wait_for_timeout(500)
+            
+            # 点击目标模型
+            target_option = page.get_by_text(target_model, exact=True)
+            if await target_option.count() > 0:
+                await target_option.first.click()
                 await page.wait_for_timeout(300)
-        
-        print(f"[JIMENG-SUBMIT] [{account_id}] 未找到模型选择器")
+                print(f"[JIMENG-SUBMIT] [{account_id}] 模型已切换为 {target_model}")
+            else:
+                await page.keyboard.press("Escape")
+                print(f"[JIMENG-SUBMIT] [{account_id}] 未找到模型选项: {target_model}")
+        else:
+            print(f"[JIMENG-SUBMIT] [{account_id}] 下拉框数量不足，跳过模型选择")
         
     except Exception as e:
         print(f"[JIMENG-SUBMIT] [{account_id}] 模型选择失败（继续）: {str(e)[:100]}")
@@ -473,10 +418,14 @@ async def _select_video_model(page: Page, target_model: str, account_id: str):
 
 async def _select_duration(page: Page, duration: int, account_id: str):
     """
-    选择视频时长
+    选择视频时长（第五个下拉框）
     
-    时长选择器是一个下拉框，class 为 lv-select-view
-    当前选中的值显示在 .lv-select-view-value 中，如 "5s"
+    下拉框顺序：
+    1. 第一个：选择模式（忽略）
+    2. 第二个：选择模型
+    3. 第三个：忽略
+    4. 第四个：选择分辨率和比例
+    5. 第五个：选择时长
     """
     if duration not in [4, 5, 6, 7, 8, 9, 10, 11, 12]:
         duration = 5
@@ -484,50 +433,46 @@ async def _select_duration(page: Page, duration: int, account_id: str):
     try:
         await page.wait_for_timeout(500)
         
-        # 查找时长选择器：包含当前时长值（如 "5s"）的下拉框
-        duration_selects = page.locator(".lv-select-view")
-        select_count = await duration_selects.count()
+        # 获取所有下拉框
+        all_selects = page.locator(".lv-select-view")
+        select_count = await all_selects.count()
+        print(f"[JIMENG-SUBMIT] [{account_id}] 页面上找到 {select_count} 个下拉框")
         
-        for i in range(select_count):
-            current_select = duration_selects.nth(i)
+        # 第五个下拉框是时长选择器（索引4）
+        if select_count >= 5:
+            duration_select = all_selects.nth(4)  # 索引4 = 第五个
+            print(f"[JIMENG-SUBMIT] [{account_id}] 使用第五个下拉框作为时长选择器")
             
-            try:
-                # 检查当前选中的值是否是时长格式（如 "4s", "5s" 等）
-                value_el = current_select.locator(".lv-select-view-value")
-                if await value_el.count() > 0:
-                    current_value = await value_el.text_content() or ""
-                    # 检查是否是时长格式
-                    if any(f"{d}s" in current_value for d in [4, 5, 6, 7, 8, 9, 10, 11, 12]):
-                        print(f"[JIMENG-SUBMIT] [{account_id}] 找到时长选择器，当前值: {current_value}")
-                        
-                        # 如果已经是目标时长，跳过
-                        if f"{duration}s" in current_value:
-                            print(f"[JIMENG-SUBMIT] [{account_id}] 时长已是 {duration}s，无需切换")
-                            return
-                        
-                        # 点击打开下拉框
-                        selector_btn = current_select.locator(".lv-select-view-selector")
-                        if await selector_btn.count() > 0:
-                            await selector_btn.click()
-                        else:
-                            await current_select.click()
-                        await page.wait_for_timeout(500)
-                        
-                        # 点击目标时长
-                        target_option = page.get_by_text(f"{duration}s", exact=True)
-                        if await target_option.count() > 0:
-                            await target_option.first.click()
-                            await page.wait_for_timeout(300)
-                            print(f"[JIMENG-SUBMIT] [{account_id}] 时长已切换为 {duration}s")
-                            return
-                        else:
-                            # 关闭下拉框
-                            await page.keyboard.press("Escape")
-                            
-            except Exception as e:
-                print(f"[JIMENG-SUBMIT] [{account_id}] 第 {i+1} 个下拉框检查失败: {str(e)[:50]}")
-        
-        print(f"[JIMENG-SUBMIT] [{account_id}] 未找到时长选择器（继续）")
+            # 检查当前选中的值
+            value_el = duration_select.locator(".lv-select-view-value")
+            if await value_el.count() > 0:
+                current_value = await value_el.text_content() or ""
+                print(f"[JIMENG-SUBMIT] [{account_id}] 当前时长值: {current_value}")
+                
+                # 如果已经是目标时长，跳过
+                if f"{duration}s" in current_value:
+                    print(f"[JIMENG-SUBMIT] [{account_id}] 时长已是 {duration}s，无需切换")
+                    return
+            
+            # 点击打开下拉框
+            selector_btn = duration_select.locator(".lv-select-view-selector")
+            if await selector_btn.count() > 0:
+                await selector_btn.click()
+            else:
+                await duration_select.click()
+            await page.wait_for_timeout(500)
+            
+            # 点击目标时长
+            target_option = page.get_by_text(f"{duration}s", exact=True)
+            if await target_option.count() > 0:
+                await target_option.first.click()
+                await page.wait_for_timeout(300)
+                print(f"[JIMENG-SUBMIT] [{account_id}] 时长已切换为 {duration}s")
+            else:
+                await page.keyboard.press("Escape")
+                print(f"[JIMENG-SUBMIT] [{account_id}] 未找到时长选项: {duration}s")
+        else:
+            print(f"[JIMENG-SUBMIT] [{account_id}] 下拉框数量不足，跳过时长选择")
         
     except Exception as e:
         print(f"[JIMENG-SUBMIT] [{account_id}] 时长选择失败（继续）: {str(e)[:100]}")
@@ -535,11 +480,14 @@ async def _select_duration(page: Page, duration: int, account_id: str):
 
 async def _select_resolution_ratio(page: Page, resolution: str, ratio: str, account_id: str):
     """
-    选择分辨率和比例
+    选择分辨率和比例（第四个下拉框）
     
-    分辨率和比例在同一个按钮中，按钮文字格式如 "9:16 720P"
-    按钮的 class 包含 toolbar-button
-    点击后会出现下拉菜单，可以选择不同的比例和分辨率
+    下拉框顺序：
+    1. 第一个：选择模式（忽略）
+    2. 第二个：选择模型
+    3. 第三个：忽略
+    4. 第四个：选择分辨率和比例
+    5. 第五个：选择时长
     """
     if resolution not in ["720P", "1080P"]:
         resolution = "720P"
@@ -549,43 +497,45 @@ async def _select_resolution_ratio(page: Page, resolution: str, ratio: str, acco
     try:
         await page.wait_for_timeout(500)
         
-        # 查找分辨率/比例按钮：按钮中包含比例和分辨率文字
-        # 格式如 "9:16 720P" 或 "16:9 1080P"
-        buttons = page.locator("button[class*='toolbar-button']")
-        btn_count = await buttons.count()
+        # 获取所有下拉框
+        all_selects = page.locator(".lv-select-view")
+        select_count = await all_selects.count()
+        print(f"[JIMENG-SUBMIT] [{account_id}] 页面上找到 {select_count} 个下拉框")
         
-        for i in range(btn_count):
-            btn = buttons.nth(i)
-            try:
-                btn_text = await btn.text_content() or ""
-                # 检查是否包含比例和分辨率格式
-                if any(r in btn_text for r in [":"]) and any(r in btn_text for r in ["P"]):
-                    print(f"[JIMENG-SUBMIT] [{account_id}] 找到分辨率/比例按钮: {btn_text[:30]}")
-                    
-                    # 点击按钮打开下拉菜单
-                    await btn.click()
-                    await page.wait_for_timeout(500)
-                    
-                    # 选择比例
-                    ratio_option = page.get_by_text(ratio, exact=True)
-                    if await ratio_option.count() > 0:
-                        await ratio_option.first.click()
-                        await page.wait_for_timeout(300)
-                        print(f"[JIMENG-SUBMIT] [{account_id}] 已选择比例: {ratio}")
-                    
-                    # 选择分辨率
-                    resolution_option = page.get_by_text(resolution, exact=True)
-                    if await resolution_option.count() > 0:
-                        await resolution_option.first.click()
-                        await page.wait_for_timeout(300)
-                        print(f"[JIMENG-SUBMIT] [{account_id}] 已选择分辨率: {resolution}")
-                    
-                    return
-                    
-            except Exception as e:
-                print(f"[JIMENG-SUBMIT] [{account_id}] 按钮 {i+1} 检查失败: {str(e)[:50]}")
-        
-        print(f"[JIMENG-SUBMIT] [{account_id}] 未找到分辨率/比例按钮（继续）")
+        # 第四个下拉框是分辨率/比例选择器（索引3）
+        if select_count >= 4:
+            ratio_select = all_selects.nth(3)  # 索引3 = 第四个
+            print(f"[JIMENG-SUBMIT] [{account_id}] 使用第四个下拉框作为分辨率/比例选择器")
+            
+            # 检查当前选中的值
+            value_el = ratio_select.locator(".lv-select-view-value")
+            if await value_el.count() > 0:
+                current_value = await value_el.text_content() or ""
+                print(f"[JIMENG-SUBMIT] [{account_id}] 当前分辨率/比例值: {current_value}")
+            
+            # 点击打开下拉框
+            selector_btn = ratio_select.locator(".lv-select-view-selector")
+            if await selector_btn.count() > 0:
+                await selector_btn.click()
+            else:
+                await ratio_select.click()
+            await page.wait_for_timeout(500)
+            
+            # 选择比例
+            ratio_option = page.get_by_text(ratio, exact=True)
+            if await ratio_option.count() > 0:
+                await ratio_option.first.click()
+                await page.wait_for_timeout(300)
+                print(f"[JIMENG-SUBMIT] [{account_id}] 已选择比例: {ratio}")
+            
+            # 选择分辨率
+            resolution_option = page.get_by_text(resolution, exact=True)
+            if await resolution_option.count() > 0:
+                await resolution_option.first.click()
+                await page.wait_for_timeout(300)
+                print(f"[JIMENG-SUBMIT] [{account_id}] 已选择分辨率: {resolution}")
+        else:
+            print(f"[JIMENG-SUBMIT] [{account_id}] 下拉框数量不足，跳过分辨率/比例选择")
         
     except Exception as e:
         print(f"[JIMENG-SUBMIT] [{account_id}] 分辨率/比例选择失败（继续）: {str(e)[:100]}")
