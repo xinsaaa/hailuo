@@ -877,7 +877,7 @@ async def scan_video_status(
                         badge_text = await progress_badge.text_content() or ""
                         print(f"[JIMENG-SCAN] [{account_id}] 视频 {i+1} badge: {badge_text[:30]}")
                         
-                        if "排队中" in badge_text:
+                        if "排队中" in badge_text or "排队加速中" in badge_text:
                             video_info["status"] = JIMENG_STATUS_QUEUING
                             video_info["progress"] = -1
                         elif "造梦中" in badge_text:
@@ -886,6 +886,15 @@ async def scan_video_status(
                             match = re.search(r"(\d+)%", badge_text)
                             if match:
                                 video_info["progress"] = int(match.group(1))
+                        else:
+                            # 其他状态，检查是否有视频（已完成）
+                            video_el = record.locator("video")
+                            if await video_el.count() > 0:
+                                video_info["status"] = JIMENG_STATUS_COMPLETED
+                                video_info["progress"] = 100
+                                video_src = await video_el.first.get_attribute("src") or ""
+                                if video_src:
+                                    video_info["video_url"] = video_src
                     else:
                         # 没有 progress-badge，检查是否有视频（已完成）
                         video_el = record.locator("video")
