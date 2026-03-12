@@ -1,151 +1,174 @@
 <template>
-  <div class="min-h-screen bg-gray-900 text-white">
+  <div class="space-y-6">
+    <!-- Toast 通知 -->
+    <div v-if="showToast" class="fixed top-4 right-4 z-50 px-4 py-3 rounded-xl shadow-lg text-sm font-medium transition-all"
+      :class="toastType === 'success' ? 'bg-green-500/90 text-white' : toastType === 'error' ? 'bg-red-500/90 text-white' : 'bg-blue-500/90 text-white'">
+      {{ toastMessage }}
+    </div>
+
     <!-- 页面头部 -->
-    <div class="bg-gray-800 px-6 py-4 border-b border-gray-700">
-      <div class="flex items-center justify-between">
-        <div class="flex items-center gap-3">
-          <div class="w-2 h-2 rounded-full bg-violet-400 shadow-[0_0_8px_rgba(167,139,250,0.8)]"></div>
-          <h1 class="text-2xl font-bold text-white">即梦账号管理</h1>
-          <span class="px-2 py-0.5 text-xs font-bold bg-violet-500/20 text-violet-400 border border-violet-500/30 rounded">Seedance</span>
-        </div>
-        <div class="text-sm text-gray-400">
-          共 <span class="text-white font-bold">{{ stats.total }}</span> 个账号，
-          <span class="text-green-400 font-bold">{{ stats.active }}</span> 个启用，
-          <span class="text-blue-400 font-bold">{{ stats.logged_in }}</span> 个已登录
-        </div>
+    <div class="flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-2 h-2 rounded-full bg-violet-400 shadow-[0_0_8px_rgba(167,139,250,0.8)]"></div>
+        <h1 class="text-2xl font-bold text-white">即梦账号管理</h1>
+        <span class="px-2 py-0.5 text-xs font-bold bg-violet-500/20 text-violet-400 border border-violet-500/30 rounded">Seedance</span>
+      </div>
+      <div class="text-sm text-gray-400">
+        共 <span class="text-white font-bold">{{ stats.total }}</span> 个账号，
+        <span class="text-green-400 font-bold">{{ stats.active }}</span> 个启用，
+        <span class="text-blue-400 font-bold">{{ stats.logged_in }}</span> 个已登录
       </div>
     </div>
 
-    <div class="p-6 max-w-7xl mx-auto">
-      <!-- 操作栏 -->
-      <div class="flex items-center justify-between mb-6">
-        <button
-          @click="showAddModal = true"
-          class="bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2"
-        >
-          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
-          </svg>
-          添加账号
-        </button>
-        <button
-          @click="loadAccounts"
-          :disabled="loading"
-          class="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2"
-        >
-          <svg class="w-4 h-4" :class="{ 'animate-spin': loading }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-          </svg>
-          {{ loading ? '刷新中...' : '刷新' }}
-        </button>
-      </div>
-
-      <!-- 账号列表 -->
-      <div class="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
-        <div class="p-4 border-b border-gray-700 flex items-center gap-2">
-          <svg class="w-5 h-5 text-violet-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
-          </svg>
-          <h3 class="text-lg font-semibold text-white">账号列表</h3>
-        </div>
-
-        <div v-if="accounts.length === 0" class="py-16 text-center text-gray-500">
-          暂无即梦账号，点击「添加账号」开始
-        </div>
-
-        <div class="overflow-x-auto" v-else>
-          <table class="w-full">
-            <thead class="bg-gray-700/50">
-              <tr>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">账号信息</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">状态</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Cookie</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">优先级</th>
-                <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">操作</th>
-              </tr>
-            </thead>
-            <tbody class="divide-y divide-gray-700">
-              <tr v-for="account in accounts" :key="account.account_id" class="hover:bg-gray-700/30">
-                <td class="px-6 py-4 whitespace-nowrap">
-                  <div class="text-sm font-medium text-white">{{ account.display_name }}</div>
-                  <div class="text-xs text-gray-500 mt-0.5">ID: {{ account.account_id }}</div>
-                  <div class="text-xs text-gray-500">并发: {{ account.current_tasks }}/{{ account.max_concurrent }}</div>
-                </td>
-                <td class="px-6 py-4 whitespace-nowrap">
-                  <div class="flex flex-col gap-1">
-                    <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full"
-                      :class="account.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'">
-                      {{ account.is_active ? '已启用' : '已禁用' }}
-                    </span>
-                    <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full"
-                      :class="account.is_logged_in ? 'bg-blue-100 text-blue-800' : 'bg-red-100 text-red-800'">
-                      {{ account.is_logged_in ? '已登录' : '未登录' }}
-                    </span>
-                  </div>
-                </td>
-                <td class="px-6 py-4">
-                  <div class="text-xs text-gray-400 font-mono max-w-[180px] truncate" :title="account.cookie">
-                    {{ account.cookie ? account.cookie.substring(0, 30) + '...' : '未设置' }}
-                  </div>
-                </td>
-                <td class="px-6 py-4 whitespace-nowrap">
-                  <div class="flex items-center gap-1">
-                    <span v-for="i in 10" :key="i"
-                      class="w-2 h-2 rounded-full"
-                      :class="i <= account.priority ? 'bg-violet-400' : 'bg-gray-600'">
-                    </span>
-                    <span class="text-sm text-gray-300 ml-1">{{ account.priority }}</span>
-                  </div>
-                </td>
-                <td class="px-6 py-4 whitespace-nowrap">
-                  <div class="flex items-center gap-2 flex-wrap">
-                    <button
-                      @click="openQrLoginModal(account)"
-                      class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-xs transition-colors flex items-center gap-1"
-                    >
-                      <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"/>
-                      </svg>
-                      扫码登录
-                    </button>
-                    <button
-                      @click="openCookieModal(account)"
-                      class="bg-violet-600 hover:bg-violet-700 text-white px-3 py-1 rounded text-xs transition-colors"
-                    >
-                      {{ account.is_logged_in ? '更新Cookie' : 'Cookie登录' }}
-                    </button>
-                    <button
-                      @click="toggleActive(account)"
-                      class="px-3 py-1 rounded text-xs transition-colors"
-                      :class="account.is_active ? 'bg-yellow-600 hover:bg-yellow-700 text-white' : 'bg-green-600 hover:bg-green-700 text-white'"
-                    >
-                      {{ account.is_active ? '禁用' : '启用' }}
-                    </button>
-                    <button
-                      v-if="account.is_logged_in"
-                      @click="logoutAccount(account.account_id)"
-                      class="bg-gray-600 hover:bg-gray-500 text-white px-3 py-1 rounded text-xs transition-colors"
-                    >
-                      登出
-                    </button>
-                    <button
-                      @click="deleteAccount(account.account_id)"
-                      class="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-xs transition-colors"
-                    >
-                      删除
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            </tbody>
-          </table>
+    <!-- 系统状态概览 -->
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div class="bg-gray-800 p-6 rounded-xl border border-gray-700">
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-gray-400 text-sm">总账号数</p>
+            <p class="text-2xl font-bold text-white">{{ stats.total }}</p>
+          </div>
+          <div class="w-12 h-12 bg-violet-500/20 rounded-lg flex items-center justify-center">
+            <svg class="w-6 h-6 text-violet-400" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M9 12l2 2 4-4m6 2a9 9 011-18 0 11-18 0 012 0 0 18 0a"/>
+            </svg>
+          </div>
         </div>
       </div>
 
-      <!-- Cookie登录说明 -->
-      <div class="mt-4 p-4 bg-violet-500/10 border border-violet-500/20 rounded-xl text-sm text-gray-400">
-        <p class="font-medium text-violet-400 mb-1">🍪 Cookie 登录说明</p>
-        <p>即梦使用 Cookie 方式登录。在浏览器中登录即梦账号，打开开发者工具 → Network → 复制请求头中的 <code class="text-violet-300 bg-black/30 px-1 rounded">Cookie</code> 字段值粘贴到此处。</p>
+      <div class="bg-gray-800 p-6 rounded-xl border border-gray-700">
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-gray-400 text-sm">启用账号</p>
+            <p class="text-2xl font-bold text-green-400">{{ stats.active }}</p>
+          </div>
+          <div class="w-12 h-12 bg-green-500/20 rounded-lg flex items-center justify-center">
+            <svg class="w-6 h-6 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+              <path d="M10 12a2 2 0 100-4 2 0 4 0 4 0 3 0 6 0a4 0 3 0 6 0c0 0 3 0 6 0a4 0 3 0 6 0c0 0 3 0 6 0a4 0 3 0-6 0a4 0 3 0-6 0c0 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0c0 0 3 0 6 0a4 0 3 0 6 0c0 0 3 0 6 0a4 0 3 0 6 0c0 0 3 0 6 0a4 0 3 0 6 0c0 0 3 0 6 0a4 0 3 0 6 0c0 0 3 0 6 0a4 0 3 0 6 0c0 0 3 0 6 0a4 0 3 0 6 0c0 0 3 0 6 0a4 0 3 0 6 0c0 0 3 0 6 0a4 0 3 0 6 0c0 0 3 0 6 0a4 0 3 0 6 0c0 0 3 0 6 0a4 0 3 0 6 0c0 0 3 0 6 0a4 0 3 0 6 0c0 0 3 0 6 0a4 0 3 0 6 0c0 0 3 0 6 0a4 0 3 0 6 0c0 0 3 0 6 0a4 0 3 0 6 0c0 0 3 0 6 0a4 0 3 0 6 0c0 0 3 0 6 0a4 0 3 0 6 0c0 0 3 0 6 0a4 0 3 0 6 0c0 0 3 0 6 0a4 0 3 0 6 0c0 0 3 0 6 0a4 0 3 0 6 0c0 0 3 0 6 0a4 0 3 0 6 0c0 0 3 0 6 0a4 0 3 0 6 0c0 0 3 0 6 0a4 0 3 0 6 0c0 0 3 0 6 0a4 0 3 0 6 0c0 0 3 0 6 0a4 0 3 0 6 0c0 0 3 0 6 0a4 0 3 0 6 0c0 0 3 0 6 0a4 0 3 0 6 0a4 0 3 0 6 0c0 0 3 0 6 0a4 0 3 0 6 0c0 0 3 0 6 0a4 0 3 0 6 0a4 0 3 0 6 0c0 0 3 0 6 0a4 0 3 0 6 0c0 0 3 0 6 0a4 0 3 0 6 0a4 0 3 0 6 0a0 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 3-6 0a4 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6 0a6 0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 3 0 6.0 0 0 0 梦账号管理</h1>
+        <span class="px-2 py-0.5 text-xs font-bold bg-violet-500/20 text-violet-400 border border-violet-500/30 rounded">Seedance</span>
+      </div>
+      <div class="text-sm text-gray-400">
+        共 <span class="text-white font-bold">{{ stats.total }}</span> 个账号，
+        <span class="text-green-400 font-bold">{{ stats.active }}</span> 个启用，
+        <span class="text-blue-400 font-bold">{{ stats.logged_in }}</span> 个已登录
+      </div>
+    </div>
+
+    <!-- 操作栏 -->
+    <div class="flex items-center justify-between">
+      <button
+        @click="showAddModal = true"
+        class="bg-violet-600 hover:bg-violet-700 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2"
+      >
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"/>
+        </svg>
+        添加账号
+      </button>
+      <button
+        @click="loadAccounts"
+        :disabled="loading"
+        class="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2"
+      >
+        <svg class="w-4 h-4" :class="{ 'animate-spin': loading }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+        </svg>
+        {{ loading ? '刷新中...' : '刷新' }}
+      </button>
+    </div>
+
+    <!-- 账号列表 -->
+    <div class="bg-gray-800 rounded-xl border border-gray-700 overflow-hidden">
+      <div class="p-4 border-b border-gray-700 flex items-center gap-2">
+        <svg class="w-5 h-5 text-violet-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"/>
+        </svg>
+        <h3 class="text-lg font-semibold text-white">账号列表</h3>
+      </div>
+
+      <div v-if="accounts.length === 0" class="py-16 text-center text-gray-500">
+        暂无即梦账号，点击「添加账号」开始
+      </div>
+
+      <div class="overflow-x-auto" v-else>
+        <table class="w-full">
+          <thead class="bg-gray-700/50">
+            <tr>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">账号信息</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">状态</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Cookie</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">优先级</th>
+              <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">操作</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-gray-700">
+            <tr v-for="account in accounts" :key="account.account_id" class="hover:bg-gray-700/30">
+              <td class="px-6 py-4 whitespace-nowrap">
+                <div class="text-sm font-medium text-white">{{ account.display_name }}</div>
+                <div class="text-xs text-gray-500 mt-0.5">ID: {{ account.account_id }}</div>
+                <div class="text-xs text-gray-500">并发: {{ account.current_tasks }}/{{ account.max_concurrent }}</div>
+              </td>
+              <td class="px-6 py-4 whitespace-nowrap">
+                <div class="flex flex-col gap-1">
+                  <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full"
+                    :class="account.is_active ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'">
+                    {{ account.is_active ? '已启用' : '已禁用' }}
+                  </span>
+                  <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full"
+                    :class="account.is_logged_in ? 'bg-blue-100 text-blue-800' : 'bg-red-100 text-red-800'">
+                    {{ account.is_logged_in ? '已登录' : '未登录' }}
+                  </span>
+                </div>
+              </td>
+              <td class="px-6 py-4">
+                <div class="text-xs text-gray-400 font-mono max-w-[180px] truncate" :title="account.cookie">
+                  {{ account.cookie ? account.cookie.substring(0, 30) + '...' : '未设置' }}
+                </div>
+              </td>
+              <td class="px-6 py-4 whitespace-nowrap">
+                <div class="flex items-center gap-1">
+                  <span v-for="i in 10" :key="i"
+                    class="w-2 h-2 rounded-full"
+                    :class="i <= account.priority ? 'bg-violet-400' : 'bg-gray-600'">
+                  </span>
+                  <span class="text-sm text-gray-300 ml-1">{{ account.priority }}</span>
+                </div>
+              </td>
+              <td class="px-6 py-4 whitespace-nowrap">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <button
+                    @click="openQrLoginModal(account)"
+                    class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-xs transition-colors flex items-center gap-1"
+                  >
+                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z"/>
+                    </svg>
+                    扫码登录
+                  </button>
+                  <button
+                    @click="openCookieModal(account)"
+                    class="bg-violet-600 hover:bg-violet-700 text-white px-3 py-1 rounded text-xs transition-colors"
+                  >
+                    Cookie登录
+                  </button>
+                  <button
+                    @click="toggleActive(account)"
+                    :class="account.is_active ? 'bg-yellow-600 hover:bg-yellow-700' : 'bg-green-600 hover:bg-green-700'"
+                    class="text-white px-3 py-1 rounded text-xs transition-colors"
+                  >
+                    {{ account.is_active ? '禁用' : '启用' }}
+                  </button>
+                  <button
+                    @click="deleteAccount(account.account_id)"
+                    class="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-xs transition-colors"
+                  >
+                    删除
+                  </button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </div>
 
@@ -226,7 +249,7 @@
             class="px-4 py-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white rounded-lg transition-colors flex items-center gap-2">
             <svg v-if="cookieModal.loading" class="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
               <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-              <path class="opacity-75" fill="currentColor" d="m4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
             </svg>
             {{ cookieModal.loading ? '保存中...' : '保存并登录' }}
           </button>
@@ -275,7 +298,7 @@
               登录成功！
             </p>
             <p v-else-if="qrLoginModal.status === 'timeout'" class="text-sm text-yellow-400">
-              二维码已过期，请重新获取
+              二维码已过期，请刷新
             </p>
             <p v-else-if="qrLoginModal.status === 'failed'" class="text-sm text-red-400">
               {{ qrLoginModal.error || '登录失败，请重试' }}
@@ -311,47 +334,52 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { useRouter } from 'vue-router'
 import api from '../../api'
 
+const router = useRouter()
 const loading = ref(false)
 const accounts = ref([])
 const showAddModal = ref(false)
+const showToast = ref(false)
+const toastMessage = ref('')
+const toastType = ref('success')
 
-const stats = computed(() => ({
-  total: accounts.value.length,
-  active: accounts.value.filter(a => a.is_active).length,
-  logged_in: accounts.value.filter(a => a.is_logged_in).length,
-}))
+const stats = computed(() => {
+  const total = accounts.value.length
+  const active = accounts.value.filter(a => a.is_active).length
+  const logged_in = accounts.value.filter(a => a.is_logged_in).length
+  return { total, active, logged_in }
+})
 
-const newAccount = reactive({
+const newAccount = ref({
   account_id: '',
   display_name: '',
   cookie: '',
   priority: 5,
-  max_concurrent: 3,
+  max_concurrent: 1
 })
 
-const cookieModal = reactive({
+const cookieModal = ref({
   show: false,
   accountId: '',
   displayName: '',
   cookie: '',
-  loading: false,
+  loading: false
 })
 
-// 二维码登录相关
-const qrLoginModal = reactive({
+const qrLoginModal = ref({
   show: false,
   accountId: '',
   displayName: '',
   qrBase64: '',
-  status: 'loading', // loading, pending, scanning, success, timeout, failed
+  status: 'loading',
   error: '',
   loading: false,
-  countdown: 180,
   pollTimer: null,
-  countdownTimer: null,
+  countdown: 180,
+  countdownTimer: null
 })
 
 const loadAccounts = async () => {
@@ -360,130 +388,104 @@ const loadAccounts = async () => {
     const res = await api.get('/admin/jimeng-accounts/list')
     accounts.value = res.data.accounts || []
   } catch (e) {
-    alert('加载失败: ' + (e.response?.data?.detail || e.message))
+    console.error('加载账号失败', e)
+    showToastMessage('加载账号失败', 'error')
   } finally {
     loading.value = false
   }
 }
 
-const addAccount = async () => {
-  try {
-    await api.post('/admin/jimeng-accounts/create', { ...newAccount })
-    showAddModal.value = false
-    Object.assign(newAccount, { account_id: '', display_name: '', cookie: '', priority: 5, max_concurrent: 3 })
-    await loadAccounts()
-    alert('账号添加成功')
-  } catch (e) {
-    alert('添加失败: ' + (e.response?.data?.detail || e.message))
-  }
+const showToastMessage = (message, type = 'success') => {
+  toastMessage.value = message
+  toastType.value = type
+  showToast.value = true
+  setTimeout(() => {
+    showToast.value = false
+  }, 3000)
 }
 
-const toggleActive = async (account) => {
+const addAccount = async () => {
   try {
-    await api.put(`/admin/jimeng-accounts/${account.account_id}`, { is_active: !account.is_active })
-    await loadAccounts()
+    await api.post('/admin/jimeng-accounts', newAccount.value)
+    showToastMessage('账号添加成功')
+    showAddModal.value = false
+    newAccount.value = {
+      account_id: '',
+      display_name: '',
+      cookie: '',
+      priority: 5,
+      max_concurrent: 1
+    }
+    loadAccounts()
   } catch (e) {
-    alert('操作失败: ' + (e.response?.data?.detail || e.message))
+    console.error('添加账号失败', e)
+    showToastMessage(e.response?.data?.detail || '添加账号失败', 'error')
   }
 }
 
 const openCookieModal = (account) => {
-  cookieModal.accountId = account.account_id
-  cookieModal.displayName = account.display_name
-  cookieModal.cookie = account.cookie || ''
-  cookieModal.loading = false
-  cookieModal.show = true
+  cookieModal.value = {
+    show: true,
+    accountId: account.account_id,
+    displayName: account.display_name,
+    cookie: account.cookie || '',
+    loading: false
+  }
 }
 
 const saveCookie = async () => {
-  if (!cookieModal.cookie.trim()) return
-  cookieModal.loading = true
+  cookieModal.value.loading = true
   try {
-    await api.post(`/admin/jimeng-accounts/${cookieModal.accountId}/cookie-login`, {
-      cookie: cookieModal.cookie.trim()
+    await api.post(`/admin/jimeng-accounts/${cookieModal.value.accountId}/cookie-login`, {
+      cookie: cookieModal.value.cookie
     })
-    cookieModal.show = false
-    await loadAccounts()
-    alert('Cookie保存成功，账号已标记为已登录')
+    showToastMessage('Cookie 保存成功，账号已登录')
+    cookieModal.value.show = false
+    loadAccounts()
   } catch (e) {
-    alert('保存失败: ' + (e.response?.data?.detail || e.message))
+    console.error('保存Cookie失败', e)
+    showToastMessage(e.response?.data?.detail || '保存失败', 'error')
   } finally {
-    cookieModal.loading = false
+    cookieModal.value.loading = false
   }
 }
-
-const logoutAccount = async (accountId) => {
-  if (!confirm('确定登出该账号吗？')) return
-  try {
-    await api.post(`/admin/jimeng-accounts/${accountId}/logout`)
-    await loadAccounts()
-  } catch (e) {
-    alert('登出失败: ' + (e.response?.data?.detail || e.message))
-  }
-}
-
-const deleteAccount = async (accountId) => {
-  if (!confirm('确定删除该账号吗？')) return
-  try {
-    await api.delete(`/admin/jimeng-accounts/${accountId}`)
-    await loadAccounts()
-    alert('账号已删除')
-  } catch (e) {
-    alert('删除失败: ' + (e.response?.data?.detail || e.message))
-  }
-}
-
-// ===== 二维码登录功能 =====
 
 const openQrLoginModal = async (account) => {
-  qrLoginModal.accountId = account.account_id
-  qrLoginModal.displayName = account.display_name
-  qrLoginModal.qrBase64 = ''
-  qrLoginModal.status = 'loading'
-  qrLoginModal.error = ''
-  qrLoginModal.loading = false
-  qrLoginModal.countdown = 180
-  qrLoginModal.show = true
+  qrLoginModal.value = {
+    show: true,
+    accountId: account.account_id,
+    displayName: account.display_name,
+    qrBase64: '',
+    status: 'loading',
+    error: '',
+    loading: false,
+    pollTimer: null,
+    countdown: 180,
+    countdownTimer: null
+  }
   
-  await startQrLogin()
-}
-
-const startQrLogin = async () => {
-  qrLoginModal.status = 'loading'
-  qrLoginModal.loading = true
-
   try {
-    const res = await api.post(
-      `/admin/jimeng-accounts/${qrLoginModal.accountId}/qr-login/start`,
-      null,
-      { timeout: 120000 }  // 二维码生成最多等 2 分钟
-    )
-    if (res.data.qr_base64) {
-      qrLoginModal.qrBase64 = res.data.qr_base64
-      qrLoginModal.status = res.data.status || 'pending'
-      startPolling()
-      startCountdown()
-    } else {
-      qrLoginModal.status = 'failed'
-      qrLoginModal.error = '获取二维码失败'
-    }
+    const res = await api.post(`/admin/jimeng-accounts/${account.account_id}/qr-login`)
+    qrLoginModal.value.qrBase64 = res.data.qr_base64
+    qrLoginModal.value.status = 'pending'
+    startPolling()
+    startCountdown()
   } catch (e) {
-    qrLoginModal.status = 'failed'
-    qrLoginModal.error = e.response?.data?.detail || e.message
-  } finally {
-    qrLoginModal.loading = false
+    console.error('获取二维码失败', e)
+    qrLoginModal.value.status = 'failed'
+    qrLoginModal.value.error = e.response?.data?.detail || '获取二维码失败'
   }
 }
 
 const startPolling = () => {
   stopPolling()
-  qrLoginModal.pollTimer = setInterval(async () => {
+  qrLoginModal.value.pollTimer = setInterval(async () => {
     try {
-      const res = await api.get(`/admin/jimeng-accounts/${qrLoginModal.accountId}/qr-login/status`)
+      const res = await api.get(`/admin/jimeng-accounts/${qrLoginModal.value.accountId}/qr-login/status`)
       const status = res.data.status
       
       if (status === 'success') {
-        qrLoginModal.status = 'success'
+        qrLoginModal.value.status = 'success'
         stopPolling()
         stopCountdown()
         setTimeout(() => {
@@ -491,23 +493,20 @@ const startPolling = () => {
           loadAccounts()
         }, 1500)
       } else if (status === 'failed') {
-        qrLoginModal.status = 'failed'
-        qrLoginModal.error = res.data.message || '登录失败'
+        qrLoginModal.value.status = 'failed'
+        qrLoginModal.value.error = res.data.message || '登录失败'
         stopPolling()
         stopCountdown()
       } else if (status === 'timeout') {
-        qrLoginModal.status = 'timeout'
+        qrLoginModal.value.status = 'timeout'
         stopPolling()
         stopCountdown()
       } else if (status === 'not_started') {
-        // session 已被删除（可能登录成功后端已处理）
-        // 继续轮询，等待下次获取到状态
         console.log('Session not started, continuing polling...')
       } else if (status === 'pending') {
-        // 等待扫码中
-        qrLoginModal.status = 'pending'
+        qrLoginModal.value.status = 'pending'
       } else if (status === 'scanning') {
-        qrLoginModal.status = 'scanning'
+        qrLoginModal.value.status = 'scanning'
       }
     } catch (e) {
       console.error('轮询状态失败:', e)
@@ -516,51 +515,88 @@ const startPolling = () => {
 }
 
 const stopPolling = () => {
-  if (qrLoginModal.pollTimer) {
-    clearInterval(qrLoginModal.pollTimer)
-    qrLoginModal.pollTimer = null
+  if (qrLoginModal.value.pollTimer) {
+    clearInterval(qrLoginModal.value.pollTimer)
+    qrLoginModal.value.pollTimer = null
   }
 }
 
 const startCountdown = () => {
-  qrLoginModal.countdown = 180
-  if (qrLoginModal.countdownTimer) {
-    clearInterval(qrLoginModal.countdownTimer)
+  qrLoginModal.value.countdown = 180
+  if (qrLoginModal.value.countdownTimer) {
+    clearInterval(qrLoginModal.value.countdownTimer)
   }
-  qrLoginModal.countdownTimer = setInterval(() => {
-    qrLoginModal.countdown--
-    if (qrLoginModal.countdown <= 0) {
+  qrLoginModal.value.countdownTimer = setInterval(() => {
+    qrLoginModal.value.countdown--
+    if (qrLoginModal.value.countdown <= 0) {
       stopCountdown()
     }
   }, 1000)
 }
 
 const stopCountdown = () => {
-  if (qrLoginModal.countdownTimer) {
-    clearInterval(qrLoginModal.countdownTimer)
-    qrLoginModal.countdownTimer = null
+  if (qrLoginModal.value.countdownTimer) {
+    clearInterval(qrLoginModal.value.countdownTimer)
+    qrLoginModal.value.countdownTimer = null
   }
+}
+
+const closeQrModal = () => {
+  stopPolling()
+  stopCountdown()
+  qrLoginModal.value.show = false
 }
 
 const refreshQrCode = async () => {
-  await startQrLogin()
+  qrLoginModal.value.loading = true
+  qrLoginModal.value.status = 'loading'
+  try {
+    const res = await api.post(`/admin/jimeng-accounts/${qrLoginModal.value.accountId}/qr-login`)
+    qrLoginModal.value.qrBase64 = res.data.qr_base64
+    qrLoginModal.value.status = 'pending'
+    startPolling()
+    startCountdown()
+  } catch (e) {
+    console.error('刷新二维码失败', e)
+    qrLoginModal.value.status = 'failed'
+    qrLoginModal.value.error = e.response?.data?.detail || '刷新二维码失败'
+  } finally {
+    qrLoginModal.value.loading = false
+  }
 }
 
-const closeQrModal = async () => {
+const toggleActive = async (account) => {
+  try {
+    await api.put(`/admin/jimeng-accounts/${account.account_id}/active`, {
+      is_active: !account.is_active
+    })
+    showToastMessage(account.is_active ? '账号已禁用' : '账号已启用')
+    loadAccounts()
+  } catch (e) {
+    console.error('切换状态失败', e)
+    showToastMessage(e.response?.data?.detail || '操作失败', 'error')
+  }
+}
+
+const deleteAccount = async (accountId) => {
+  if (!confirm('确定删除该账号吗？')) return
+  
+  try {
+    await api.delete(`/admin/jimeng-accounts/${accountId}`)
+    showToastMessage('账号已删除')
+    loadAccounts()
+  } catch (e) {
+    console.error('删除账号失败', e)
+    showToastMessage(e.response?.data?.detail || '删除失败', 'error')
+  }
+}
+
+onMounted(() => {
+  loadAccounts()
+})
+
+onUnmounted(() => {
   stopPolling()
   stopCountdown()
-  
-  // 调用后端取消登录
-  if (qrLoginModal.accountId && qrLoginModal.status === 'pending') {
-    try {
-      await api.post(`/admin/jimeng-accounts/${qrLoginModal.accountId}/qr-login/cancel`)
-    } catch (e) {
-      // 忽略取消错误
-    }
-  }
-  
-  qrLoginModal.show = false
-}
-
-onMounted(loadAccounts)
+})
 </script>
