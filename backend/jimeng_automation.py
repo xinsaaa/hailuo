@@ -219,7 +219,7 @@ async def submit_video_task(
         return {"success": False, "error": "账号未登录（无Cookie）"}
 
     async with async_playwright() as p:
-        browser = await p.chromium.launch(headless=False)  # 测试时使用非无头模式
+        browser = await p.chromium.launch(headless=True)  # 服务器必须使用无头模式
         context = await browser.new_context(
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         )
