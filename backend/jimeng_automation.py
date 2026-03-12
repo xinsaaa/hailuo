@@ -239,125 +239,99 @@ async def submit_video_task(
         account_id = account.get("account_id", "unknown")
 
         try:
-            # 步骤1：直接跳转到视频生成页（通过 URL 参数控制模式，更稳定）
+            # 步骤1：进入视频生成页
             print(f"[JIMENG-SUBMIT] [{account_id}] 进入视频生成页")
             await page.goto(JIMENG_VIDEO_URL, wait_until="domcontentloaded", timeout=60000)
-            await page.wait_for_timeout(1500)
-            
-            # 步骤1.5：关闭可能的"绑定剪映账号"弹窗
-            print(f"[JIMENG-SUBMIT] [{account_id}] 检查是否有绑定剪映弹窗...")
+            await page.wait_for_timeout(2000)
+
+            # 步骤2：关闭可能的弹窗
             try:
-                # 等待页面稳定
-                await page.wait_for_timeout(1000)
-                
-                # 多种方式检测弹窗
                 bind_modal = page.locator("[class*='bind-capcut-account']")
-                modal_count = await bind_modal.count()
-                print(f"[JIMENG-SUBMIT] [{account_id}] 找到 {modal_count} 个可能的弹窗元素")
-                
-                if modal_count > 0:
-                    print(f"[JIMENG-SUBMIT] [{account_id}] 检测到绑定剪映弹窗，尝试关闭")
-                    
-                    # 方式1：点击关闭按钮
+                if await bind_modal.count() > 0:
+                    print(f"[JIMENG-SUBMIT] [{account_id}] 检测到弹窗，关闭中...")
                     close_btn = bind_modal.first.locator("[class*='close-icon'], [class*='close-btn'], button[aria-label*='关闭']").first
                     if await close_btn.count() > 0:
                         await close_btn.click()
-                        await page.wait_for_timeout(500)
-                        print(f"[JIMENG-SUBMIT] [{account_id}] 已点击关闭按钮")
                     else:
-                        # 方式2：点击弹窗外区域
                         await page.keyboard.press("Escape")
-                        await page.wait_for_timeout(500)
-                        print(f"[JIMENG-SUBMIT] [{account_id}] 已按Escape键关闭弹窗")
-                    
                     await page.wait_for_timeout(500)
-                    print(f"[JIMENG-SUBMIT] [{account_id}] 已关闭绑定剪映弹窗")
-                else:
-                    print(f"[JIMENG-SUBMIT] [{account_id}] 未检测到绑定剪映弹窗")
             except Exception as e:
-                print(f"[JIMENG-SUBMIT] [{account_id}] 关闭弹窗异常（继续）: {e}")
-            
+                print(f"[JIMENG-SUBMIT] [{account_id}] 弹窗处理异常（继续）: {str(e)[:50]}")
+
             await page.screenshot(path=_debug_path("submit_01_gen_page"))
 
-            # 步骤2：选择模型（稳定写法）
-            print(f"[JIMENG-SUBMIT] [{account_id}] 选择模型: {model}")
+            # 步骤3：选择模型、比例、时长
+            print(f"[JIMENG-SUBMIT] [{account_id}] 配置参数: 模型={model}, 比例={ratio}, 时长={duration}s")
             await _select_video_model(page, model, account_id)
-
-            # 步骤2.1：选择比例（按钮形式）
-            print(f"[JIMENG-SUBMIT] [{account_id}] 选择比例: {ratio}")
             await _select_resolution_ratio(page, ratio, account_id)
-
-            # 步骤2.2：选择时长（第四个下拉框）
-            print(f"[JIMENG-SUBMIT] [{account_id}] 选择时长: {duration}s")
             await _select_duration(page, duration, account_id)
 
-            # 步骤2.5：上传首帧和尾帧图片（如果有）
+            # 步骤4：上传参考图片（如果有）
             if first_frame_url or last_frame_url:
                 print(f"[JIMENG-SUBMIT] [{account_id}] 上传参考图片")
                 await _upload_reference_images(page, first_frame_url, last_frame_url, account_id)
 
-            # 步骤3：输入提示词
+            # 步骤5：输入提示词
             print(f"[JIMENG-SUBMIT] [{account_id}] 输入提示词")
-            # 通过固定的 class 元素定位提示词输入框
             prompt_input = page.locator("textarea[class*='prompt-textarea']").first
             if await prompt_input.count() == 0:
-                # 备用方案：通过 placeholder 定位
                 prompt_input = page.get_by_placeholder("输入文字，描述你想创作的画面内容")
             if await prompt_input.count() == 0:
-                # 再备用：通过 class 组合定位
                 prompt_input = page.locator(".lv-textarea.prompt-textarea, textarea.lv-textarea").first
             await prompt_input.click()
             await prompt_input.fill(prompt)
-            await page.wait_for_timeout(500)  # 输入后等待
+            await page.wait_for_timeout(500)
             await page.screenshot(path=_debug_path("submit_02_prompt_filled"))
 
-            # 步骤4：点击生成按钮
+            # 步骤6：点击生成按钮
             if skip_generate:
                 print(f"[JIMENG-SUBMIT] [{account_id}] 跳过点击生成按钮（测试模式）")
                 await page.screenshot(path=_debug_path("submit_03_before_generate"))
             else:
                 print(f"[JIMENG-SUBMIT] [{account_id}] 点击生成按钮")
+
+                # 滚动到底部确保按钮可见
+                await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
                 await page.wait_for_timeout(500)
-                
-                # 通过固定的 class 元素定位提交按钮
+
                 submit_btns = page.locator("button[class*='submit-button']")
                 btn_count = await submit_btns.count()
-                print(f"[JIMENG-SUBMIT] [{account_id}] 找到 {btn_count} 个 submit-button 元素")
-                
+                clicked = False
+
                 if btn_count > 0:
-                    # 遍历找到可见的按钮
                     for i in range(btn_count):
                         btn = submit_btns.nth(i)
-                        is_visible = await btn.is_visible()
-                        btn_class = await btn.get_attribute("class") or ""
-                        print(f"[JIMENG-SUBMIT] [{account_id}] 按钮 {i+1}: visible={is_visible}, class={btn_class[:50]}...")
-                        if is_visible:
+                        if await btn.is_visible():
+                            await btn.scroll_into_view_if_needed()
                             await btn.click()
-                            print(f"[JIMENG-SUBMIT] [{account_id}] 已点击按钮 {i+1}")
+                            print(f"[JIMENG-SUBMIT] [{account_id}] 已点击生成按钮")
+                            clicked = True
                             break
-                else:
-                    # 备用方案：通过文字定位
-                    print(f"[JIMENG-SUBMIT] [{account_id}] 未找到 submit-button，尝试备用方案")
+
+                if not clicked:
+                    # 备用方案
+                    print(f"[JIMENG-SUBMIT] [{account_id}] 主按钮未找到，尝试备用定位")
                     generate_btn = page.get_by_role("button", name="生成")
                     if await generate_btn.count() > 0:
+                        await generate_btn.scroll_into_view_if_needed()
                         await generate_btn.click()
                     else:
-                        # 再备用：通过组合 class 定位
                         generate_btn = page.locator(".lv-btn-primary").first
+                        await generate_btn.scroll_into_view_if_needed()
                         await generate_btn.click()
-                
+
                 await page.wait_for_timeout(1000)
-                
-                # 步骤4.5：点击确认弹窗（如果有）
+
+                # 步骤7：处理确认弹窗（如果有）
                 try:
                     confirm_btn = page.get_by_role("button", name="确认")
                     if await confirm_btn.count() > 0 and await confirm_btn.is_visible():
-                        print(f"[JIMENG-SUBMIT] [{account_id}] 检测到确认弹窗，点击确认")
+                        print(f"[JIMENG-SUBMIT] [{account_id}] 点击确认弹窗")
                         await confirm_btn.click()
                         await page.wait_for_timeout(1000)
                 except Exception as e:
                     print(f"[JIMENG-SUBMIT] [{account_id}] 确认弹窗处理: {str(e)[:50]}")
-                
+
                 await page.screenshot(path=_debug_path("submit_03_after_generate"))
 
             # 使用传入的 task_id，如果没有则生成新的
@@ -842,39 +816,85 @@ async def scan_video_status(
             except:
                 pass
 
+            # 滚动加载视频卡片，目标约20个
+            TARGET_VIDEO_COUNT = 20
+            MAX_SCROLL_ATTEMPTS = 15  # 防止无限滚动
+            print(f"[JIMENG-SCAN] [{account_id}] 滚动加载视频，目标 {TARGET_VIDEO_COUNT} 个...")
+            previous_count = 0
+            scroll_attempts = 0
+            no_change_count = 0  # 连续无变化次数
+
+            while scroll_attempts < MAX_SCROLL_ATTEMPTS:
+                current_records = page.locator("div[class*='video-record'][class*='nlt6eI']")
+                current_count = await current_records.count()
+
+                print(f"[JIMENG-SCAN] [{account_id}] 滚动 {scroll_attempts + 1}/{MAX_SCROLL_ATTEMPTS}，当前 {current_count} 个视频")
+
+                # 已达到目标数量，停止滚动
+                if current_count >= TARGET_VIDEO_COUNT:
+                    print(f"[JIMENG-SCAN] [{account_id}] 已达到目标数量 {TARGET_VIDEO_COUNT}，停止滚动")
+                    break
+
+                # 连续2次数量无变化，说明所有视频已加载完毕（不足20个的情况）
+                if current_count > 0 and current_count == previous_count:
+                    no_change_count += 1
+                    if no_change_count >= 2:
+                        print(f"[JIMENG-SCAN] [{account_id}] 视频数量连续未增加（共 {current_count} 个），已全部加载")
+                        break
+                else:
+                    no_change_count = 0
+
+                previous_count = current_count
+
+                # 滚动加载：优先滚动视频列表容器，fallback 到 window
+                await page.evaluate("""() => {
+                    const container = document.querySelector('[class*="record-list"]')
+                        || document.querySelector('[class*="video-list"]')
+                        || document.querySelector('[class*="scroll"]');
+                    if (container && container.scrollHeight > container.clientHeight) {
+                        container.scrollTop = container.scrollHeight;
+                    } else {
+                        window.scrollTo(0, document.body.scrollHeight);
+                    }
+                }""")
+                await page.wait_for_timeout(1500)
+
+                scroll_attempts += 1
+
             videos = []
 
-            # 查找所有视频记录卡片 - 直接找包含 progress-badge 或 video 标签的容器
-            # 每个视频卡片都有 video-record-nlt6eI 这个 class
+            # 查找所有视频记录卡片
             video_records = page.locator("div[class*='video-record'][class*='nlt6eI']")
             record_count = await video_records.count()
-            print(f"[JIMENG-SCAN] [{account_id}] 找到 {record_count} 个视频记录")
+            print(f"[JIMENG-SCAN] [{account_id}] 最终找到 {record_count} 个视频记录")
 
             for i in range(record_count):
                 record = video_records.nth(i)
                 video_info = {"status": JIMENG_STATUS_UNKNOWN, "progress": 0}
 
                 try:
-                    # 获取提示词 - prompt-value-container 内的 span
+                    # 获取提示词 - prompt-value-container 内的 span（带超时保护）
                     prompt_el = record.locator("[class*='prompt-value-container'] > span").first
                     if await prompt_el.count() > 0:
-                        video_info["prompt"] = (await prompt_el.text_content() or "").strip()
+                        video_info["prompt"] = (await prompt_el.text_content(timeout=3000) or "").strip()
 
-                    # 如果指定了提示词，先进行精确匹配过滤（提高效率）
-                    if prompt is not None and video_info.get("prompt") != prompt:
-                        continue
+                    # 如果指定了提示词，使用包含匹配（避免空格/换行等细微差异导致匹配失败）
+                    if prompt is not None:
+                        card_prompt = video_info.get("prompt", "")
+                        if prompt not in card_prompt and card_prompt not in prompt:
+                            continue
 
                     print(f"[JIMENG-SCAN] [{account_id}] 视频 {i+1} 提示词: {video_info.get('prompt', '')[:30]}...")
 
                     # 获取模型 - 第一个 label
                     label_el = record.locator("[class*='label-lhnDlt']").first
                     if await label_el.count() > 0:
-                        video_info["model"] = await label_el.text_content() or ""
+                        video_info["model"] = await label_el.text_content(timeout=3000) or ""
 
                     # 优先检查失败状态
                     error_tips = record.locator("[class*='error-tips']").first
                     if await error_tips.count() > 0:
-                        error_text = await error_tips.text_content() or ""
+                        error_text = await error_tips.text_content(timeout=3000) or ""
                         video_info["status"] = "failed"
                         video_info["progress"] = 0
                         video_info["error"] = error_text.strip()
@@ -885,7 +905,7 @@ async def scan_video_status(
                     # 检测进度状态
                     progress_badge = record.locator("[class*='progress-badge']").first
                     if await progress_badge.count() > 0:
-                        badge_text = (await progress_badge.text_content() or "").strip()
+                        badge_text = (await progress_badge.text_content(timeout=3000) or "").strip()
                         print(f"[JIMENG-SCAN] [{account_id}] 视频 {i+1} badge: {badge_text}")
 
                         if "排队中" in badge_text or "排队加速中" in badge_text:
@@ -904,7 +924,7 @@ async def scan_video_status(
                         # 注意：要排除加载动画视频
                         video_el = record.locator("video:not([class*='loading-animation'])").first
                         if await video_el.count() > 0:
-                            video_src = await video_el.get_attribute("src") or ""
+                            video_src = await video_el.get_attribute("src", timeout=3000) or await video_el.get_attribute("data-src", timeout=3000) or ""
                             # 确保不是加载动画的视频
                             if video_src and "loading-animation" not in video_src:
                                 video_info["status"] = JIMENG_STATUS_COMPLETED
