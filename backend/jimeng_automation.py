@@ -18,6 +18,18 @@ DEBUG_DIR = os.path.join(os.path.dirname(__file__), "jimeng_debug")
 
 os.makedirs(DEBUG_DIR, exist_ok=True)
 
+# 即梦订单追踪标识（与海螺 automation.py 保持一致的机制）
+JIMENG_ORDER_TAG_PREFIX = "#JMORD"
+
+def add_jimeng_tracking_id(prompt: str, order_id: int) -> str:
+    """在提示词末尾添加即梦订单追踪ID"""
+    return f"{prompt} (以下内容请忽略，仅用于系统追踪：[{JIMENG_ORDER_TAG_PREFIX}{order_id}])"
+
+def extract_jimeng_order_id(text: str) -> Optional[int]:
+    """从文本中提取即梦订单追踪ID"""
+    match = re.search(r'\[' + JIMENG_ORDER_TAG_PREFIX + r'(\d+)\]', text)
+    return int(match.group(1)) if match else None
+
 
 def _debug_path(name: str) -> str:
     ts = int(time.time())
@@ -198,6 +210,7 @@ async def submit_video_task(
     first_frame_url: Optional[str] = None,
     last_frame_url: Optional[str] = None,
     task_id: Optional[str] = None,
+    order_id: Optional[int] = None,
     skip_generate: bool = False,
 ) -> dict:
     """
@@ -271,15 +284,20 @@ async def submit_video_task(
                 print(f"[JIMENG-SUBMIT] [{account_id}] 上传参考图片")
                 await _upload_reference_images(page, first_frame_url, last_frame_url, account_id)
 
-            # 步骤5：输入提示词
-            print(f"[JIMENG-SUBMIT] [{account_id}] 输入提示词")
+            # 步骤5：输入提示词（带订单追踪ID）
+            actual_prompt = prompt
+            if order_id is not None:
+                actual_prompt = add_jimeng_tracking_id(prompt, order_id)
+                print(f"[JIMENG-SUBMIT] [{account_id}] 输入提示词（含追踪ID: #JMORD{order_id}）")
+            else:
+                print(f"[JIMENG-SUBMIT] [{account_id}] 输入提示词")
             prompt_input = page.locator("textarea[class*='prompt-textarea']").first
             if await prompt_input.count() == 0:
                 prompt_input = page.get_by_placeholder("输入文字，描述你想创作的画面内容")
             if await prompt_input.count() == 0:
                 prompt_input = page.locator(".lv-textarea.prompt-textarea, textarea.lv-textarea").first
             await prompt_input.click()
-            await prompt_input.fill(prompt)
+            await prompt_input.fill(actual_prompt)
             await page.wait_for_timeout(500)
             await page.screenshot(path=_debug_path("submit_02_prompt_filled"))
 
@@ -333,6 +351,46 @@ async def submit_video_task(
                     print(f"[JIMENG-SUBMIT] [{account_id}] 确认弹窗处理: {str(e)[:50]}")
 
                 await page.screenshot(path=_debug_path("submit_03_after_generate"))
+
+                # 步骤8：验证是否真正开始生成
+                print(f"[JIMENG-SUBMIT] [{account_id}] 验证生成是否启动...")
+                await page.wait_for_timeout(2000)
+
+                # 检查是否出现错误提示（积分不足、频率限制等）
+                error_toast = page.locator("[class*='lv-message--error'], [class*='toast-error'], [class*='error-message']").first
+                if await error_toast.count() > 0:
+                    error_text = (await error_toast.text_content(timeout=3000) or "").strip()
+                    if error_text:
+                        print(f"[JIMENG-SUBMIT] [{account_id}] 生成失败，页面报错: {error_text}")
+                        await page.screenshot(path=_debug_path("submit_04_error_toast"))
+                        return {"success": False, "error": f"页面报错: {error_text}"}
+
+                # 检查是否出现进度条/排队状态（说明真正开始了）
+                generation_started = False
+                for _ in range(3):
+                    progress = page.locator("[class*='progress-badge'], [class*='generating'], [class*='queuing']").first
+                    if await progress.count() > 0:
+                        badge_text = (await progress.text_content(timeout=3000) or "").strip()
+                        print(f"[JIMENG-SUBMIT] [{account_id}] 生成已启动: {badge_text}")
+                        generation_started = True
+                        break
+                    await page.wait_for_timeout(1500)
+
+                if not generation_started:
+                    # 再检查一下提示词输入框是否被清空（清空说明提交成功了）
+                    try:
+                        prompt_input_check = page.locator("textarea[class*='prompt-textarea']").first
+                        if await prompt_input_check.count() > 0:
+                            remaining_text = (await prompt_input_check.input_value(timeout=3000) or "").strip()
+                            if remaining_text == prompt.strip():
+                                print(f"[JIMENG-SUBMIT] [{account_id}] 提示词未清空，生成可能未成功")
+                                await page.screenshot(path=_debug_path("submit_04_not_started"))
+                                return {"success": False, "error": "生成按钮点击后未检测到生成状态，可能未成功提交"}
+                    except:
+                        pass
+                    print(f"[JIMENG-SUBMIT] [{account_id}] 未检测到明确的生成状态，但继续（可能页面结构变化）")
+
+                await page.screenshot(path=_debug_path("submit_04_verified"))
 
             # 使用传入的 task_id，如果没有则生成新的
             if not task_id:
@@ -773,13 +831,15 @@ JIMENG_STATUS_UNKNOWN = "unknown"        # 未知
 async def scan_video_status(
     account: dict,
     prompt: Optional[str] = None,
+    order_id: Optional[int] = None,
 ) -> dict:
     """
     扫描即梦视频生成状态
-    
+
     参数:
         account: 账号信息，包含 cookie
-        prompt: 提示词（可选，用于匹配特定视频）
+        prompt: 提示词（可选，已废弃，优先使用 order_id）
+        order_id: 订单ID（可选，用于通过追踪标识精确匹配）
     
     返回: {
         "success": bool,
@@ -896,10 +956,21 @@ async def scan_video_status(
                     if await prompt_el.count() > 0:
                         video_info["prompt"] = (await prompt_el.text_content(timeout=3000) or "").strip()
 
-                    # 如果指定了提示词，使用包含匹配（避免空格/换行等细微差异导致匹配失败）
-                    if prompt is not None:
+                    # 优先通过订单追踪ID精确匹配
+                    if order_id is not None:
                         card_prompt = video_info.get("prompt", "")
-                        if prompt not in card_prompt and card_prompt not in prompt:
+                        extracted_id = extract_jimeng_order_id(card_prompt)
+                        if extracted_id != order_id:
+                            continue
+                        # 匹配成功，去掉追踪标识还原原始提示词
+                        video_info["prompt"] = re.sub(r'\s*\(以下内容请忽略.*?\[' + JIMENG_ORDER_TAG_PREFIX + r'\d+\]\)', '', card_prompt).strip()
+                        video_info["order_id"] = order_id
+                    elif prompt is not None:
+                        # 兜底：无 order_id 时用标准化精确匹配
+                        card_prompt = video_info.get("prompt", "")
+                        norm_prompt = re.sub(r'\s+', ' ', prompt.strip())
+                        norm_card = re.sub(r'\s+', ' ', card_prompt.strip())
+                        if norm_prompt != norm_card:
                             continue
 
                     print(f"[JIMENG-SCAN] [{account_id}] 视频 {i+1} 提示词: {video_info.get('prompt', '')[:30]}...")

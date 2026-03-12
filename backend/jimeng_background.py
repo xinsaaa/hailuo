@@ -75,7 +75,8 @@ async def process_jimeng_order(order_id: int):
                 ratio=order_data["ratio"],
                 first_frame_url=order_data["first_frame_url"],
                 last_frame_url=order_data["last_frame_url"],
-                task_id=order_data["task_id"],  # 传入订单的 task_id
+                task_id=order_data["task_id"],
+                order_id=order_id,
             )
 
             if not result.get("success"):
@@ -103,7 +104,7 @@ async def process_jimeng_order(order_id: int):
                     return
 
                 # 扫描视频状态
-                scan_result = await scan_video_status(account, order_data["prompt"])
+                scan_result = await scan_video_status(account, order_id=order_id)
 
                 if scan_result.get("success"):
                     videos = scan_result.get("videos", [])
