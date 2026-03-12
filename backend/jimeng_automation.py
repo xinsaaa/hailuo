@@ -197,11 +197,12 @@ async def submit_video_task(
     ratio: str = "16:9",
     first_frame_url: Optional[str] = None,
     last_frame_url: Optional[str] = None,
+    task_id: Optional[str] = None,
     skip_generate: bool = False,
 ) -> dict:
     """
     提交即梦视频生成任务
-    
+
     参数:
         account: 账号信息，包含 cookie
         prompt: 提示词
@@ -359,7 +360,11 @@ async def submit_video_task(
                 
                 await page.screenshot(path=_debug_path("submit_03_after_generate"))
 
-            return {"success": True, "task_id": f"jimeng_{int(time.time())}"}
+            # 使用传入的 task_id，如果没有则生成新的
+            if not task_id:
+                task_id = f"jimeng_{int(time.time())}_{account.get('account_id', 'unknown')}"
+
+            return {"success": True, "task_id": task_id}
 
         except Exception as e:
             await page.screenshot(path=_debug_path("submit_error"))
@@ -769,6 +774,7 @@ async def _upload_reference_images(
 JIMENG_STATUS_QUEUING = "queuing"      # 排队中
 JIMENG_STATUS_GENERATING = "generating"  # 生成中
 JIMENG_STATUS_COMPLETED = "completed"    # 已完成
+JIMENG_STATUS_FAILED = "failed"          # 失败（审核不通过等）
 JIMENG_STATUS_UNKNOWN = "unknown"        # 未知
 
 
@@ -849,21 +855,15 @@ async def scan_video_status(
                 video_info = {"status": JIMENG_STATUS_UNKNOWN, "progress": 0}
 
                 try:
-                    # 调试：打印记录的 HTML 结构
-                    if i == 0:
-                        html = await record.inner_html()
-                        print(f"[JIMENG-SCAN] [{account_id}] 第一个记录 HTML 预览: {html[:200]}...")
-
                     # 获取提示词 - prompt-value-container 内的 span
                     prompt_el = record.locator("[class*='prompt-value-container'] > span").first
                     if await prompt_el.count() > 0:
-                        video_info["prompt"] = await prompt_el.text_content() or ""
-                    else:
-                        # 备用：直接找 prompt-value-container
-                        prompt_el = record.locator("[class*='prompt-value-container']").first
-                        if await prompt_el.count() > 0:
-                            video_info["prompt"] = await prompt_el.text_content() or ""
-                    
+                        video_info["prompt"] = (await prompt_el.text_content() or "").strip()
+
+                    # 如果指定了提示词，先进行精确匹配过滤（提高效率）
+                    if prompt is not None and video_info.get("prompt") != prompt:
+                        continue
+
                     print(f"[JIMENG-SCAN] [{account_id}] 视频 {i+1} 提示词: {video_info.get('prompt', '')[:30]}...")
 
                     # 获取模型 - 第一个 label
@@ -871,43 +871,48 @@ async def scan_video_status(
                     if await label_el.count() > 0:
                         video_info["model"] = await label_el.text_content() or ""
 
-                    # 检测状态
+                    # 优先检查失败状态
+                    error_tips = record.locator("[class*='error-tips']").first
+                    if await error_tips.count() > 0:
+                        error_text = await error_tips.text_content() or ""
+                        video_info["status"] = "failed"
+                        video_info["progress"] = 0
+                        video_info["error"] = error_text.strip()
+                        print(f"[JIMENG-SCAN] [{account_id}] 视频 {i+1} 失败: {error_text[:50]}")
+                        videos.append(video_info)
+                        continue
+
+                    # 检测进度状态
                     progress_badge = record.locator("[class*='progress-badge']").first
                     if await progress_badge.count() > 0:
-                        badge_text = await progress_badge.text_content() or ""
-                        print(f"[JIMENG-SCAN] [{account_id}] 视频 {i+1} badge: {badge_text[:30]}")
-                        
+                        badge_text = (await progress_badge.text_content() or "").strip()
+                        print(f"[JIMENG-SCAN] [{account_id}] 视频 {i+1} badge: {badge_text}")
+
                         if "排队中" in badge_text or "排队加速中" in badge_text:
                             video_info["status"] = JIMENG_STATUS_QUEUING
-                            video_info["progress"] = -1
+                            video_info["progress"] = 0
                         elif "造梦中" in badge_text:
                             video_info["status"] = JIMENG_STATUS_GENERATING
-                            # 提取进度百分比
+                            # 提取进度百分比 - 支持 "28%造梦中" 和 "造梦中 28%" 两种格式
                             match = re.search(r"(\d+)%", badge_text)
                             if match:
                                 video_info["progress"] = int(match.group(1))
-                        else:
-                            # 其他状态，检查是否有视频（已完成）
-                            video_el = record.locator("video")
-                            if await video_el.count() > 0:
-                                video_info["status"] = JIMENG_STATUS_COMPLETED
-                                video_info["progress"] = 100
-                                video_src = await video_el.first.get_attribute("src") or ""
-                                if video_src:
-                                    video_info["video_url"] = video_src
+                            else:
+                                video_info["progress"] = 0
                     else:
                         # 没有 progress-badge，检查是否有视频（已完成）
-                        video_el = record.locator("video")
+                        # 注意：要排除加载动画视频
+                        video_el = record.locator("video:not([class*='loading-animation'])").first
                         if await video_el.count() > 0:
-                            video_info["status"] = JIMENG_STATUS_COMPLETED
-                            video_info["progress"] = 100
-                            video_src = await video_el.first.get_attribute("src") or ""
-                            if video_src:
+                            video_src = await video_el.get_attribute("src") or ""
+                            # 确保不是加载动画的视频
+                            if video_src and "loading-animation" not in video_src:
+                                video_info["status"] = JIMENG_STATUS_COMPLETED
+                                video_info["progress"] = 100
                                 video_info["video_url"] = video_src
+                                print(f"[JIMENG-SCAN] [{account_id}] 视频 {i+1} 已完成: {video_src[:80]}...")
 
-                    # 如果指定了提示词，只返回匹配的视频
-                    if prompt is None or prompt in video_info.get("prompt", ""):
-                        videos.append(video_info)
+                    videos.append(video_info)
 
                 except Exception as e:
                     print(f"[JIMENG-SCAN] [{account_id}] 解析视频记录 {i+1} 失败: {str(e)[:50]}")

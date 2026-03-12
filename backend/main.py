@@ -171,9 +171,18 @@ async def startup_event():
     from backend.models import create_db_and_tables
     create_db_and_tables()
     app_logger.info("Database tables initialized")
-    
+
     # 初始化默认模型数据
     init_default_models()
+
+    # 启动恢复流程（处理断电、崩溃等异常情况）
+    try:
+        from backend.startup_recovery import startup_recovery
+        app_logger.info("Starting recovery process...")
+        await startup_recovery()
+        app_logger.info("Recovery process completed")
+    except Exception as e:
+        app_logger.error(f"Recovery process failed: {e}", exc_info=True)
     
     # 自动启动自动化工作线程（单账号模式） - 多账号系统启用时禁用
     enable_auto_worker = os.getenv("ENABLE_AUTO_WORKER", "true").lower() == "true"

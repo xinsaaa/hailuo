@@ -20,7 +20,8 @@
       "Bash(python -m py_compile backend/automation_v2.py)",
       "Bash(python -m py_compile backend/multi_account_manager.py)",
       "Bash(xargs grep -l \"credits\\\\|积分\")",
-      "Bash(python3 -c \":*)"
+      "Bash(python3 -c \":*)",
+      "Bash(find e:/works/1200----AI文生视频/ -name Dockerfile* -o -name *.dockerfile)"
     ]
   }
 }

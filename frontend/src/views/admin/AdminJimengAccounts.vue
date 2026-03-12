@@ -465,11 +465,14 @@ const openQrLoginModal = async (account) => {
   }
   
   try {
-    const res = await api.post(`/admin/jimeng-accounts/${account.account_id}/qr-login`)
+    const res = await api.post(
+      `/admin/jimeng-accounts/${account.account_id}/qr-login`,
+      null,
+      { timeout: 120000 }  // 二维码生成最多等 2 分钟
+    )
     qrLoginModal.value.qrBase64 = res.data.qr_base64
     qrLoginModal.value.status = 'pending'
     startPolling()
-    startCountdown()
   } catch (e) {
     console.error('获取二维码失败', e)
     qrLoginModal.value.status = 'failed'
@@ -522,23 +525,11 @@ const stopPolling = () => {
 }
 
 const startCountdown = () => {
-  qrLoginModal.value.countdown = 180
-  if (qrLoginModal.value.countdownTimer) {
-    clearInterval(qrLoginModal.value.countdownTimer)
-  }
-  qrLoginModal.value.countdownTimer = setInterval(() => {
-    qrLoginModal.value.countdown--
-    if (qrLoginModal.value.countdown <= 0) {
-      stopCountdown()
-    }
-  }, 1000)
+  // 移除倒计时自动超时逻辑，改为无限等待直到用户取消
 }
 
 const stopCountdown = () => {
-  if (qrLoginModal.value.countdownTimer) {
-    clearInterval(qrLoginModal.value.countdownTimer)
-    qrLoginModal.value.countdownTimer = null
-  }
+  // 保留空函数，兼容其他位置调用
 }
 
 const closeQrModal = () => {
@@ -551,11 +542,14 @@ const refreshQrCode = async () => {
   qrLoginModal.value.loading = true
   qrLoginModal.value.status = 'loading'
   try {
-    const res = await api.post(`/admin/jimeng-accounts/${qrLoginModal.value.accountId}/qr-login`)
+    const res = await api.post(
+      `/admin/jimeng-accounts/${qrLoginModal.value.accountId}/qr-login`,
+      null,
+      { timeout: 120000 }  // 二维码生成最多等 2 分钟
+    )
     qrLoginModal.value.qrBase64 = res.data.qr_base64
     qrLoginModal.value.status = 'pending'
     startPolling()
-    startCountdown()
   } catch (e) {
     console.error('刷新二维码失败', e)
     qrLoginModal.value.status = 'failed'
