@@ -84,6 +84,19 @@ async def get_jimeng_models(
         )
     ).all()
 
+    # 测试模型（始终添加）
+    test_model = {
+        "id": "video_3_0",
+        "name": "视频3.0",
+        "display_name": "视频3.0",
+        "description": "测试模型，用于开发调试",
+        "price": 0.01,
+        "badge": "测试",
+        "features": ["测试专用"],
+        "is_default": False,
+        "is_enabled": True,
+    }
+
     # 如果数据库中没有即梦模型，返回默认列表
     if not models:
         return {
@@ -110,36 +123,30 @@ async def get_jimeng_models(
                     "is_default": False,
                     "is_enabled": True,
                 },
-                {
-                    "id": "video_3_0",
-                    "name": "视频3.0",
-                    "display_name": "视频3.0",
-                    "description": "测试模型，用于开发调试",
-                    "price": 0.01,
-                    "badge": "测试",
-                    "features": ["测试专用"],
-                    "is_default": False,
-                    "is_enabled": True,
-                },
+                test_model,
             ]
         }
 
-    return {
-        "models": [
-            {
-                "id": m.model_id,
-                "name": m.name,
-                "display_name": m.display_name,
-                "description": m.description,
-                "price": m.price,
-                "badge": m.badge,
-                "features": json.loads(m.features) if m.features else [],
-                "is_default": m.is_default,
-                "is_enabled": m.is_enabled,
-            }
-            for m in models
-        ]
-    }
+    # 返回数据库模型 + 测试模型
+    result = [
+        {
+            "id": m.model_id,
+            "name": m.name,
+            "display_name": m.display_name,
+            "description": m.description,
+            "price": m.price,
+            "badge": m.badge,
+            "features": json.loads(m.features) if m.features else [],
+            "is_default": m.is_default,
+            "is_enabled": m.is_enabled,
+        }
+        for m in models
+    ]
+    
+    # 始终添加测试模型
+    result.append(test_model)
+
+    return {"models": result}
 
 
 @router.get("/status")
