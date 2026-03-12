@@ -154,6 +154,7 @@ onMounted(() => loadOrders())
             <thead class="bg-gray-900/50 text-gray-400 text-xs font-semibold uppercase tracking-wider backdrop-blur-sm">
                 <tr>
                     <th class="px-6 py-5">ID</th>
+                    <th class="px-6 py-5">平台</th>
                     <th class="px-6 py-5">Prompt</th>
                     <th class="px-6 py-5">状态</th>
                     <th class="px-6 py-5">视频链接</th>
@@ -164,6 +165,14 @@ onMounted(() => loadOrders())
             <tbody class="divide-y divide-gray-700/50 text-gray-300 text-sm">
                 <tr v-for="order in orders" :key="order.id" class="hover:bg-gray-700/30 transition-colors group">
                     <td class="px-6 py-4 font-mono text-gray-500 group-hover:text-blue-400 transition-colors">#{{ order.id }}</td>
+                    <td class="px-6 py-4">
+                        <span
+                            class="px-2 py-0.5 text-xs rounded-full font-semibold"
+                            :class="order.platform === 'jimeng' ? 'bg-violet-500/10 text-violet-400 border border-violet-500/20' : 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20'"
+                        >
+                            {{ order.platform === 'jimeng' ? '即梦' : '海螺' }}
+                        </span>
+                    </td>
                     <td class="px-6 py-4">
                         <div class="max-w-md truncate text-gray-300 font-medium" :title="order.prompt">
                             {{ order.prompt }}

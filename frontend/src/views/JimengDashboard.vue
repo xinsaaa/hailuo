@@ -90,19 +90,6 @@ const showToast = ref(false)
 const toastMessage = ref('')
 const toastType = ref('info')
 
-const showVideoPlayer = ref(false)
-const currentVideoUrl = ref('')
-
-const playVideo = (url) => {
-  currentVideoUrl.value = url
-  showVideoPlayer.value = true
-}
-
-const closeVideoPlayer = () => {
-  showVideoPlayer.value = false
-  currentVideoUrl.value = ''
-}
-
 const formattedBalance = computed(() => {
   return user.value ? user.value.balance.toFixed(2) : '0.00'
 })
@@ -612,24 +599,14 @@ const handleLogout = () => {
                       <span class="text-xs text-gray-300">{{ order.model_name }}</span>
                     </div>
                     <template v-if="order.status === 'completed' && order.video_url">
-                      <button
-                        @click="playVideo(order.video_url)"
+                      <a
+                        :href="order.video_url" target="_blank" rel="noopener noreferrer"
                         class="px-3 py-1 bg-violet-500/10 hover:bg-violet-500/20 text-violet-400 text-xs rounded-full border border-violet-500/20 hover:border-violet-500/40 transition-all flex items-center gap-1.5"
                       >
                         <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
                         </svg>
-                        <span class="font-bold">播放</span>
-                      </button>
-                      <a
-                        :href="order.video_url" :download="`jimeng_${order.id}.mp4`"
-                        class="px-3 py-1 bg-green-500/10 hover:bg-green-500/20 text-green-400 text-xs rounded-full border border-green-500/20 hover:border-green-500/40 transition-all flex items-center gap-1.5"
-                      >
-                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
-                        </svg>
-                        <span class="font-bold">下载</span>
+                        <span class="font-bold">查看视频</span>
                       </a>
                     </template>
                     <button v-if="order.status === 'failed'"
@@ -672,20 +649,6 @@ const handleLogout = () => {
               <button @click="showInsufficientModal = false; router.push('/recharge')" class="flex-1 py-2.5 bg-gradient-to-r from-violet-500 to-fuchsia-600 hover:from-violet-400 hover:to-fuchsia-500 text-white rounded-xl text-sm font-bold transition-all shadow-lg shadow-violet-900/30">去充值</button>
             </div>
           </div>
-        </div>
-      </div>
-    </Transition>
-
-    <Transition name="modal">
-      <div v-if="showVideoPlayer" class="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm" @click.self="closeVideoPlayer">
-        <div class="relative w-full max-w-3xl mx-4">
-          <button @click="closeVideoPlayer" class="absolute -top-10 right-0 text-white/70 hover:text-white transition-colors text-sm flex items-center gap-1">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-            </svg>
-            关闭
-          </button>
-          <video :src="currentVideoUrl" controls autoplay class="w-full rounded-xl shadow-2xl" style="max-height: 80vh;"></video>
         </div>
       </div>
     </Transition>

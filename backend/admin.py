@@ -9,7 +9,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Optional, List, Any
 
 import json
-from backend.models import User, VideoOrder, Transaction, AIModel, SystemConfig, engine
+from backend.models import User, VideoOrder, Transaction, AIModel, SystemConfig, JimengOrder, engine
 from backend.auth import get_password_hash, verify_password, create_access_token, SECRET_KEY, ALGORITHM
 from backend.security import (
     is_ip_banned, get_ban_remaining_seconds, get_fail_count,
@@ -349,35 +349,55 @@ def list_orders(
     admin=Depends(get_admin_user),
     session: Session = Depends(get_session)
 ):
-    """获取订单列表"""
+    """获取订单列表（合并海螺 + 即梦订单）"""
+
+    # 查询海螺订单
+    hailuo_query = select(VideoOrder)
+    if status:
+        hailuo_query = hailuo_query.where(VideoOrder.status == status)
+    hailuo_orders = session.exec(hailuo_query.order_by(VideoOrder.created_at.desc())).all()
+
+    # 查询即梦订单
+    jimeng_query = select(JimengOrder)
+    if status:
+        jimeng_query = jimeng_query.where(JimengOrder.status == status)
+    jimeng_orders = session.exec(jimeng_query.order_by(JimengOrder.created_at.desc())).all()
+
+    # 合并并按创建时间倒序排列
+    all_orders = []
+    for o in hailuo_orders:
+        all_orders.append({
+            "id": o.id,
+            "platform": "hailuo",
+            "user_id": o.user_id,
+            "prompt": o.prompt[:100] + "..." if len(o.prompt) > 100 else o.prompt,
+            "status": o.status,
+            "video_url": o.video_url,
+            "cost": o.cost,
+            "created_at": utc_to_china_time(o.created_at)
+        })
+    for o in jimeng_orders:
+        all_orders.append({
+            "id": o.id,
+            "platform": "jimeng",
+            "user_id": o.user_id,
+            "prompt": o.prompt[:100] + "..." if len(o.prompt) > 100 else o.prompt,
+            "status": o.status,
+            "video_url": o.video_url,
+            "cost": o.cost,
+            "model_name": o.model_name,
+            "created_at": utc_to_china_time(o.created_at)
+        })
+
+    # 按时间倒序排列
+    all_orders.sort(key=lambda x: x["created_at"], reverse=True)
+
+    total = len(all_orders)
     offset = (page - 1) * limit
-    
-    query = select(VideoOrder)
-    if status:
-        query = query.where(VideoOrder.status == status)
-    
-    orders = session.exec(
-        query.order_by(VideoOrder.created_at.desc()).offset(offset).limit(limit)
-    ).all()
-    
-    count_query = select(func.count(VideoOrder.id))
-    if status:
-        count_query = count_query.where(VideoOrder.status == status)
-    total = session.exec(count_query).one()
-    
+    paged_orders = all_orders[offset:offset + limit]
+
     return {
-        "orders": [
-            {
-                "id": o.id,
-                "user_id": o.user_id,
-                "prompt": o.prompt[:100] + "..." if len(o.prompt) > 100 else o.prompt,
-                "status": o.status,
-                "video_url": o.video_url,
-                "cost": o.cost,
-                "created_at": utc_to_china_time(o.created_at)
-            }
-            for o in orders
-        ],
+        "orders": paged_orders,
         "total": total,
         "page": page,
         "limit": limit
