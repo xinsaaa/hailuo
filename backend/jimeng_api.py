@@ -110,6 +110,17 @@ async def get_jimeng_models(
                     "is_default": False,
                     "is_enabled": True,
                 },
+                {
+                    "id": "video_3_0",
+                    "name": "视频3.0",
+                    "display_name": "视频3.0",
+                    "description": "测试模型，用于开发调试",
+                    "price": 0.01,
+                    "badge": "测试",
+                    "features": ["测试专用"],
+                    "is_default": False,
+                    "is_enabled": True,
+                },
             ]
         }
 
@@ -199,6 +210,7 @@ async def create_jimeng_order(
     model_prices = {
         "Seedance 2.0 Fast": 0.99,
         "Seedance 2.0": 1.49,
+        "视频3.0": 0.01,
     }
     price = model_prices.get(model, 0.99)
 

@@ -406,8 +406,13 @@ async def _select_video_model(page: Page, target_model: str, account_id: str):
     下拉框顺序：
     1. 第一个：选择模式（忽略）
     2. 第二个：选择模型
+    
+    支持的模型：
+    - Seedance 2.0 Fast
+    - Seedance 2.0
+    - 视频3.0 (测试模型)
     """
-    supported_models = ["Seedance 2.0 Fast", "Seedance 2.0"]
+    supported_models = ["Seedance 2.0 Fast", "Seedance 2.0", "视频3.0"]
     if target_model not in supported_models:
         print(f"[JIMENG-SUBMIT] [{account_id}] 不支持的模型: {target_model}，使用默认模型")
         target_model = "Seedance 2.0 Fast"
@@ -460,6 +465,11 @@ async def _select_video_model(page: Page, target_model: str, account_id: str):
                         print(f"[JIMENG-SUBMIT] [{account_id}] 模型已切换为 {target_model}")
                         found = True
                         break
+                    elif "视频3.0" in target_model and ("视频3.0" in opt_text or "3.0" in opt_text):
+                        await opt.click()
+                        print(f"[JIMENG-SUBMIT] [{account_id}] 模型已切换为 {target_model}")
+                        found = True
+                        break
                 except Exception as e:
                     print(f"[JIMENG-SUBMIT] [{account_id}] 检查选项 {i+1} 失败: {str(e)[:30]}")
             
@@ -467,7 +477,7 @@ async def _select_video_model(page: Page, target_model: str, account_id: str):
                 # 方法2：直接用 get_by_role 点击
                 print(f"[JIMENG-SUBMIT] [{account_id}] 方法1未找到，尝试方法2...")
                 
-                # 尝试点击包含 Seedance 的选项
+                # 尝试点击包含目标模型关键词的选项
                 seedance_options = page.get_by_role("option")
                 opt_count = await seedance_options.count()
                 print(f"[JIMENG-SUBMIT] [{account_id}] 找到 {opt_count} 个 role=option")
@@ -475,12 +485,20 @@ async def _select_video_model(page: Page, target_model: str, account_id: str):
                 for i in range(opt_count):
                     opt = seedance_options.nth(i)
                     opt_text = await opt.text_content() or ""
+                    
+                    # 匹配 Seedance 模型
                     if "Seedance" in opt_text:
                         if ("Fast" in target_model and "Fast" in opt_text) or ("Fast" not in target_model and "Fast" not in opt_text):
                             await opt.click()
                             print(f"[JIMENG-SUBMIT] [{account_id}] 模型已切换为 {target_model}（方法2）")
                             found = True
                             break
+                    # 匹配 视频3.0 模型
+                    elif "视频3.0" in target_model and ("视频3.0" in opt_text or "3.0" in opt_text):
+                        await opt.click()
+                        print(f"[JIMENG-SUBMIT] [{account_id}] 模型已切换为 {target_model}（方法2）")
+                        found = True
+                        break
             
             if not found:
                 await page.keyboard.press("Escape")
