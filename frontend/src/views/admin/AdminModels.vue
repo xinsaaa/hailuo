@@ -6,7 +6,9 @@ const models = ref([])
 const loading = ref(false)
 const updating = ref(null) // 正在更新的模型 ID
 const editingPrice = ref(null) // 正在编辑价格的模型 ID
+const editingPPS = ref(null) // 正在编辑每秒单价的模型 ID
 const tempPrice = ref('') // 临时价格输入
+const tempPPS = ref('') // 临时每秒单价输入
 const platformFilter = ref('all') // 平台筛选：all, hailuo, jimeng
 
 // 按平台筛选后的模型列表
@@ -77,18 +79,50 @@ const savePrice = async (model) => {
     alert('请输入有效的价格')
     return
   }
-  
+
   updating.value = model.id
   try {
     await updateAdminModel(model.id, { price: newPrice })
-    // 更新本地状态
     model.price = newPrice
     editingPrice.value = null
     tempPrice.value = ''
-    // 重新加载数据确保同步
     await loadModels()
   } catch (err) {
     alert('更新价格失败: ' + (err.response?.data?.detail || err.message))
+  } finally {
+    updating.value = null
+  }
+}
+
+// 开始编辑每秒单价
+const startEditPPS = (model) => {
+  editingPPS.value = model.id
+  tempPPS.value = model.price_per_second?.toString() || '0'
+}
+
+// 取消编辑每秒单价
+const cancelEditPPS = () => {
+  editingPPS.value = null
+  tempPPS.value = ''
+}
+
+// 保存每秒单价
+const savePPS = async (model) => {
+  const newPPS = parseFloat(tempPPS.value)
+  if (isNaN(newPPS) || newPPS < 0) {
+    alert('请输入有效的每秒单价')
+    return
+  }
+
+  updating.value = model.id
+  try {
+    await updateAdminModel(model.id, { price_per_second: newPPS })
+    model.price_per_second = newPPS
+    editingPPS.value = null
+    tempPPS.value = ''
+    await loadModels()
+  } catch (err) {
+    alert('更新每秒单价失败: ' + (err.response?.data?.detail || err.message))
   } finally {
     updating.value = null
   }
@@ -196,9 +230,11 @@ onMounted(() => {
                 </div>
               </td>
               <!-- 价格编辑 -->
-              <td class="px-6 py-4 whitespace-nowrap">
-                <div v-if="editingPrice === model.id" class="flex items-center gap-2">
-                  <input 
+              <td class="px-6 py-4">
+                <!-- 固定价格 -->
+                <div v-if="editingPrice === model.id" class="flex items-center gap-2 mb-1">
+                  <span class="text-xs text-gray-500 w-10">固定</span>
+                  <input
                     v-model="tempPrice"
                     type="number"
                     step="0.01"
@@ -214,12 +250,42 @@ onMounted(() => {
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
                   </button>
                 </div>
-                <div v-else class="flex items-center gap-2">
+                <div v-else class="flex items-center gap-2 mb-1">
+                  <span class="text-xs text-gray-500 w-10">固定</span>
                   <span class="text-sm font-bold text-emerald-400">¥{{ model.price?.toFixed(2) || '0.99' }}</span>
-                  <button @click="startEditPrice(model)" class="text-gray-400 hover:text-white opacity-0 group-hover:opacity-100 transition-opacity" title="编辑价格">
+                  <button @click="startEditPrice(model)" class="text-gray-400 hover:text-white opacity-0 group-hover:opacity-100 transition-opacity" title="编辑固定价格">
                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
                   </button>
                 </div>
+                <!-- 每秒单价（仅即梦模型） -->
+                <template v-if="model.platform === 'jimeng'">
+                  <div v-if="editingPPS === model.id" class="flex items-center gap-2">
+                    <span class="text-xs text-gray-500 w-10">每秒</span>
+                    <input
+                      v-model="tempPPS"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      class="w-20 px-2 py-1 text-sm bg-gray-700 border border-gray-600 rounded text-white focus:border-violet-500 focus:outline-none"
+                      @keyup.enter="savePPS(model)"
+                      @keyup.esc="cancelEditPPS"
+                    />
+                    <button @click="savePPS(model)" class="text-green-400 hover:text-green-300" title="保存">
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
+                    </button>
+                    <button @click="cancelEditPPS" class="text-red-400 hover:text-red-300" title="取消">
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                    </button>
+                  </div>
+                  <div v-else class="flex items-center gap-2">
+                    <span class="text-xs text-gray-500 w-10">每秒</span>
+                    <span class="text-sm font-bold text-violet-400">¥{{ model.price_per_second?.toFixed(2) || '0.00' }}/s</span>
+                    <button @click="startEditPPS(model)" class="text-gray-400 hover:text-white opacity-0 group-hover:opacity-100 transition-opacity" title="编辑每秒单价">
+                      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                    </button>
+                  </div>
+                  <div class="text-[10px] text-gray-600 mt-0.5 ml-10">设置后按秒计费，优先于固定价格</div>
+                </template>
               </td>
               <td class="px-6 py-4">
                 <div class="flex flex-wrap gap-1.5">

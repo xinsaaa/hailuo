@@ -135,6 +135,7 @@ async def get_jimeng_models(
             "display_name": m.display_name,
             "description": m.description,
             "price": m.price,
+            "price_per_second": m.price_per_second,
             "badge": m.badge,
             "features": json.loads(m.features) if m.features else [],
             "is_default": m.is_default,
@@ -213,13 +214,28 @@ async def create_jimeng_order(
     if ratio not in ["21:9", "16:9", "4:3", "1:1", "3:4", "9:16"]:
         ratio = "16:9"
 
-    # 检查余额
-    model_prices = {
-        "Seedance 2.0 Fast": 0.99,
-        "Seedance 2.0": 1.49,
-        "视频3.0": 0.01,
-    }
-    price = model_prices.get(model, 0.99)
+    # 从数据库获取模型价格
+    db_model = session.exec(
+        select(AIModel).where(
+            AIModel.platform == "jimeng",
+            AIModel.name == model
+        )
+    ).first()
+
+    if db_model and db_model.price_per_second > 0:
+        # 按秒计费
+        price = round(db_model.price_per_second * duration, 2)
+    elif db_model:
+        # 固定价格
+        price = db_model.price
+    else:
+        # 兜底：硬编码价格
+        fallback_prices = {
+            "Seedance 2.0 Fast": 0.99,
+            "Seedance 2.0": 1.49,
+            "视频3.0": 0.01,
+        }
+        price = fallback_prices.get(model, 0.99)
 
     if current_user.balance < price:
         raise HTTPException(status_code=400, detail="余额不足")
