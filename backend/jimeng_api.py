@@ -235,10 +235,15 @@ async def create_jimeng_order(
             f.write(content)
 
     # 创建订单
+    import uuid as _uuid
+    task_id = f"jimeng_{int(datetime.now().timestamp())}_{_uuid.uuid4().hex[:8]}"
+    
     order = JimengOrder(
         user_id=current_user.id,
         prompt=prompt,
         model_name=model,
+        task_id=task_id,
+        cost=price,
         duration=duration,
         ratio=ratio,
         status="pending",

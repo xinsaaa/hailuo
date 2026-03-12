@@ -6,7 +6,7 @@ import os
 from datetime import datetime
 from sqlmodel import Session, select
 
-from backend.models import JimengOrder, engine
+from backend.models import JimengOrder, User, Transaction, engine
 from backend.jimeng_automation import submit_video_task, scan_video_status
 from backend.admin_jimeng_account import _load_jimeng_accounts
 
@@ -134,13 +134,34 @@ def get_available_jimeng_account() -> dict:
 
 
 def update_order_failed(order_id: int, error: str):
-    """更新订单为失败状态"""
+    """更新订单为失败状态，并退还余额"""
     with Session(engine) as session:
         order = session.get(JimengOrder, order_id)
         if order:
+            # 检查是否已经退款（防止重复退款）
+            already_failed = order.status == "failed"
+            
             order.status = "failed"
             order.error_message = error
             session.add(order)
+            
+            # 失败订单自动退回余额（仅首次标记为failed时退）
+            if not already_failed and order.cost and order.cost > 0:
+                user = session.get(User, order.user_id)
+                if user:
+                    user.balance += order.cost
+                    session.add(user)
+                    
+                    # 记录退款交易
+                    refund = Transaction(
+                        user_id=order.user_id,
+                        amount=order.cost,
+                        bonus=0,
+                        type="refund"
+                    )
+                    session.add(refund)
+                    print(f"[JIMENG-BG] 订单 #{order_id} 已退款 {order.cost} 元")
+            
             session.commit()
     print(f"[JIMENG-BG] 订单 #{order_id} 失败: {error}")
 
