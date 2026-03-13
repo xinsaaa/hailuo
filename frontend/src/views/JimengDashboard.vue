@@ -152,7 +152,9 @@ const handleCreateOrder = async () => {
     return
   }
 
-  const modelPrice = selectedModel.value?.price || 0.99
+  // 计算实际价格（按秒计费优先）
+  const pps = selectedModel.value?.price_per_second || 0
+  const modelPrice = pps > 0 ? Math.round(pps * selectedDuration.value * 100) / 100 : (selectedModel.value?.price || 0.99)
   if (!user.value || user.value.balance < modelPrice) {
     showBalanceInsufficient(modelPrice)
     return
@@ -186,32 +188,46 @@ const selectModel = (model) => {
   showModelSelector.value = false
 }
 
-const handleImageUpload = (event, type) => {
-  const file = event.target.files[0]
+const processFile = (file, type) => {
   if (!file) return
-  
   if (!file.type.startsWith('image/')) {
     showNotification('请选择图片文件', 'error')
     return
   }
-  
   if (file.size > 5 * 1024 * 1024) {
     showNotification('图片大小不能超过5MB', 'error')
     return
   }
-  
   if (type === 'first') {
     firstFrameImage.value = file
-    if (firstFramePreview.value) {
-      URL.revokeObjectURL(firstFramePreview.value)
-    }
+    if (firstFramePreview.value) URL.revokeObjectURL(firstFramePreview.value)
     firstFramePreview.value = URL.createObjectURL(file)
   } else {
     lastFrameImage.value = file
-    if (lastFramePreview.value) {
-      URL.revokeObjectURL(lastFramePreview.value)
-    }
+    if (lastFramePreview.value) URL.revokeObjectURL(lastFramePreview.value)
     lastFramePreview.value = URL.createObjectURL(file)
+  }
+}
+
+const handleImageUpload = (event, type) => {
+  processFile(event.target.files[0], type)
+}
+
+const handleDrop = (event, type) => {
+  event.preventDefault()
+  const file = event.dataTransfer?.files?.[0]
+  processFile(file, type)
+}
+
+const handlePaste = (event, type) => {
+  const items = event.clipboardData?.items
+  if (!items) return
+  for (const item of items) {
+    if (item.type.startsWith('image/')) {
+      event.preventDefault()
+      processFile(item.getAsFile(), type)
+      return
+    }
   }
 }
 
@@ -462,19 +478,25 @@ const handleLogout = () => {
             </div>
             
             <div v-if="videoMode === 'image'" class="mt-6 grid grid-cols-2 gap-6">
-              <div class="relative">
-                <input 
-                  type="file" 
-                  accept="image/*" 
+              <div
+                class="relative"
+                @dragover.prevent
+                @drop="(e) => handleDrop(e, 'first')"
+                @paste="(e) => handlePaste(e, 'first')"
+                tabindex="0"
+              >
+                <input
+                  type="file"
+                  accept="image/*"
                   @change="(e) => handleImageUpload(e, 'first')"
                   class="hidden"
                   id="jimeng-first-frame-input"
                 />
-                <label 
+                <label
                   for="jimeng-first-frame-input"
                   class="block cursor-pointer group"
                 >
-                  <div 
+                  <div
                     v-if="!firstFramePreview"
                     class="h-28 border border-dashed border-white/20 rounded-2xl flex flex-col items-center justify-center gap-3 transition-all bg-white/[0.02] hover:bg-white/[0.05] hover:border-violet-500/30 hover:shadow-[0_0_20px_rgba(167,139,250,0.1)]"
                   >
@@ -483,7 +505,7 @@ const handleLogout = () => {
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                       </svg>
                     </div>
-                    <span class="text-xs text-gray-400 font-medium group-hover:text-gray-300">上传首帧（必传）</span>
+                    <span class="text-xs text-gray-400 font-medium group-hover:text-gray-300">拖拽/粘贴/点击上传首帧</span>
                   </div>
                   <div v-else class="relative h-28 rounded-2xl overflow-hidden group shadow-lg border border-white/10">
                     <img :src="firstFramePreview" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
@@ -492,7 +514,7 @@ const handleLogout = () => {
                     </div>
                   </div>
                 </label>
-                <button 
+                <button
                   v-if="firstFramePreview"
                   @click.stop="removeImage('first')"
                   class="absolute -top-2 -right-2 w-7 h-7 bg-red-500 text-white rounded-full flex items-center justify-center text-sm hover:bg-red-600 transition-all shadow-lg z-10 hover:scale-110"
@@ -500,20 +522,26 @@ const handleLogout = () => {
                   ×
                 </button>
               </div>
-              
-              <div class="relative">
-                <input 
-                  type="file" 
-                  accept="image/*" 
+
+              <div
+                class="relative"
+                @dragover.prevent
+                @drop="(e) => handleDrop(e, 'last')"
+                @paste="(e) => handlePaste(e, 'last')"
+                tabindex="0"
+              >
+                <input
+                  type="file"
+                  accept="image/*"
                   @change="(e) => handleImageUpload(e, 'last')"
                   class="hidden"
                   id="jimeng-last-frame-input"
                 />
-                <label 
+                <label
                   for="jimeng-last-frame-input"
                   class="block cursor-pointer group"
                 >
-                  <div 
+                  <div
                     v-if="!lastFramePreview"
                     class="h-28 border border-dashed border-white/20 rounded-2xl flex flex-col items-center justify-center gap-3 transition-all bg-white/[0.02] hover:bg-white/[0.05] hover:border-fuchsia-500/30 hover:shadow-[0_0_20px_rgba(217,70,239,0.1)]"
                   >
@@ -522,7 +550,7 @@ const handleLogout = () => {
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                       </svg>
                     </div>
-                    <span class="text-xs text-gray-400 font-medium group-hover:text-gray-300">上传尾帧（可选）</span>
+                    <span class="text-xs text-gray-400 font-medium group-hover:text-gray-300">拖拽/粘贴/点击上传尾帧</span>
                   </div>
                   <div v-else class="relative h-28 rounded-2xl overflow-hidden group shadow-lg border border-white/10">
                     <img :src="lastFramePreview" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
@@ -553,7 +581,7 @@ const handleLogout = () => {
               <div class="flex items-center gap-6">
                 <div class="text-right">
                    <span class="text-xs text-gray-500 block">本次消耗</span>
-                   <span class="text-lg font-bold text-white leading-none">¥{{ selectedModel?.price ? selectedModel.price.toFixed(2) : '0.99' }}</span>
+                   <span class="text-lg font-bold text-white leading-none">¥{{ selectedModel?.price_per_second > 0 ? (selectedModel.price_per_second * selectedDuration).toFixed(2) : (selectedModel?.price ? selectedModel.price.toFixed(2) : '0.99') }}</span>
                 </div>
                 <button 
                   @click="handleCreateOrder"

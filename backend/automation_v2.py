@@ -1259,15 +1259,18 @@ class HailuoAutomationV2:
 
                         await generate_btn.click(force=True)
 
+                        # 确认信号：检测页面上出现了包含订单标识的视频卡片
                         for _ in range(15):
                             await asyncio.sleep(1)
                             try:
-                                queue_hint = page.locator("div:has-text('低速生成中'), div:has-text('排队'), div:has-text('生成中')")
-                                if await queue_hint.count() > 0:
-                                    submit_confirmed = True
-                                    break
-                                if await page.locator(".ant-progress-text").count() > 0:
-                                    submit_confirmed = True
+                                spans = await page.locator("span.prompt-plain-span").all()
+                                for s in spans:
+                                    text = await s.text_content()
+                                    if text and f"[#ORD{order_id}]" in text:
+                                        submit_confirmed = True
+                                        print(f"[AUTO-V2] ✅ 检测到订单#{order_id}的视频卡片")
+                                        break
+                                if submit_confirmed:
                                     break
                             except Exception:
                                 pass
