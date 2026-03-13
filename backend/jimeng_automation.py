@@ -468,9 +468,8 @@ async def _select_video_model(page: Page, target_model: str, account_id: str):
     支持的模型：
     - Seedance 2.0 Fast
     - Seedance 2.0
-    - 视频3.0 (测试模型)
     """
-    supported_models = ["Seedance 2.0 Fast", "Seedance 2.0", "视频3.0"]
+    supported_models = ["Seedance 2.0 Fast", "Seedance 2.0"]
     if target_model not in supported_models:
         print(f"[JIMENG-SUBMIT] [{account_id}] 不支持的模型: {target_model}，使用默认模型")
         target_model = "Seedance 2.0 Fast"
