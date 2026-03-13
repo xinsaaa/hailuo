@@ -742,7 +742,7 @@ class HailuoAutomationV2:
                     _processed_share_links.add(dedup_key)
 
                     # 直接用 downloadURL 完成订单
-                    self._complete_order(oid, download_url)
+                    await self._complete_order(oid, download_url)
                     if account_id in self._account_orders:
                         self._account_orders[account_id].discard(oid)
                 else:
@@ -1263,19 +1263,42 @@ class HailuoAutomationV2:
             print(f"[AUTO-V2] 上传尾帧失败: {str(e)[:100]}")
             return False
     
-    def _complete_order(self, order_id: int, download_url: str):
-        """通过 API 获取的 downloadURL 直接完成订单"""
+    async def _complete_order(self, order_id: int, download_url: str):
+        """通过 API 获取的 downloadURL 下载视频到本地，然后完成订单"""
+        import httpx
+
+        filename = f"order_{order_id}.mp4"
+        filepath = os.path.join(VIDEOS_DIR, filename)
+        local_url = f"/videos/{filename}"
+
+        # 下载视频到本地
+        try:
+            print(f"[AUTO-V2] 📥 订单#{order_id} 开始下载视频...")
+            async with httpx.AsyncClient(timeout=120, follow_redirects=True) as client:
+                resp = await client.get(download_url)
+                if resp.status_code == 200:
+                    with open(filepath, "wb") as f:
+                        f.write(resp.content)
+                    size_mb = os.path.getsize(filepath) / (1024 * 1024)
+                    print(f"[AUTO-V2] 📥 订单#{order_id} 下载完成 ({size_mb:.1f}MB)")
+                else:
+                    print(f"[AUTO-V2] ❌ 订单#{order_id} 下载失败 HTTP {resp.status_code}，使用远程URL")
+                    local_url = download_url
+        except Exception as e:
+            print(f"[AUTO-V2] ❌ 订单#{order_id} 下载异常: {str(e)[:100]}，使用远程URL")
+            local_url = download_url
+
         with Session(engine) as session:
             order = session.get(VideoOrder, order_id)
             if not order or order.status == "completed":
                 return
-            order.video_url = download_url
+            order.video_url = local_url
             order.status = "completed"
             order.progress = 100
             order.updated_at = datetime.utcnow()
             session.add(order)
             session.commit()
-        print(f"[AUTO-V2] ✅ 订单#{order_id} 已完成（API方式），视频: {download_url[:80]}...")
+        print(f"[AUTO-V2] ✅ 订单#{order_id} 已完成，视频: {local_url}")
         self._processing_order_ids.discard(order_id)
 
     def update_order_status(self, order_id: int, status: str):
