@@ -13,7 +13,7 @@ from datetime import datetime
 
 from backend.models import User, JimengOrder, AIModel, Transaction, engine
 from backend.auth import SECRET_KEY, ALGORITHM
-from backend.jimeng_automation import submit_video_task, scan_video_status
+from backend.jimeng_automation import submit_video_task
 
 router = APIRouter(prefix="/api/jimeng", tags=["jimeng"])
 

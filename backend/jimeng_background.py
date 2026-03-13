@@ -111,7 +111,7 @@ async def process_jimeng_order(order_id: int):
                     for video in videos:
                         if video.get("status") == "completed" and video.get("video_url"):
                             # 找到完成的视频
-                            update_order_completed(order_id, video.get("video_url"))
+                            await update_order_completed(order_id, video.get("video_url"))
                             return
                         elif video.get("status") == "failed":
                             # 视频生成失败（审核不通过等）
@@ -215,18 +215,44 @@ def update_order_failed(order_id: int, error: str):
     print(f"[JIMENG-BG] 订单 #{order_id} 失败: {error}")
 
 
-def update_order_completed(order_id: int, video_url: str):
-    """更新订单为完成状态"""
+async def update_order_completed(order_id: int, video_url: str):
+    """下载视频到本地，然后更新订单为完成状态"""
+    import httpx
+
+    VIDEOS_DIR = os.path.join(os.path.dirname(__file__), "..", "videos")
+    os.makedirs(VIDEOS_DIR, exist_ok=True)
+
+    filename = f"jimeng_order_{order_id}.mp4"
+    filepath = os.path.join(VIDEOS_DIR, filename)
+    local_url = f"/videos/{filename}"
+
+    # 下载视频到本地
+    try:
+        print(f"[JIMENG-BG] 订单 #{order_id} 开始下载视频...")
+        async with httpx.AsyncClient(timeout=120, follow_redirects=True) as client:
+            resp = await client.get(video_url)
+            if resp.status_code == 200:
+                with open(filepath, "wb") as f:
+                    f.write(resp.content)
+                size_mb = os.path.getsize(filepath) / (1024 * 1024)
+                print(f"[JIMENG-BG] 订单 #{order_id} 下载完成 ({size_mb:.1f}MB)")
+            else:
+                print(f"[JIMENG-BG] 订单 #{order_id} 下载失败 HTTP {resp.status_code}，使用远程URL")
+                local_url = video_url
+    except Exception as e:
+        print(f"[JIMENG-BG] 订单 #{order_id} 下载异常: {str(e)[:100]}，使用远程URL")
+        local_url = video_url
+
     with Session(engine) as session:
         order = session.get(JimengOrder, order_id)
         if order:
             order.status = "completed"
-            order.video_url = video_url
+            order.video_url = local_url
             order.progress = 100
             order.completed_at = datetime.utcnow()
             session.add(order)
             session.commit()
-    print(f"[JIMENG-BG] 订单 #{order_id} 完成: {video_url}")
+    print(f"[JIMENG-BG] 订单 #{order_id} 完成: {local_url}")
 
 
 def update_order_progress(order_id: int, progress: int):
