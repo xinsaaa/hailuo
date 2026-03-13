@@ -750,35 +750,41 @@ async def _upload_reference_images(
     import tempfile
     
     async def download_and_upload(url: str, label: str, input_locator):
-        """下载图片并上传"""
+        """下载图片并上传（支持本地路径和HTTP URL）"""
         try:
-            # 下载图片到临时文件
-            async with httpx.AsyncClient(timeout=30) as client:
-                response = await client.get(url)
-                response.raise_for_status()
-            
-            # 获取文件扩展名
-            content_type = response.headers.get("content-type", "image/png")
-            ext = content_type.split("/")[-1] if "/" in content_type else "png"
-            if ext not in ["jpg", "jpeg", "png", "webp", "bmp"]:
-                ext = "png"
-            
-            # 保存到临时文件
-            with tempfile.NamedTemporaryFile(suffix=f".{ext}", delete=False) as tmp:
-                tmp.write(response.content)
-                tmp_path = tmp.name
-            
-            print(f"[JIMENG-SUBMIT] [{account_id}] 上传{label}: {url[:50]}...")
-            
-            # 上传文件
-            await input_locator.set_input_files(tmp_path)
-            await page.wait_for_timeout(1000)
-            
-            # 删除临时文件
-            os.unlink(tmp_path)
-            
+            # 判断是本地文件还是远程URL
+            if url.startswith("http://") or url.startswith("https://"):
+                # 远程URL：下载到临时文件
+                async with httpx.AsyncClient(timeout=30) as client:
+                    response = await client.get(url)
+                    response.raise_for_status()
+
+                content_type = response.headers.get("content-type", "image/png")
+                ext = content_type.split("/")[-1] if "/" in content_type else "png"
+                if ext not in ["jpg", "jpeg", "png", "webp", "bmp"]:
+                    ext = "png"
+
+                with tempfile.NamedTemporaryFile(suffix=f".{ext}", delete=False) as tmp:
+                    tmp.write(response.content)
+                    file_path = tmp.name
+
+                print(f"[JIMENG-SUBMIT] [{account_id}] 上传{label}(远程): {url[:50]}...")
+                await input_locator.set_input_files(file_path)
+                await page.wait_for_timeout(1000)
+                os.unlink(file_path)
+            else:
+                # 本地文件路径：直接上传
+                local_path = os.path.abspath(url)
+                if not os.path.exists(local_path):
+                    print(f"[JIMENG-SUBMIT] [{account_id}] {label}文件不存在: {local_path}")
+                    return
+
+                print(f"[JIMENG-SUBMIT] [{account_id}] 上传{label}(本地): {local_path}")
+                await input_locator.set_input_files(local_path)
+                await page.wait_for_timeout(1000)
+
             print(f"[JIMENG-SUBMIT] [{account_id}] {label}上传成功")
-            
+
         except Exception as e:
             print(f"[JIMENG-SUBMIT] [{account_id}] {label}上传失败: {str(e)[:100]}")
     
