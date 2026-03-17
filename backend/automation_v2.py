@@ -713,12 +713,30 @@ class HailuoAutomationV2:
             total_completed = 0
             total_processing = 0
 
+            # 按 batchID 分组视频
+            batch_groups = {}
+            for v in videos:
+                bid = v.get("batchID", "")
+                if bid:
+                    if bid not in batch_groups:
+                        batch_groups[bid] = []
+                    batch_groups[bid].append(v)
+
+            # 已处理的子订单集合（避免重复处理）
+            processed_child_oids = set()
+
             for oid in list(pending_orders.keys()):
+                # 跳过已被批量处理的子订单
+                if oid in processed_child_oids:
+                    continue
+
                 tag = f"[#ORD{oid}]"
                 matched = None
+                matched_batch_id = None
                 for v in videos:
                     if tag in v.get("desc", ""):
                         matched = v
+                        matched_batch_id = v.get("batchID", "")
                         break
 
                 if not matched:
@@ -726,28 +744,50 @@ class HailuoAutomationV2:
                     total_processing += 1
                     continue
 
-                api_status = matched.get("status")
-                download_url = matched.get("downloadURL", "")
+                # 查询该订单是否有子订单（批量）
+                with Session(engine) as session:
+                    from sqlmodel import select as sql_select
+                    children = session.exec(
+                        sql_select(VideoOrder).where(VideoOrder.batch_parent_id == oid).order_by(VideoOrder.batch_index)
+                    ).all()
+                    child_ids = [c.id for c in children]
 
-                if api_status == 2 and download_url:
-                    # 视频已完成
-                    print(f"[AUTO-V2] ✅ 订单#{oid} API检测到已完成，downloadURL: {download_url[:80]}...")
-                    total_completed += 1
+                # 获取同 batchID 的所有视频
+                batch_videos = batch_groups.get(matched_batch_id, [matched])
 
-                    dedup_key = f"order_{oid}"
-                    if dedup_key in _processed_share_links:
+                # 按顺序分配：主订单 + 子订单
+                all_order_ids = [oid] + child_ids
+                for idx, order_id_to_complete in enumerate(all_order_ids):
+                    if idx >= len(batch_videos):
+                        print(f"[AUTO-V2] ⏳ 订单#{order_id_to_complete} 批量视频尚未全部生成（{idx+1}/{len(all_order_ids)}）")
+                        total_processing += 1
                         continue
-                    if len(_processed_share_links) > _MAX_SHARE_LINKS:
-                        _processed_share_links.clear()
-                    _processed_share_links.add(dedup_key)
 
-                    # 直接用 downloadURL 完成订单
-                    await self._complete_order(oid, download_url)
-                    if account_id in self._account_orders:
-                        self._account_orders[account_id].discard(oid)
-                else:
-                    print(f"[AUTO-V2] ⏳ 订单#{oid} 状态={api_status}，生成中...")
-                    total_processing += 1
+                    v = batch_videos[idx]
+                    api_status = v.get("status")
+                    download_url = v.get("downloadURL", "")
+
+                    if api_status == 2 and download_url:
+                        print(f"[AUTO-V2] ✅ 订单#{order_id_to_complete} API检测到已完成，downloadURL: {download_url[:80]}...")
+                        total_completed += 1
+
+                        dedup_key = f"order_{order_id_to_complete}"
+                        if dedup_key in _processed_share_links:
+                            continue
+                        if len(_processed_share_links) > _MAX_SHARE_LINKS:
+                            _processed_share_links.clear()
+                        _processed_share_links.add(dedup_key)
+
+                        await self._complete_order(order_id_to_complete, download_url)
+                        if account_id in self._account_orders:
+                            self._account_orders[account_id].discard(order_id_to_complete)
+                    else:
+                        print(f"[AUTO-V2] ⏳ 订单#{order_id_to_complete} 状态={api_status}，生成中...")
+                        total_processing += 1
+
+                    # 标记子订单已处理
+                    if order_id_to_complete != oid:
+                        processed_child_oids.add(order_id_to_complete)
 
             if total_completed > 0 or total_processing > 0:
                 print(f"[AUTO-V2] 📊 账号{account_id} API扫描结果: 完成{total_completed}个, 生成中{total_processing}个")
@@ -851,12 +891,29 @@ class HailuoAutomationV2:
 
         order_id = order["id"]
 
+        # 子订单不单独提交（由主订单批量提交）
+        with Session(engine) as session:
+            current_order = session.get(VideoOrder, order_id)
+            if current_order and current_order.batch_parent_id is not None:
+                print(f"[AUTO-V2] 订单#{order_id}是子订单（主订单#{current_order.batch_parent_id}），跳过")
+                return
+
         # 先检查订单是否已经不是pending了（可能被扫描循环标记为completed）
         with Session(engine) as session:
             current_order = session.get(VideoOrder, order_id)
             if current_order and current_order.status != "pending":
                 print(f"[AUTO-V2] 订单#{order_id}状态已变为{current_order.status}，跳过处理")
                 return
+            # 查询批量子订单数量
+            batch_quantity = 1
+            if current_order and current_order.batch_index is not None:
+                from sqlmodel import select as sql_select
+                child_orders = session.exec(
+                    sql_select(VideoOrder).where(VideoOrder.batch_parent_id == order_id)
+                ).all()
+                batch_quantity = 1 + len(child_orders)
+                if batch_quantity > 1:
+                    print(f"[AUTO-V2] 订单#{order_id} 批量数量: {batch_quantity}")
 
         prompt = order["prompt"]
         model_name = order.get("model_name", "Hailuo 2.3")
@@ -963,29 +1020,67 @@ class HailuoAutomationV2:
 
                 # 步骤4.5: 选择分辨率和秒数
                 try:
+                    # 新版触发器：包含分辨率和时长文字的 div
                     settings_btn = page.locator("div.cursor-pointer:has(span:text('768p')), div.cursor-pointer:has(span:text('1080p'))").first
-                    if await settings_btn.is_visible(timeout=3000):
-                        await settings_btn.click()
-                        await asyncio.sleep(0.5)
+                    if await settings_btn.is_visible(timeout=5000):
+                        await settings_btn.scroll_into_view_if_needed()
+                        await asyncio.sleep(0.3)
+                        await settings_btn.click(force=True)
+                        await asyncio.sleep(1)
 
-                        res_btn = page.locator(f"div.cursor-pointer:has(div:text('{resolution}'))").first
-                        if await res_btn.is_visible(timeout=2000):
-                            await res_btn.click()
-                            await asyncio.sleep(0.2)
+                        # 新版 popover：包含"分辨率"和"时长"标签的面板
+                        popover = page.locator("div:has(> div > div:has(span:text('分辨率')))").last
+                        await popover.wait_for(state="visible", timeout=3000)
+
+                        # 选择分辨率：点击包含目标分辨率文字的选项
+                        res_option = popover.locator(f"div.cursor-pointer:has(div.font-medium:text('{resolution}'))").first
+                        if await res_option.is_visible(timeout=2000):
+                            await res_option.click()
+                            await asyncio.sleep(0.3)
                             print(f"[AUTO-V2] ✅ 订单#{order_id} 选择分辨率: {resolution}")
 
-                        dur_btn = page.locator(f"div.cursor-pointer:has(div:text('{duration}'))").first
-                        if await dur_btn.is_visible(timeout=2000):
-                            await dur_btn.click()
-                            await asyncio.sleep(0.2)
+                        # 选择时长
+                        dur_option = popover.locator(f"div.cursor-pointer:has(div.font-medium:text('{duration}'))").first
+                        if await dur_option.is_visible(timeout=2000):
+                            await dur_option.click()
+                            await asyncio.sleep(0.3)
                             print(f"[AUTO-V2] ✅ 订单#{order_id} 选择时长: {duration}")
 
+                        # 关闭 popover
                         await page.mouse.click(10, 10)
                         await asyncio.sleep(0.3)
                     else:
                         print(f"[AUTO-V2] ⚠️ 订单#{order_id} 未找到分辨率设置按钮，使用默认值")
                 except Exception as e:
                     print(f"[AUTO-V2] ⚠️ 订单#{order_id} 设置分辨率/秒数失败: {str(e)[:60]}")
+
+                # 步骤4.6: 设置批量数量（如果 > 1）
+                if batch_quantity > 1:
+                    try:
+                        # 点击批量按钮（包含层叠图标 svg 的按钮，旁边有数量 span）
+                        batch_btn = page.locator("div.cursor-pointer:has(svg) > span.text-hl_text_02, div.cursor-pointer:has(svg):has(span)").first
+                        # 更精确：找包含数字的批量按钮
+                        batch_btn = page.locator("div.cursor-pointer:has(span.ml-1)").first
+                        if await batch_btn.is_visible(timeout=3000):
+                            await batch_btn.click()
+                            await asyncio.sleep(1)
+
+                            # 在弹出的 quantity-popover 中选择数量
+                            qty_popover = page.locator("div.quantity-popover").first
+                            if await qty_popover.is_visible(timeout=3000):
+                                qty_btn = qty_popover.locator(f"button:has(div:text('{batch_quantity}'))").first
+                                if await qty_btn.is_visible(timeout=2000):
+                                    await qty_btn.click()
+                                    await asyncio.sleep(0.5)
+                                    print(f"[AUTO-V2] ✅ 订单#{order_id} 设置批量数量: {batch_quantity}")
+                                else:
+                                    print(f"[AUTO-V2] ⚠️ 订单#{order_id} 未找到数量{batch_quantity}的按钮")
+                            else:
+                                print(f"[AUTO-V2] ⚠️ 订单#{order_id} 批量选择弹窗未出现")
+                        else:
+                            print(f"[AUTO-V2] ⚠️ 订单#{order_id} 未找到批量按钮")
+                    except Exception as e:
+                        print(f"[AUTO-V2] ⚠️ 订单#{order_id} 设置批量数量失败: {str(e)[:60]}")
 
                 # 步骤5: 等待popover完全关闭后再找生成按钮
                 await asyncio.sleep(0.5)
@@ -1041,13 +1136,12 @@ class HailuoAutomationV2:
                         await generate_btn.click(force=True)
                         print(f"[AUTO-V2] 🖱️ 已点击生成按钮（第{click_attempt+1}次）")
 
-                        # 确认信号：等待几秒后刷新页面，通过 API 监听检测订单是否提交成功
-                        await asyncio.sleep(3)
+                        # 确认信号：等待后刷新页面，通过 API 监听检测订单是否提交成功
+                        await asyncio.sleep(8)
                         result = await check_order_in_api(page, order_id)
                         if result:
                             submit_confirmed = True
                             print(f"[AUTO-V2] ✅ API确认订单#{order_id}已提交，status={result.get('status')}")
-                        if submit_confirmed:
                             break
 
                     if submit_confirmed:
@@ -1059,14 +1153,43 @@ class HailuoAutomationV2:
                         if account_id not in self._account_orders:
                             self._account_orders[account_id] = set()
                         self._account_orders[account_id].add(order_id)
+                        # 批量子订单也标记为 generating 并加入扫描队列
+                        if batch_quantity > 1:
+                            with Session(engine) as session:
+                                from sqlmodel import select as sql_select
+                                children = session.exec(
+                                    sql_select(VideoOrder).where(VideoOrder.batch_parent_id == order_id)
+                                ).all()
+                                for child in children:
+                                    self.update_order_status(child.id, "generating")
+                                    self._account_orders[account_id].add(child.id)
+                                print(f"[AUTO-V2] 📌 批量子订单 {[c.id for c in children]} 也已标记generating")
                         print(f"[AUTO-V2] 📌 订单#{order_id} 已加入账号 {account_id} 的扫描队列，当前队列: {self._account_orders[account_id]}")
                     else:
                         print(f"[AUTO-V2] ❌ 订单#{order_id}重试3次后仍无确认信号，标记失败")
                         self.update_order_status(order_id, "failed")
+                        # 批量子订单也标记失败
+                        if batch_quantity > 1:
+                            with Session(engine) as session:
+                                from sqlmodel import select as sql_select
+                                children = session.exec(
+                                    sql_select(VideoOrder).where(VideoOrder.batch_parent_id == order_id)
+                                ).all()
+                                for child in children:
+                                    self.update_order_status(child.id, "failed")
+                                print(f"[AUTO-V2] ❌ 批量子订单 {[c.id for c in children]} 也已标记失败")
                         return
                 else:
                     print(f"[AUTO-V2] ❌ 未找到生成按钮")
                     self.update_order_status(order_id, "failed")
+                    if batch_quantity > 1:
+                        with Session(engine) as session:
+                            from sqlmodel import select as sql_select
+                            children = session.exec(
+                                sql_select(VideoOrder).where(VideoOrder.batch_parent_id == order_id)
+                            ).all()
+                            for child in children:
+                                self.update_order_status(child.id, "failed")
                     return
             # ===== 提交锁释放 =====
 
@@ -1083,31 +1206,38 @@ class HailuoAutomationV2:
             self._processing_order_ids.discard(order_id)
     
     async def select_model(self, page: Page, model_name: str):
-        """选择指定的AI模型 - 移植自V1的popover方式"""
+        """选择指定的AI模型"""
         try:
             print(f"[AUTO-V2] 🎯 开始模型选择: {model_name}")
             await asyncio.sleep(3)
 
-            # V1验证的选择器：data-tour="model-selection-guide"
+            # 点击模型选择触发器
             dropdown = page.locator("div[data-tour='model-selection-guide']")
             try:
-                if not await dropdown.is_visible(timeout=5000):
+                if not await dropdown.is_visible(timeout=10000):
                     print("[AUTO-V2] ⚠️ 未找到模型选择下拉框")
                     return
             except:
                 print("[AUTO-V2] ⚠️ 未找到模型选择下拉框")
                 return
 
+            await dropdown.scroll_into_view_if_needed()
+            await asyncio.sleep(0.5)
             await dropdown.click(force=True, timeout=5000)
-            await asyncio.sleep(2)
+            await asyncio.sleep(3)
 
-            # 检查popover是否出现
+            # 新版 popover：bg-hl_bg_03 面板，包含"模型"标题
             popover = None
-            for selector in [".ant-popover:not(.ant-popover-hidden)", ".model-selection-options:not(.ant-popover-hidden)"]:
+            for selector in [
+                "div.bg-hl_bg_03:has(span:text('当前选择'))",
+                "div.bg-hl_bg_03:has(span:text('模型'))",
+                ".ant-popover:not(.ant-popover-hidden)",
+            ]:
                 try:
                     el = page.locator(selector).first
-                    if await el.is_visible():
+                    if await el.is_visible(timeout=3000):
                         popover = el
+                        print(f"[AUTO-V2] ✅ 模型菜单已出现 (selector: {selector})")
                         break
                 except:
                     continue
@@ -1118,35 +1248,42 @@ class HailuoAutomationV2:
 
             # 模型名称映射
             model_mapping = {
-                "hailuo 2.3": ["hailuo 2.3", "2.3"],
-                "hailuo 2.3-fast": ["hailuo 2.3-fast", "2.3-fast", "fast"],
-                "hailuo 2.0": ["hailuo 2.0", "2.0"],
-                "beta 3.1": ["beta 3.1", "3.1"],
-                "hailuo 1.0": ["hailuo 1.0", "1.0"],
-                "hailuo 1.0-director": ["director"],
-                "hailuo 1.0-live": ["live"]
+                "hailuo 2.3": ["hailuo 2.3"],
+                "hailuo 2.3-fast": ["hailuo 2.3-fast"],
+                "hailuo 2.0": ["hailuo 2.0"],
+                "beta 3.1": ["beta 3.1"],
+                "beta 3.1 fast": ["beta 3.1 fast"],
+                "hailuo 1.0": ["hailuo 1.0"],
+                "hailuo 1.0-director": ["hailuo 1.0-director"],
+                "hailuo 1.0-live": ["hailuo 1.0-live"]
             }
             target_lower = model_name.lower().strip()
 
-            # 在popover中查找选项
+            # 新版结构：每个选项是 div.cursor-pointer，模型名在 div.font-500 里
             options = await popover.locator("div.cursor-pointer").all()
             for option in options:
                 try:
                     if not await option.is_visible():
                         continue
-                    text = (await option.text_content() or "").lower()
-                    if len(text) < 5 or len(text) > 200 or "hailuo" not in text:
+                    # 从 font-500 元素取模型名
+                    name_el = option.locator("div.font-500").first
+                    if await name_el.count() == 0:
+                        continue
+                    name_text = (await name_el.text_content() or "").strip().lower()
+                    if not name_text:
                         continue
 
-                    is_match = target_lower in text
+                    is_match = target_lower == name_text
                     if not is_match and target_lower in model_mapping:
-                        is_match = any(alias in text for alias in model_mapping[target_lower])
+                        is_match = any(alias == name_text for alias in model_mapping[target_lower])
+                    if not is_match:
+                        # 模糊匹配：target 包含在 name 中或反过来
+                        is_match = target_lower in name_text or name_text in target_lower
 
                     if is_match:
                         await option.click()
                         await asyncio.sleep(1)
-                        print(f"[AUTO-V2] ✅ 已选择模型: {text.strip()[:50]}")
-                        # 等待popover关闭，防止遮挡生成按钮
+                        print(f"[AUTO-V2] ✅ 已选择模型: {name_text}")
                         await asyncio.sleep(1)
                         try:
                             await page.keyboard.press("Escape")

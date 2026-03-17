@@ -42,6 +42,7 @@ const videoMode = ref('image') // 'text' 或 'image'
 // 分辨率和时长选择
 const resolution = ref('768p') // '768p' 或 '1080p'
 const duration = ref('6s') // '6s' 或 '10s'
+const quantity = ref(1) // 批量数量 1-4
 
 // 1080p只能选6s
 watch(resolution, (val) => {
@@ -262,8 +263,9 @@ const handleCreateOrder = async () => {
   }
 
   const modelPrice = selectedModel.value?.price || 0.99
-  if (!user.value || user.value.balance < modelPrice) {
-    showBalanceInsufficient(modelPrice)
+  const totalCost = modelPrice * quantity.value
+  if (!user.value || user.value.balance < totalCost) {
+    showBalanceInsufficient(totalCost)
     return
   }
 
@@ -279,7 +281,8 @@ const handleCreateOrder = async () => {
       videoMode.value === 'image' ? lastFrameImage.value : null,
       videoType,
       resolution.value,
-      duration.value
+      duration.value,
+      quantity.value
     )
     showNotification('订单提交成功！AI 正在为您生成...', 'success')
     prompt.value = ''
@@ -845,9 +848,25 @@ const handleLogout = () => {
                 </div>
                 
                 <div class="flex items-center gap-6">
+                  <!-- 批量数量选择 -->
+                  <div class="flex items-center gap-1.5">
+                    <span class="text-xs text-gray-500">数量</span>
+                    <div class="flex gap-1">
+                      <button v-for="n in 4" :key="n"
+                        @click="quantity = n"
+                        :class="[
+                          'w-7 h-7 rounded-lg text-xs font-bold transition-all',
+                          quantity === n
+                            ? 'bg-cyan-500 text-white shadow-[0_0_8px_rgba(6,182,212,0.4)]'
+                            : 'bg-slate-700/50 text-gray-400 hover:bg-slate-600/50'
+                        ]"
+                      >{{ n }}</button>
+                    </div>
+                  </div>
                   <div class="text-right">
                      <span class="text-xs text-gray-500 block">本次消耗</span>
-                     <span class="text-lg font-bold text-white leading-none">¥{{ selectedModel?.price ? selectedModel.price.toFixed(2) : '0.99' }}</span>
+                     <span class="text-lg font-bold text-white leading-none">¥{{ ((selectedModel?.price || 0.99) * quantity).toFixed(2) }}</span>
+                     <span v-if="quantity > 1" class="text-xs text-gray-500 block">{{ quantity }}条 × ¥{{ selectedModel?.price ? selectedModel.price.toFixed(2) : '0.99' }}</span>
                   </div>
                   <button 
                     @click="handleCreateOrder"

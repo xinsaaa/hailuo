@@ -1095,6 +1095,7 @@ async def create_order(
     video_type: str = Form("image_to_video"),
     resolution: str = Form("768p"),
     duration: str = Form("6s"),
+    quantity: int = Form(1),
     first_frame_image: Optional[UploadFile] = File(None),
     last_frame_image: Optional[UploadFile] = File(None),
     current_user: User = Depends(get_current_user),
@@ -1112,6 +1113,10 @@ async def create_order(
     if resolution == "1080p" and duration == "10s":
         raise HTTPException(status_code=400, detail="1080p分辨率仅支持6秒")
 
+    # 校验批量数量
+    if quantity < 1 or quantity > 4:
+        raise HTTPException(status_code=400, detail="批量数量仅支持1-4")
+
     # 图生视频必须上传首帧图片
     if video_type == "image_to_video" and not first_frame_image:
         raise HTTPException(status_code=400, detail="图生视频模式必须上传首帧图片")
@@ -1119,8 +1124,9 @@ async def create_order(
     # 根据用户选择的模型获取价格
     model = session.exec(select(AIModel).where(AIModel.name == model_name)).first()
     cost = model.price if model and model.price else 0.99
-    if current_user.balance < cost:
-        raise HTTPException(status_code=400, detail=f"余额不足，需要 ¥{cost}")
+    total_cost = cost * quantity
+    if current_user.balance < total_cost:
+        raise HTTPException(status_code=400, detail=f"余额不足，需要 ¥{total_cost}（单价 ¥{cost} × {quantity}）")
     
     # 按用户ID分类存储上传图片
     import uuid as _uuid
@@ -1158,9 +1164,10 @@ async def create_order(
             content = await last_frame_image.read()
             f.write(content)
     
-    current_user.balance -= cost
+    current_user.balance -= total_cost
     session.add(current_user)
-    
+
+    # 创建主订单
     new_order = VideoOrder(
         user_id=current_user.id,
         prompt=prompt,
@@ -1171,10 +1178,13 @@ async def create_order(
         resolution=resolution,
         duration=duration,
         first_frame_image=first_frame_path,
-        last_frame_image=last_frame_path
+        last_frame_image=last_frame_path,
+        batch_parent_id=None,
+        batch_index=0 if quantity > 1 else None,
     )
     session.add(new_order)
-    
+    session.flush()  # 获取主订单ID
+
     transaction = Transaction(
         user_id=current_user.id,
         amount=cost,
@@ -1182,27 +1192,54 @@ async def create_order(
         type="expense"
     )
     session.add(transaction)
-    
+
+    # 创建子订单
+    child_orders = []
+    for i in range(1, quantity):
+        child = VideoOrder(
+            user_id=current_user.id,
+            prompt=prompt,
+            video_url=None,
+            cost=cost,
+            model_name=model_name,
+            video_type=video_type,
+            resolution=resolution,
+            duration=duration,
+            first_frame_image=first_frame_path,
+            last_frame_image=last_frame_path,
+            batch_parent_id=new_order.id,
+            batch_index=i,
+        )
+        session.add(child)
+        child_tx = Transaction(
+            user_id=current_user.id,
+            amount=cost,
+            bonus=0,
+            type="expense"
+        )
+        session.add(child_tx)
+        child_orders.append(child)
+
     session.commit()
     session.refresh(new_order)
+    for c in child_orders:
+        session.refresh(c)
     
-    # 根据运行模式选择订单路由
+    # 根据运行模式选择订单路由（只对主订单触发自动化）
     enable_multi_account = os.getenv("ENABLE_MULTI_ACCOUNT", "true").lower() == "true"
     if enable_multi_account:
-        # 多账号模式：直接尝试立即处理订单，无需等待主循环扫描
         try:
             from backend.automation_v2 import process_order_immediately
             import asyncio
             asyncio.create_task(process_order_immediately(new_order.id))
-            app_logger.info(f"订单#{new_order.id}已提交立即处理")
+            app_logger.info(f"订单#{new_order.id}已提交立即处理（批量{quantity}）")
         except Exception as e:
             app_logger.error(f"提交订单立即处理失败: {e}")
     else:
-        # 单账号模式：推入队列
         import asyncio
         asyncio.create_task(run_hailuo_task(new_order.id))
-    
-    return new_order
+
+    return [new_order] + child_orders if child_orders else new_order
 
 
 @app.get("/api/orders")

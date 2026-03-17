@@ -36,6 +36,9 @@ class VideoOrder(SQLModel, table=True):
     video_type: Optional[str] = Field(default="image_to_video")  # image_to_video 或 text_to_video
     resolution: Optional[str] = Field(default="768p")  # 768p 或 1080p
     duration: Optional[str] = Field(default="6s")  # 6s 或 10s（1080p只能6s）
+    # 批量生成
+    batch_parent_id: Optional[int] = Field(default=None, index=True)  # 批量主订单ID（子订单指向主订单）
+    batch_index: Optional[int] = Field(default=None)  # 批量内序号 0,1,2,3
 
 class Transaction(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
