@@ -112,16 +112,18 @@ async def fetch_hailuo_videos_via_api(page) -> list:
                             "batchID": batch.get("batchID", ""),
                             "createTime": asset.get("createTime", 0),
                         })
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"[API-DEBUG] on_response解析异常: {str(e)[:100]}")
 
     page.on("response", on_response)
     try:
         await page.reload(timeout=30000, wait_until="networkidle")
         await asyncio.sleep(2)
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"[API-DEBUG] reload异常: {str(e)[:80]}")
     page.remove_listener("response", on_response)
+    if not captured:
+        print(f"[API-DEBUG] 未捕获到任何视频，关键字: {HAILUO_API_KEYWORD}")
     return captured
 
 
