@@ -65,65 +65,97 @@ HAILUO_URL = "https://hailuoai.com/create/image-to-video"
 HAILUO_TEXT_URL = "https://hailuoai.com/create/text-to-video"
 HAILUO_API_KEYWORD = "feed/creation/my/batch"
 
-# ============ 海螺 API 响应解析 ============
+# ============ 海螺 SSR 数据解析 ============
 
 async def fetch_hailuo_videos_via_api(page) -> list:
     """
-    刷新页面并监听海螺 batchCursor API 响应，返回视频列表。
+    刷新页面并从 SSR __next_f.push 数据中提取视频列表。
     每个视频: {desc, status, downloadURL, videoURL, batchID, createTime}
     status: 2=完成, 其他=生成中/失败
     """
-    captured = []
-
-    async def on_response(response):
-        try:
-            if HAILUO_API_KEYWORD in response.url and response.status == 200:
-                data = await response.json()
-                # 调试：打印API返回的顶层key
-                top_keys = list(data.keys()) if isinstance(data, dict) else type(data).__name__
-                data_keys = list(data.get("data", {}).keys()) if isinstance(data.get("data"), dict) else "N/A"
-                print(f"[API-DEBUG] 顶层keys: {top_keys}, data keys: {data_keys}")
-
-                batches = data.get("data", {}).get("batchVideos", [])
-                if not batches:
-                    # 尝试新版数据结构
-                    items = data.get("data", {}).get("items", [])
-                    if not items:
-                        items = data.get("data", {}).get("videos", [])
-                    if not items:
-                        items = data.get("data", {}).get("list", [])
-                    if items:
-                        print(f"[API-DEBUG] 使用备选字段，找到 {len(items)} 条记录")
-                        # 打印第一条记录的keys用于调试
-                        if items:
-                            print(f"[API-DEBUG] 第一条记录keys: {list(items[0].keys()) if isinstance(items[0], dict) else 'N/A'}")
-                    else:
-                        # 打印完整data用于调试（截断）
-                        import json
-                        print(f"[API-DEBUG] 未找到已知字段，data内容: {json.dumps(data.get('data', {}), ensure_ascii=False)[:500]}")
-
-                for batch in batches:
-                    for asset in batch.get("assets", []):
-                        captured.append({
-                            "desc": asset.get("desc", ""),
-                            "status": asset.get("status"),
-                            "downloadURL": asset.get("downloadURL", ""),
-                            "videoURL": asset.get("videoURL", ""),
-                            "batchID": batch.get("batchID", ""),
-                            "createTime": asset.get("createTime", 0),
-                        })
-        except Exception as e:
-            print(f"[API-DEBUG] on_response解析异常: {str(e)[:100]}")
-
-    page.on("response", on_response)
     try:
         await page.reload(timeout=30000, wait_until="networkidle")
         await asyncio.sleep(2)
     except Exception as e:
         print(f"[API-DEBUG] reload异常: {str(e)[:80]}")
-    page.remove_listener("response", on_response)
+
+    # 从页面 JS 中提取 batchFeeds 数据
+    captured = await page.evaluate("""() => {
+        const results = [];
+        try {
+            // 遍历所有 script 标签，找包含 batchFeeds 的 SSR 数据
+            const scripts = document.querySelectorAll('script');
+            let rawData = null;
+            for (const script of scripts) {
+                const text = script.textContent || '';
+                if (text.includes('batchFeeds') && text.includes('__next_f.push')) {
+                    // 提取 JSON 部分
+                    const match = text.match(/self\\.__next_f\\.push\\(\\[1,\\s*"[^"]*"\\]\\)/g);
+                    if (!match) continue;
+                    for (const m of match) {
+                        if (m.includes('batchFeeds')) {
+                            // 提取引号内的 JSON 字符串
+                            const jsonMatch = m.match(/push\\(\\[1,\\s*"(.+)"\\]\\)/s);
+                            if (jsonMatch) {
+                                try {
+                                    // 这是一个转义的 JSON 字符串
+                                    const decoded = JSON.parse('"' + jsonMatch[1].replace(/\\"/g, '"') + '"');
+                                    // 在 decoded 中找 batchFeeds
+                                    const bfMatch = decoded.match(/"batchFeeds":\\[(.+?)\\],"hasMore"/s);
+                                    if (bfMatch) {
+                                        rawData = JSON.parse('[' + bfMatch[1] + ']');
+                                    }
+                                } catch(e) {}
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 备选方案：直接从 window.__NEXT_DATA__ 或全局变量获取
+            if (!rawData) {
+                try {
+                    const nextData = window.__NEXT_DATA__;
+                    if (nextData) {
+                        const props = nextData.props?.pageProps;
+                        if (props?.inintBatchFeedsData?.batchFeeds) {
+                            rawData = props.inintBatchFeedsData.batchFeeds;
+                        }
+                    }
+                } catch(e) {}
+            }
+
+            if (!rawData || !Array.isArray(rawData)) return results;
+
+            for (const batch of rawData) {
+                const batchID = batch.batchID || '';
+                const feeds = batch.feeds || [];
+                for (const feed of feeds) {
+                    const common = feed.commonInfo || {};
+                    const param = feed.modelParameter?.videoParameter || {};
+                    const meta = feed.metaInfo?.videoMetaInfo?.mediaInfo || {};
+                    const dl = meta.downloadURL || {};
+                    results.push({
+                        desc: param.desc || '',
+                        status: common.status,
+                        downloadURL: dl.withoutWatermarkURL || '',
+                        videoURL: meta.url || '',
+                        batchID: batchID,
+                        createTime: common.createTime || 0,
+                    });
+                }
+            }
+        } catch(e) {
+            // 返回空数组
+        }
+        return results;
+    }""")
+
     if not captured:
-        print(f"[API-DEBUG] 未捕获到任何视频，关键字: {HAILUO_API_KEYWORD}")
+        print(f"[API-DEBUG] 未从SSR数据中提取到视频")
+    else:
+        print(f"[API-DEBUG] 从SSR数据提取到 {len(captured)} 个视频")
+
     return captured
 
 
