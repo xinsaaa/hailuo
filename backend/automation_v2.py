@@ -1356,27 +1356,30 @@ class HailuoAutomationV2:
             pass
 
     async def _upload_first_frame(self, page: Page, image_path: str) -> bool:
-        """上传首帧图片 - 移植自V1"""
+        """上传首帧图片"""
         try:
             if not os.path.exists(image_path):
                 print(f"[AUTO-V2] ❌ 图片不存在: {image_path}")
                 return False
 
-            upload_wrapper = page.locator(".upload-image-wrapper").first
-            if not await upload_wrapper.is_visible():
-                return False
+            # 新版UI：aria-label="Upload 首帧" 的 role=button
+            upload_btn = page.locator("div[role='button'][aria-label='Upload 首帧']").first
+            if not await upload_btn.is_visible(timeout=5000):
+                # 备选：旧版 .upload-image-wrapper
+                upload_btn = page.locator(".upload-image-wrapper").first
+                if not await upload_btn.is_visible(timeout=3000):
+                    print("[AUTO-V2] ❌ 未找到首帧上传按钮")
+                    return False
 
-            file_input = upload_wrapper.locator("input[type='file']")
-            if not await file_input.count():
-                return False
-
+            # 找隐藏的 file input（可能在按钮内或附近）
+            file_input = page.locator("input[type='file']").first
             await file_input.set_input_files(image_path)
             await asyncio.sleep(3)
 
             # 检查尺寸过小错误
             try:
-                error_hint = page.locator(".adm-auto-center-content:has-text('图片尺寸过小')")
-                if await error_hint.is_visible():
+                error_hint = page.locator("text=图片尺寸过小")
+                if await error_hint.is_visible(timeout=1000):
                     print("[AUTO-V2] ❌ 图片尺寸过小")
                     return False
             except:
@@ -1388,9 +1391,16 @@ class HailuoAutomationV2:
             return False
 
     async def _switch_to_last_frame_mode(self, page: Page):
-        """切换到尾帧模式 - 移植自V1"""
+        """切换到尾帧模式 - 点击尾帧上传按钮"""
         try:
-            for selector in ["button:has-text('尾帧')", "div:has-text('尾帧')", "div.text-hl_white_75:has-text('尾帧')"]:
+            # 新版UI：aria-label="Upload 尾帧"
+            btn = page.locator("div[role='button'][aria-label='Upload 尾帧']").first
+            if await btn.is_visible(timeout=3000):
+                await btn.click()
+                await asyncio.sleep(2)
+                return
+            # 备选
+            for selector in ["button:has-text('尾帧')", "div:has-text('尾帧')"]:
                 try:
                     btn = page.locator(selector).first
                     if await btn.is_visible():
@@ -1403,28 +1413,19 @@ class HailuoAutomationV2:
             pass
 
     async def _upload_last_frame(self, page: Page, image_path: str) -> bool:
-        """上传尾帧图片 - 移植自V1"""
+        """上传尾帧图片"""
         try:
             if not os.path.exists(image_path):
                 return False
 
-            wrappers = await page.locator(".upload-image-wrapper").all()
-            target = None
-            for w in wrappers:
-                text = await w.text_content() or ""
-                if "尾帧" in text:
-                    target = w
-                    break
-            if not target and len(wrappers) >= 2:
-                target = wrappers[1]
-            if not target:
+            # 尾帧模式下，file input 应该已经可用
+            file_inputs = await page.locator("input[type='file']").all()
+            target_input = file_inputs[-1] if file_inputs else None
+            if not target_input:
+                print("[AUTO-V2] ❌ 未找到尾帧文件输入")
                 return False
 
-            file_input = target.locator("input[type='file']")
-            if not await file_input.count():
-                return False
-
-            await file_input.set_input_files(image_path)
+            await target_input.set_input_files(image_path)
             await asyncio.sleep(3)
             return True
         except Exception as e:
