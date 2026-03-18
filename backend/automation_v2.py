@@ -1080,11 +1080,8 @@ class HailuoAutomationV2:
 
                 # 步骤4.5: 选择分辨率和秒数
                 try:
-                    # 触发器：包含768p/1080p和时长文字的border按钮（sm:flex，桌面端可见）
+                    # 触发器：border-hl_line_01 按钮（显示当前768p/1080p和时长）
                     settings_btn = page.locator("div.border-hl_line_01.cursor-pointer").first
-                    if not await settings_btn.is_visible(timeout=3000):
-                        # 备选：通过文字内容匹配
-                        settings_btn = page.locator("div.cursor-pointer:has(span:text-is('768p')), div.cursor-pointer:has(span:text-is('1080p'))").first
 
                     if await settings_btn.is_visible(timeout=5000):
                         await settings_btn.scroll_into_view_if_needed()
@@ -1092,18 +1089,18 @@ class HailuoAutomationV2:
                         await settings_btn.click(force=True)
                         await asyncio.sleep(1)
 
-                        # 弹出面板：bg-hl_bg_05 容器，包含分辨率和时长选项
-                        popover = page.locator("div.bg-hl_bg_05:has(div.font-medium)").last
+                        # 弹出面板：包含分辨率和时长的 flex-col gap-3 容器
+                        popover = page.locator("div.flex.flex-col.gap-3.p-3").last
                         if await popover.is_visible(timeout=3000):
-                            # 选择分辨率：text-is 精确匹配
-                            res_option = popover.locator(f"div:has(> div.font-medium:text-is('{resolution}'))").first
+                            # 选择分辨率：cursor-pointer 内的 font-medium 文字
+                            res_option = popover.locator(f"div.cursor-pointer:has(div.font-medium:text-is('{resolution}'))").first
                             if await res_option.is_visible(timeout=2000):
                                 await res_option.click()
                                 await asyncio.sleep(0.3)
                                 print(f"[AUTO-V2] ✅ 订单#{order_id} 选择分辨率: {resolution}")
 
                             # 选择时长
-                            dur_option = popover.locator(f"div:has(> div.font-medium:text-is('{duration}'))").first
+                            dur_option = popover.locator(f"div.cursor-pointer:has(div.font-medium:text-is('{duration}'))").first
                             if await dur_option.is_visible(timeout=2000):
                                 await dur_option.click()
                                 await asyncio.sleep(0.3)
