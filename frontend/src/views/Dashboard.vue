@@ -50,6 +50,12 @@ watch(resolution, (val) => {
   }
 })
 
+// 当前价格（根据时长动态计算）
+const currentPrice = computed(() => {
+  if (duration.value === '10s' && selectedModel.value?.price_10s) return selectedModel.value.price_10s
+  return selectedModel.value?.price || 0.99
+})
+
 // 首尾帧图片上传状态
 const firstFrameImage = ref(null)
 const lastFrameImage = ref(null)
@@ -272,7 +278,7 @@ const handleCreateOrder = async () => {
     return
   }
 
-  const modelPrice = selectedModel.value?.price || 0.99
+  const modelPrice = (duration.value === '10s' && selectedModel.value?.price_10s) ? selectedModel.value.price_10s : (selectedModel.value?.price || 0.99)
   const totalCost = modelPrice
   if (!user.value || user.value.balance < totalCost) {
     showBalanceInsufficient(totalCost)
@@ -512,9 +518,11 @@ const handleLogout = () => {
     
     <!-- 站点公告 -->
     <div v-if="siteAnnouncement" class="relative z-20 max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 mt-4">
-      <div class="flex items-center gap-3 px-4 py-2.5 bg-amber-500/10 border border-amber-500/20 rounded-xl text-sm">
-        <span class="text-amber-400 text-base">📢</span>
-        <span class="text-amber-200/90">{{ siteAnnouncement }}</span>
+      <div class="flex items-center gap-3 px-4 py-2.5 bg-amber-500/10 border border-amber-500/20 rounded-xl text-sm overflow-hidden">
+        <span class="text-amber-400 text-base shrink-0">📢</span>
+        <div class="overflow-hidden flex-1">
+          <div class="animate-marquee whitespace-nowrap text-amber-200/90">{{ siteAnnouncement }}</div>
+        </div>
       </div>
     </div>
     
@@ -859,7 +867,7 @@ const handleLogout = () => {
                 <div class="flex items-center gap-6">
                   <div class="text-right">
                      <span class="text-xs text-gray-500 block">本次消耗</span>
-                     <span class="text-lg font-bold text-white leading-none">¥{{ (selectedModel?.price || 0.99).toFixed(2) }}</span>
+                     <span class="text-lg font-bold text-white leading-none">¥{{ currentPrice.toFixed(2) }}</span>
                   </div>
                   <button 
                     @click="handleCreateOrder"
@@ -1065,6 +1073,13 @@ const handleLogout = () => {
 </template>
 
 <style scoped>
+@keyframes marquee {
+  0% { transform: translateX(100%); }
+  100% { transform: translateX(-100%); }
+}
+.animate-marquee {
+  animation: marquee 15s linear infinite;
+}
 .toast-enter-active,
 .toast-leave-active {
   transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);

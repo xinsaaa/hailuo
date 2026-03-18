@@ -136,7 +136,8 @@ class AIModel(SQLModel, table=True):
     name: str  # 模型名称，如 Hailuo 2.3
     display_name: str  # 显示名称，如 海螺 2.3
     description: str  # 模型描述
-    price: float = Field(default=0.99)  # 模型价格（元/次）- 海螺固定价格
+    price: float = Field(default=0.99)  # 模型价格（元/次）- 海螺固定价格（6s）
+    price_10s: float = Field(default=0.0)  # 10s时长价格，0表示使用price
     price_per_second: float = Field(default=0.0)  # 每秒单价（元/秒）- 即梦按秒计费，0表示使用固定价格
     model_type: str = Field(default="image_to_video")  # 模型类型
     platform: str = Field(default="hailuo")  # 平台：hailuo / jimeng
@@ -205,6 +206,7 @@ def _auto_migrate():
         ("aimodel", "is_enabled", "INTEGER DEFAULT 1"),
         ("aimodel", "sort_order", "INTEGER DEFAULT 0"),
         ("aimodel", "price_per_second", "REAL DEFAULT 0"),
+        ("aimodel", "price_10s", "REAL DEFAULT 0"),
         ("aimodel", "created_at", "TEXT"),
         ("aimodel", "updated_at", "TEXT"),
         # 批量订单简化

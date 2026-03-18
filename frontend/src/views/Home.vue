@@ -20,6 +20,7 @@ const has31Series = computed(() => modelsList.value.some(m => m.id.includes('3_1
 const hasJimeng = computed(() => jimengEnabled.value && jimengModels.value.length > 0)
 
 const siteName = ref(localStorage.getItem('site_name') || '大帝AI')
+const siteAnnouncement = ref('')
 const isLoggedIn = computed(() => !!userStore.token)
 const user = computed(() => userStore.user)
 
@@ -71,6 +72,7 @@ const loadConfig = async () => {
         }
         
         // 生成赠送信息
+        if (config.site_announcement) siteAnnouncement.value = config.site_announcement
         if (config.bonus_rate && config.bonus_min_amount) {
             const rate = config.bonus_rate
             const minAmount = config.bonus_min_amount
@@ -169,6 +171,16 @@ const handleModelSeriesGenerate = (series) => {
         </div>
         <p class="text-xl text-gray-200 mb-2 font-light tracking-wide drop-shadow-md">想象 · 输入 · 生成</p>
         <p class="text-sm text-gray-400 font-medium">使用先进的 AI 技术，将你的创意转化为专业品质的视频</p>
+      </div>
+
+      <!-- 滚动公告 -->
+      <div v-if="siteAnnouncement" class="w-full max-w-2xl mx-auto mb-8 overflow-hidden rounded-xl bg-amber-500/10 border border-amber-500/20 py-2 px-4">
+        <div class="flex items-center gap-3">
+          <span class="text-amber-400 text-base shrink-0">📢</span>
+          <div class="overflow-hidden flex-1">
+            <div class="animate-marquee whitespace-nowrap text-sm text-amber-200/90">{{ siteAnnouncement }}</div>
+          </div>
+        </div>
       </div>
       
       <!-- AI模型卡片网格 -->
@@ -472,5 +484,12 @@ const handleModelSeriesGenerate = (series) => {
 /* 径向渐变 */
 .bg-gradient-radial {
   background: radial-gradient(circle, var(--tw-gradient-from), var(--tw-gradient-via), var(--tw-gradient-to));
+}
+@keyframes marquee {
+  0% { transform: translateX(100%); }
+  100% { transform: translateX(-100%); }
+}
+.animate-marquee {
+  animation: marquee 15s linear infinite;
 }
 </style>

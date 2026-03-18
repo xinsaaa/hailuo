@@ -885,6 +885,7 @@ class ModelUpdateRequest(BaseModel):
     badge: Optional[str] = None
     description: Optional[str] = None
     price: Optional[float] = None  # 固定价格
+    price_10s: Optional[float] = None  # 10s时长价格
     price_per_second: Optional[float] = None  # 每秒单价（即梦按秒计费）
 
 
@@ -918,6 +919,7 @@ def get_all_models(admin=Depends(get_admin_user), session: Session = Depends(get
             "is_enabled": m.is_enabled,
             "sort_order": m.sort_order,
             "price": m.price or 0.99,
+            "price_10s": m.price_10s or 0,
             "price_per_second": m.price_per_second or 0,
             "created_at": utc_to_china_time(m.created_at),
             "updated_at": utc_to_china_time(m.updated_at)
@@ -968,6 +970,11 @@ def update_model(
         if data.price < 0:
             raise HTTPException(status_code=400, detail="价格不能为负数")
         model.price = data.price
+
+    if data.price_10s is not None:
+        if data.price_10s < 0:
+            raise HTTPException(status_code=400, detail="10s价格不能为负数")
+        model.price_10s = data.price_10s
 
     if data.price_per_second is not None:
         if data.price_per_second < 0:

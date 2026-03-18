@@ -1123,7 +1123,10 @@ async def create_order(
 
     # 根据用户选择的模型获取价格
     model = session.exec(select(AIModel).where(AIModel.name == model_name)).first()
-    cost = model.price if model and model.price else 0.99
+    if duration == "10s" and model and model.price_10s > 0:
+        cost = model.price_10s
+    else:
+        cost = model.price if model and model.price else 0.99
     total_cost = cost * quantity
     if current_user.balance < total_cost:
         raise HTTPException(status_code=400, detail=f"余额不足，需要 ¥{total_cost}（单价 ¥{cost} × {quantity}）")
@@ -1357,7 +1360,8 @@ def get_available_models(session: Session = Depends(get_session)):
             "features": json.loads(m.features) if m.features else [],
             "badge": m.badge,
             "supports_last_frame": m.supports_last_frame,
-            "price": m.price or 0.99  # 添加价格字段
+            "price": m.price or 0.99,
+            "price_10s": m.price_10s if m.price_10s and m.price_10s > 0 else None
         })
     
     return {

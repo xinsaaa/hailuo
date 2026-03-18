@@ -324,9 +324,11 @@ const handleLogout = () => {
     </nav>
     
     <div v-if="siteAnnouncement" class="relative z-20 max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 mt-4">
-      <div class="flex items-center gap-3 px-4 py-2.5 bg-amber-500/10 border border-amber-500/20 rounded-xl text-sm">
-        <span class="text-amber-400 text-base">📢</span>
-        <span class="text-amber-200/90">{{ siteAnnouncement }}</span>
+      <div class="flex items-center gap-3 px-4 py-2.5 bg-amber-500/10 border border-amber-500/20 rounded-xl text-sm overflow-hidden">
+        <span class="text-amber-400 text-base shrink-0">📢</span>
+        <div class="overflow-hidden flex-1">
+          <div class="animate-marquee whitespace-nowrap text-amber-200/90">{{ siteAnnouncement }}</div>
+        </div>
       </div>
     </div>
     
@@ -684,6 +686,13 @@ const handleLogout = () => {
 </template>
 
 <style scoped>
+@keyframes marquee {
+  0% { transform: translateX(100%); }
+  100% { transform: translateX(-100%); }
+}
+.animate-marquee {
+  animation: marquee 15s linear infinite;
+}
 .toast-enter-active,
 .toast-leave-active {
   transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
