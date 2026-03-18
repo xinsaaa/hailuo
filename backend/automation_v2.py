@@ -84,120 +84,35 @@ async def fetch_hailuo_videos_via_api(page) -> list:
         const results = [];
         const debug = [];
         try {
-            // 方案1：从 __NEXT_DATA__ 获取
-            try {
-                const nextData = window.__NEXT_DATA__;
-                if (nextData) {
-                    debug.push('__NEXT_DATA__ exists, keys: ' + Object.keys(nextData).join(','));
-                    const props = nextData.props?.pageProps;
-                    if (props) {
-                        debug.push('pageProps keys: ' + Object.keys(props).join(','));
-                        if (props.inintBatchFeedsData?.batchFeeds) {
-                            const rawData = props.inintBatchFeedsData.batchFeeds;
-                            debug.push('batchFeeds found: ' + rawData.length + ' batches');
-                            for (const batch of rawData) {
-                                const feeds = batch.feeds || [];
-                                for (const feed of feeds) {
-                                    const common = feed.commonInfo || {};
-                                    const param = feed.modelParameter?.videoParameter || {};
-                                    const meta = feed.metaInfo?.videoMetaInfo?.mediaInfo || {};
-                                    const dl = meta.downloadURL || {};
-                                    results.push({
-                                        desc: param.desc || '',
-                                        status: common.status,
-                                        downloadURL: dl.withoutWatermarkURL || '',
-                                        videoURL: meta.url || '',
-                                        batchID: batch.batchID || '',
-                                        createTime: common.createTime || 0,
-                                    });
-                                }
-                            }
-                        }
-                    }
-                } else {
-                    debug.push('__NEXT_DATA__ not found');
-                }
-            } catch(e) {
-                debug.push('__NEXT_DATA__ error: ' + e.message);
+            const html = document.documentElement.innerHTML;
+            const idx = html.indexOf('inintBatchFeedsData');
+            if (idx < 0) {
+                debug.push('inintBatchFeedsData not found in HTML');
+                return {results, debug};
+            }
+            debug.push('found inintBatchFeedsData at ' + idx);
+            // 打印附近300字符看实际格式
+            const ctx = html.substring(idx, idx + 400);
+            debug.push('context: ' + ctx.substring(0, 300));
+
+            // 搜索 batchFeeds 的各种转义形式
+            const variants = ['"batchFeeds":[', '\\\\"batchFeeds\\\\":[', '\\\\u0022batchFeeds\\\\u0022:['];
+            let bfIdx = -1;
+            let prefix = '';
+            for (const v of variants) {
+                bfIdx = html.indexOf(v, idx);
+                if (bfIdx >= 0) { prefix = v; break; }
             }
 
-            // 方案2：从页面 HTML 中搜索 batchFeeds
-            if (results.length === 0) {
-                const html = document.documentElement.innerHTML;
-                const idx = html.indexOf('inintBatchFeedsData');
-                if (idx >= 0) {
-                    debug.push('found inintBatchFeedsData at ' + idx);
-                    // 打印附近200字符看实际格式
-                    debug.push('context: ' + html.substring(idx, idx + 300).replace(/</g, '&lt;'));
-
-                    // 尝试多种格式匹配 batchFeeds
-                    let bfIdx = html.indexOf('"batchFeeds":[', idx);
-                    if (bfIdx < 0) bfIdx = html.indexOf('\\"batchFeeds\\":[', idx);
-                    if (bfIdx < 0) bfIdx = html.indexOf('\\u0022batchFeeds\\u0022:[', idx);
-                    if (bfIdx < 0) bfIdx = html.indexOf('batchFeeds', idx + 19); // skip the first one
-
-                    if (bfIdx >= 0) {
-                        debug.push('found batchFeeds variant at ' + bfIdx);
-                        debug.push('bf context: ' + html.substring(bfIdx, bfIdx + 200));
-                    } else {
-                        debug.push('batchFeeds not found in any format');
-                    }
-                        // 从 batchFeeds 开始，找到匹配的 ]
-                        const start = bfIdx + '"batchFeeds":'.length;
-                        let depth = 0;
-                        let end = start;
-                        for (let i = start; i < html.length && i < start + 500000; i++) {
-                            if (html[i] === '[') depth++;
-                            else if (html[i] === ']') {
-                                depth--;
-                                if (depth === 0) { end = i + 1; break; }
-                            }
-                        }
-                        if (end > start) {
-                            try {
-                                const raw = html.substring(start, end);
-                                // 处理转义的 JSON（SSR 数据可能是双重转义的）
-                                let parsed;
-                                try {
-                                    parsed = JSON.parse(raw);
-                                } catch(e) {
-                                    // 尝试反转义
-                                    const unescaped = raw.replace(/\\\\"/g, '"').replace(/\\\\\\\\/g, '\\\\');
-                                    parsed = JSON.parse(unescaped);
-                                }
-                                debug.push('parsed batchFeeds: ' + parsed.length + ' batches');
-                                for (const batch of parsed) {
-                                    const feeds = batch.feeds || [];
-                                    for (const feed of feeds) {
-                                        const common = feed.commonInfo || {};
-                                        const param = feed.modelParameter?.videoParameter || {};
-                                        const meta = feed.metaInfo?.videoMetaInfo?.mediaInfo || {};
-                                        const dl = meta.downloadURL || {};
-                                        results.push({
-                                            desc: param.desc || '',
-                                            status: common.status,
-                                            downloadURL: dl.withoutWatermarkURL || '',
-                                            videoURL: meta.url || '',
-                                            batchID: batch.batchID || '',
-                                            createTime: common.createTime || 0,
-                                        });
-                                    }
-                                }
-                            } catch(e) {
-                                debug.push('parse error: ' + e.message);
-                                // 打印前200字符帮助调试
-                                debug.push('raw start: ' + html.substring(start, start + 200));
-                            }
-                        }
-                    } else {
-                        debug.push('batchFeeds array not found after inintBatchFeedsData');
-                    }
-                } else {
-                    debug.push('inintBatchFeedsData not found in HTML');
-                }
+            if (bfIdx < 0) {
+                debug.push('batchFeeds array not found in any format');
+                return {results, debug};
             }
+
+            debug.push('found batchFeeds with prefix: ' + prefix + ' at ' + bfIdx);
+            debug.push('bf context: ' + html.substring(bfIdx, bfIdx + 200));
         } catch(e) {
-            debug.push('outer error: ' + e.message);
+            debug.push('error: ' + e.message);
         }
         return {results, debug};
     }""")
