@@ -1017,27 +1017,27 @@ class HailuoAutomationV2:
 
                 # 步骤4.5: 选择分辨率和秒数
                 try:
-                    # 新版触发器：包含分辨率和时长文字的 div
-                    settings_btn = page.locator("div.cursor-pointer:has(span:text('768p')), div.cursor-pointer:has(span:text('1080p'))").first
+                    # 触发器：包含768p/1080p和6s/10s文字的border按钮
+                    settings_btn = page.locator("div.border-hl_line_01.cursor-pointer:has(span)").first
                     if await settings_btn.is_visible(timeout=5000):
                         await settings_btn.scroll_into_view_if_needed()
                         await asyncio.sleep(0.3)
                         await settings_btn.click(force=True)
                         await asyncio.sleep(1)
 
-                        # 新版 popover：包含"分辨率"和"时长"标签的面板
-                        popover = page.locator("div:has(> div > div:has(span:text('分辨率')))").last
+                        # 弹出面板：bg-hl_bg_05 容器
+                        popover = page.locator("div.bg-hl_bg_05:has(div.font-medium)").last
                         await popover.wait_for(state="visible", timeout=3000)
 
-                        # 选择分辨率：点击包含目标分辨率文字的选项
-                        res_option = popover.locator(f"div.cursor-pointer:has(div.font-medium:text('{resolution}'))").first
+                        # 选择分辨率
+                        res_option = popover.locator(f"div.cursor-pointer:has(div.font-medium:text-is('{resolution}'))").first
                         if await res_option.is_visible(timeout=2000):
                             await res_option.click()
                             await asyncio.sleep(0.3)
                             print(f"[AUTO-V2] ✅ 订单#{order_id} 选择分辨率: {resolution}")
 
                         # 选择时长
-                        dur_option = popover.locator(f"div.cursor-pointer:has(div.font-medium:text('{duration}'))").first
+                        dur_option = popover.locator(f"div.cursor-pointer:has(div.font-medium:text-is('{duration}'))").first
                         if await dur_option.is_visible(timeout=2000):
                             await dur_option.click()
                             await asyncio.sleep(0.3)
