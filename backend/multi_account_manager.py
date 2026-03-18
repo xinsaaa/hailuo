@@ -536,36 +536,30 @@ class MultiAccountManager:
             return account_id in self._verified_accounts
 
     async def get_account_credits(self, account_id: str) -> int:
-        """获取账号剩余积分 - 从侧边栏精确读取，避免与主内容区同名CSS类冲突"""
+        """获取账号剩余积分 - 通过 fetch billing/credit API"""
         if account_id not in self.pages:
             return -1
 
         page = self.pages[account_id]
 
         try:
-            print(f"[MULTI-ACCOUNT] 🔍 获取账号 {account_id} 剩余积分...")
-
-            credits = await page.evaluate("""
-                () => {
-                    const sidebar = document.querySelector('div.sidebar-container');
-                    if (!sidebar) return -2;
-
-                    // 积分数字可能带千位逗号，如 "15,766"，先去掉逗号再匹配
-                    const spans = sidebar.querySelectorAll('span');
-                    for (const s of spans) {
-                        const t = s.textContent.trim().replace(/,/g, '');
-                        if (/^\\d+$/.test(t)) return parseInt(t, 10);
+            credits = await page.evaluate("""async () => {
+                try {
+                    const resp = await fetch('/v1/api/billing/credit', {credentials: 'include'});
+                    const data = await resp.json();
+                    if (data && data.data && typeof data.data.total_credit === 'number') {
+                        return data.data.total_credit;
                     }
                     return -1;
+                } catch(e) {
+                    return -1;
                 }
-            """)
+            }""")
 
             if credits >= 0:
                 print(f"[MULTI-ACCOUNT] ✅ 账号 {account_id} 积分: {credits}")
-            elif credits == -2:
-                print(f"[MULTI-ACCOUNT] ⚠️ 账号 {account_id} 侧边栏未加载（页面可能未就绪）")
             else:
-                print(f"[MULTI-ACCOUNT] ⚠️ 账号 {account_id} 侧边栏已加载但未找到积分数字")
+                print(f"[MULTI-ACCOUNT] ⚠️ 账号 {account_id} 获取积分失败")
 
             return credits
 

@@ -937,9 +937,7 @@ class HailuoAutomationV2:
             if not page:
                 continue
             try:
-                # 刷新页面获取最新积分
-                await page.reload(timeout=15000, wait_until="domcontentloaded")
-                await asyncio.sleep(3)
+                # 直接通过API获取积分，不需要刷新页面
                 credits = await self.manager.get_account_credits(account_id)
                 if not hasattr(self, '_account_credits'):
                     self._account_credits = {}
