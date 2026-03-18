@@ -82,79 +82,127 @@ async def fetch_hailuo_videos_via_api(page) -> list:
     # 从页面 JS 中提取 batchFeeds 数据
     captured = await page.evaluate("""() => {
         const results = [];
+        const debug = [];
         try {
-            // 遍历所有 script 标签，找包含 batchFeeds 的 SSR 数据
-            const scripts = document.querySelectorAll('script');
-            let rawData = null;
-            for (const script of scripts) {
-                const text = script.textContent || '';
-                if (text.includes('batchFeeds') && text.includes('__next_f.push')) {
-                    // 提取 JSON 部分
-                    const match = text.match(/self\\.__next_f\\.push\\(\\[1,\\s*"[^"]*"\\]\\)/g);
-                    if (!match) continue;
-                    for (const m of match) {
-                        if (m.includes('batchFeeds')) {
-                            // 提取引号内的 JSON 字符串
-                            const jsonMatch = m.match(/push\\(\\[1,\\s*"(.+)"\\]\\)/s);
-                            if (jsonMatch) {
-                                try {
-                                    // 这是一个转义的 JSON 字符串
-                                    const decoded = JSON.parse('"' + jsonMatch[1].replace(/\\"/g, '"') + '"');
-                                    // 在 decoded 中找 batchFeeds
-                                    const bfMatch = decoded.match(/"batchFeeds":\\[(.+?)\\],"hasMore"/s);
-                                    if (bfMatch) {
-                                        rawData = JSON.parse('[' + bfMatch[1] + ']');
-                                    }
-                                } catch(e) {}
+            // 方案1：从 __NEXT_DATA__ 获取
+            try {
+                const nextData = window.__NEXT_DATA__;
+                if (nextData) {
+                    debug.push('__NEXT_DATA__ exists, keys: ' + Object.keys(nextData).join(','));
+                    const props = nextData.props?.pageProps;
+                    if (props) {
+                        debug.push('pageProps keys: ' + Object.keys(props).join(','));
+                        if (props.inintBatchFeedsData?.batchFeeds) {
+                            const rawData = props.inintBatchFeedsData.batchFeeds;
+                            debug.push('batchFeeds found: ' + rawData.length + ' batches');
+                            for (const batch of rawData) {
+                                const feeds = batch.feeds || [];
+                                for (const feed of feeds) {
+                                    const common = feed.commonInfo || {};
+                                    const param = feed.modelParameter?.videoParameter || {};
+                                    const meta = feed.metaInfo?.videoMetaInfo?.mediaInfo || {};
+                                    const dl = meta.downloadURL || {};
+                                    results.push({
+                                        desc: param.desc || '',
+                                        status: common.status,
+                                        downloadURL: dl.withoutWatermarkURL || '',
+                                        videoURL: meta.url || '',
+                                        batchID: batch.batchID || '',
+                                        createTime: common.createTime || 0,
+                                    });
+                                }
                             }
                         }
                     }
+                } else {
+                    debug.push('__NEXT_DATA__ not found');
                 }
+            } catch(e) {
+                debug.push('__NEXT_DATA__ error: ' + e.message);
             }
 
-            // 备选方案：直接从 window.__NEXT_DATA__ 或全局变量获取
-            if (!rawData) {
-                try {
-                    const nextData = window.__NEXT_DATA__;
-                    if (nextData) {
-                        const props = nextData.props?.pageProps;
-                        if (props?.inintBatchFeedsData?.batchFeeds) {
-                            rawData = props.inintBatchFeedsData.batchFeeds;
+            // 方案2：从页面 HTML 中搜索 batchFeeds
+            if (results.length === 0) {
+                const html = document.documentElement.innerHTML;
+                const idx = html.indexOf('inintBatchFeedsData');
+                if (idx >= 0) {
+                    debug.push('found inintBatchFeedsData in HTML at index ' + idx);
+                    // 找到 batchFeeds 数组的起始位置
+                    const bfIdx = html.indexOf('"batchFeeds":[', idx);
+                    if (bfIdx >= 0) {
+                        debug.push('found batchFeeds at index ' + bfIdx);
+                        // 从 batchFeeds 开始，找到匹配的 ]
+                        const start = bfIdx + '"batchFeeds":'.length;
+                        let depth = 0;
+                        let end = start;
+                        for (let i = start; i < html.length && i < start + 500000; i++) {
+                            if (html[i] === '[') depth++;
+                            else if (html[i] === ']') {
+                                depth--;
+                                if (depth === 0) { end = i + 1; break; }
+                            }
                         }
+                        if (end > start) {
+                            try {
+                                const raw = html.substring(start, end);
+                                // 处理转义的 JSON（SSR 数据可能是双重转义的）
+                                let parsed;
+                                try {
+                                    parsed = JSON.parse(raw);
+                                } catch(e) {
+                                    // 尝试反转义
+                                    const unescaped = raw.replace(/\\\\"/g, '"').replace(/\\\\\\\\/g, '\\\\');
+                                    parsed = JSON.parse(unescaped);
+                                }
+                                debug.push('parsed batchFeeds: ' + parsed.length + ' batches');
+                                for (const batch of parsed) {
+                                    const feeds = batch.feeds || [];
+                                    for (const feed of feeds) {
+                                        const common = feed.commonInfo || {};
+                                        const param = feed.modelParameter?.videoParameter || {};
+                                        const meta = feed.metaInfo?.videoMetaInfo?.mediaInfo || {};
+                                        const dl = meta.downloadURL || {};
+                                        results.push({
+                                            desc: param.desc || '',
+                                            status: common.status,
+                                            downloadURL: dl.withoutWatermarkURL || '',
+                                            videoURL: meta.url || '',
+                                            batchID: batch.batchID || '',
+                                            createTime: common.createTime || 0,
+                                        });
+                                    }
+                                }
+                            } catch(e) {
+                                debug.push('parse error: ' + e.message);
+                                // 打印前200字符帮助调试
+                                debug.push('raw start: ' + html.substring(start, start + 200));
+                            }
+                        }
+                    } else {
+                        debug.push('batchFeeds array not found after inintBatchFeedsData');
                     }
-                } catch(e) {}
-            }
-
-            if (!rawData || !Array.isArray(rawData)) return results;
-
-            for (const batch of rawData) {
-                const batchID = batch.batchID || '';
-                const feeds = batch.feeds || [];
-                for (const feed of feeds) {
-                    const common = feed.commonInfo || {};
-                    const param = feed.modelParameter?.videoParameter || {};
-                    const meta = feed.metaInfo?.videoMetaInfo?.mediaInfo || {};
-                    const dl = meta.downloadURL || {};
-                    results.push({
-                        desc: param.desc || '',
-                        status: common.status,
-                        downloadURL: dl.withoutWatermarkURL || '',
-                        videoURL: meta.url || '',
-                        batchID: batchID,
-                        createTime: common.createTime || 0,
-                    });
+                } else {
+                    debug.push('inintBatchFeedsData not found in HTML');
                 }
             }
         } catch(e) {
-            // 返回空数组
+            debug.push('outer error: ' + e.message);
         }
-        return results;
+        return {results, debug};
     }""")
 
-    if not captured:
+    debug_info = captured.get("debug", []) if isinstance(captured, dict) else []
+    video_list = captured.get("results", []) if isinstance(captured, dict) else captured
+
+    for d in debug_info:
+        print(f"[API-DEBUG] {d}")
+
+    if not video_list:
         print(f"[API-DEBUG] 未从SSR数据中提取到视频")
     else:
-        print(f"[API-DEBUG] 从SSR数据提取到 {len(captured)} 个视频")
+        print(f"[API-DEBUG] 从SSR数据提取到 {len(video_list)} 个视频")
+
+    return video_list
 
     return captured
 
