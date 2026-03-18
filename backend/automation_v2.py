@@ -79,38 +79,73 @@ async def fetch_hailuo_videos_via_api(page) -> list:
     except Exception as e:
         print(f"[API-DEBUG] reload异常: {str(e)[:80]}")
 
-    # 从页面 JS 中提取 batchFeeds 数据
-    captured = await page.evaluate("""() => {
+    # 从页面 SSR 数据中提取 batchFeeds
+    # 数据在 self.__next_f.push([1, "..."]) 的转义字符串里
+    # innerHTML 中引号显示为 \" ，需要找到整个 push 字符串并反转义
+    captured = await page.evaluate(r"""() => {
         const results = [];
         const debug = [];
         try {
             const html = document.documentElement.innerHTML;
-            const idx = html.indexOf('inintBatchFeedsData');
-            if (idx < 0) {
-                debug.push('inintBatchFeedsData not found in HTML');
-                return {results, debug};
-            }
-            debug.push('found inintBatchFeedsData at ' + idx);
-            // 打印附近300字符看实际格式
-            const ctx = html.substring(idx, idx + 400);
-            debug.push('context: ' + ctx.substring(0, 300));
-
-            // 搜索 batchFeeds 的各种转义形式
-            const variants = ['"batchFeeds":[', '\\\\"batchFeeds\\\\":[', '\\\\u0022batchFeeds\\\\u0022:['];
-            let bfIdx = -1;
-            let prefix = '';
-            for (const v of variants) {
-                bfIdx = html.indexOf(v, idx);
-                if (bfIdx >= 0) { prefix = v; break; }
-            }
-
+            // 在 innerHTML 中，转义引号显示为 \"
+            // 搜索 \"batchFeeds\":[
+            const marker = 'batchFeeds\\":[';
+            const bfIdx = html.indexOf(marker);
             if (bfIdx < 0) {
-                debug.push('batchFeeds array not found in any format');
+                debug.push('batchFeeds not found in HTML');
+                return {results, debug};
+            }
+            debug.push('found batchFeeds at ' + bfIdx);
+
+            // 从 [ 开始，匹配到对应的 ]
+            const start = bfIdx + 'batchFeeds\\":'.length;
+            let depth = 0;
+            let end = start;
+            for (let i = start; i < html.length && i < start + 1000000; i++) {
+                const ch = html[i];
+                if (ch === '[') depth++;
+                else if (ch === ']') {
+                    depth--;
+                    if (depth === 0) { end = i + 1; break; }
+                }
+            }
+            if (end <= start) {
+                debug.push('failed to find matching ]');
                 return {results, debug};
             }
 
-            debug.push('found batchFeeds with prefix: ' + prefix + ' at ' + bfIdx);
-            debug.push('bf context: ' + html.substring(bfIdx, bfIdx + 200));
+            // 提取并反转义：\" -> " , \\\\ -> \\
+            let raw = html.substring(start, end);
+            raw = raw.replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+            debug.push('raw length: ' + raw.length);
+
+            let batches;
+            try {
+                batches = JSON.parse(raw);
+            } catch(e) {
+                debug.push('JSON parse error: ' + e.message);
+                debug.push('raw start: ' + raw.substring(0, 300));
+                return {results, debug};
+            }
+
+            debug.push('parsed ' + batches.length + ' batches');
+            for (const batch of batches) {
+                const feeds = batch.feeds || [];
+                for (const feed of feeds) {
+                    const common = feed.commonInfo || {};
+                    const param = feed.modelParameter?.videoParameter || {};
+                    const meta = feed.metaInfo?.videoMetaInfo?.mediaInfo || {};
+                    const dl = meta.downloadURL || {};
+                    results.push({
+                        desc: param.desc || '',
+                        status: common.status,
+                        downloadURL: dl.withoutWatermarkURL || '',
+                        videoURL: meta.url || '',
+                        batchID: batch.batchID || '',
+                        createTime: common.createTime || 0,
+                    });
+                }
+            }
         } catch(e) {
             debug.push('error: ' + e.message);
         }
