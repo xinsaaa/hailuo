@@ -126,11 +126,22 @@ async def fetch_hailuo_videos_via_api(page) -> list:
                 const html = document.documentElement.innerHTML;
                 const idx = html.indexOf('inintBatchFeedsData');
                 if (idx >= 0) {
-                    debug.push('found inintBatchFeedsData in HTML at index ' + idx);
-                    // 找到 batchFeeds 数组的起始位置
-                    const bfIdx = html.indexOf('"batchFeeds":[', idx);
+                    debug.push('found inintBatchFeedsData at ' + idx);
+                    // 打印附近200字符看实际格式
+                    debug.push('context: ' + html.substring(idx, idx + 300).replace(/</g, '&lt;'));
+
+                    // 尝试多种格式匹配 batchFeeds
+                    let bfIdx = html.indexOf('"batchFeeds":[', idx);
+                    if (bfIdx < 0) bfIdx = html.indexOf('\\"batchFeeds\\":[', idx);
+                    if (bfIdx < 0) bfIdx = html.indexOf('\\u0022batchFeeds\\u0022:[', idx);
+                    if (bfIdx < 0) bfIdx = html.indexOf('batchFeeds', idx + 19); // skip the first one
+
                     if (bfIdx >= 0) {
-                        debug.push('found batchFeeds at index ' + bfIdx);
+                        debug.push('found batchFeeds variant at ' + bfIdx);
+                        debug.push('bf context: ' + html.substring(bfIdx, bfIdx + 200));
+                    } else {
+                        debug.push('batchFeeds not found in any format');
+                    }
                         // 从 batchFeeds 开始，找到匹配的 ]
                         const start = bfIdx + '"batchFeeds":'.length;
                         let depth = 0;
