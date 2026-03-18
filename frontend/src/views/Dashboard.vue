@@ -165,12 +165,23 @@ const playVideo = (url) => {
   showVideoPlayer.value = true
 }
 
-const getDownloadFilename = (order) => {
+const getDownloadFilename = (order, idx) => {
   // 取prompt前20个字符，去掉特殊字符，拼上订单ID
   let name = (order.prompt || '').replace(/\[#ORD\d+\]/g, '').trim()
   name = name.replace(/[\\/:*?"<>|]/g, '').substring(0, 20).trim()
   if (!name) name = '视频'
-  return `${name}_${order.id}.mp4`
+  const suffix = idx !== undefined ? `_${idx + 1}` : ''
+  return `${name}_${order.id}${suffix}.mp4`
+}
+
+const getVideoUrls = (order) => {
+  if (order.video_urls) {
+    try {
+      const urls = JSON.parse(order.video_urls)
+      if (Array.isArray(urls) && urls.length > 0) return urls
+    } catch (e) {}
+  }
+  return order.video_url ? [order.video_url] : []
 }
 
 const getVideoUrl = (url) => {
@@ -915,35 +926,39 @@ const handleLogout = () => {
                         <div class="w-1.5 h-1.5 bg-purple-400 rounded-full shadow-[0_0_5px_rgba(192,132,252,0.8)]"></div>
                         <span class="text-xs text-gray-300">{{ order.model_name }}</span>
                       </div>
-                      <!-- 本地视频：播放+下载 -->
+                      <div v-if="order.quantity > 1" class="flex items-center gap-1.5 px-2 py-0.5 bg-white/5 rounded border border-white/5">
+                        <span class="text-xs text-gray-300">×{{ order.quantity }}</span>
+                      </div>
+                      <!-- 视频：支持批量多个 -->
                       <template v-if="order.status === 'completed' && order.video_url">
-                        <button v-if="order.video_url.startsWith('/videos/')"
-                          @click="playVideo(getVideoUrl(order.video_url))"
-                          class="px-3 py-1 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 text-xs rounded-full border border-cyan-500/20 hover:border-cyan-500/40 transition-all flex items-center gap-1.5 group/btn">
-                          <svg class="w-3 h-3 transition-transform group-hover/btn:scale-110" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                          </svg>
-                          <span class="font-bold">播放</span>
-                        </button>
-                        <a v-if="order.video_url.startsWith('/videos/')"
-                          :href="getVideoUrl(order.video_url)" :download="getDownloadFilename(order)"
-                          class="px-3 py-1 bg-green-500/10 hover:bg-green-500/20 text-green-400 text-xs rounded-full border border-green-500/20 hover:border-green-500/40 transition-all flex items-center gap-1.5 group/btn">
-                          <svg class="w-3 h-3 transition-transform group-hover/btn:scale-110" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
-                          </svg>
-                          <span class="font-bold">下载</span>
-                        </a>
-                        <!-- 外部链接回退 -->
-                        <a v-if="!order.video_url.startsWith('/videos/')"
-                          :href="order.video_url" target="_blank"
-                          class="px-3 py-1 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 text-xs rounded-full border border-cyan-500/20 hover:border-cyan-500/40 transition-all flex items-center gap-1.5 group/btn">
-                          <svg class="w-3 h-3 transition-transform group-hover/btn:scale-110" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                          </svg>
-                          <span class="font-bold">观看视频</span>
-                        </a>
+                        <template v-for="(url, idx) in getVideoUrls(order)" :key="idx">
+                          <button v-if="url.startsWith('/videos/')"
+                            @click="playVideo(getVideoUrl(url))"
+                            class="px-3 py-1 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 text-xs rounded-full border border-cyan-500/20 hover:border-cyan-500/40 transition-all flex items-center gap-1.5 group/btn">
+                            <svg class="w-3 h-3 transition-transform group-hover/btn:scale-110" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                            <span class="font-bold">{{ getVideoUrls(order).length > 1 ? `播放${idx+1}` : '播放' }}</span>
+                          </button>
+                          <a v-if="url.startsWith('/videos/')"
+                            :href="getVideoUrl(url)" :download="getDownloadFilename(order, idx)"
+                            class="px-3 py-1 bg-green-500/10 hover:bg-green-500/20 text-green-400 text-xs rounded-full border border-green-500/20 hover:border-green-500/40 transition-all flex items-center gap-1.5 group/btn">
+                            <svg class="w-3 h-3 transition-transform group-hover/btn:scale-110" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                            </svg>
+                            <span class="font-bold">{{ getVideoUrls(order).length > 1 ? `下载${idx+1}` : '下载' }}</span>
+                          </a>
+                          <a v-if="!url.startsWith('/videos/')"
+                            :href="url" target="_blank"
+                            class="px-3 py-1 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 text-xs rounded-full border border-cyan-500/20 hover:border-cyan-500/40 transition-all flex items-center gap-1.5 group/btn">
+                            <svg class="w-3 h-3 transition-transform group-hover/btn:scale-110" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                            <span class="font-bold">{{ getVideoUrls(order).length > 1 ? `观看${idx+1}` : '观看视频' }}</span>
+                          </a>
+                        </template>
                       </template>
                       <button v-if="order.status === 'failed'"
                         @click="retryOrder(order)"

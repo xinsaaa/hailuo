@@ -656,6 +656,7 @@ class HailuoAutomationV2:
                     "video_type": getattr(o, 'video_type', 'image_to_video'),
                     "resolution": getattr(o, 'resolution', '768p'),
                     "duration": getattr(o, 'duration', '6s'),
+                    "quantity": getattr(o, 'quantity', 1),
                 }
                 for o in orders
             ]
@@ -722,14 +723,7 @@ class HailuoAutomationV2:
                         batch_groups[bid] = []
                     batch_groups[bid].append(v)
 
-            # 已处理的子订单集合（避免重复处理）
-            processed_child_oids = set()
-
             for oid in list(pending_orders.keys()):
-                # 跳过已被批量处理的子订单
-                if oid in processed_child_oids:
-                    continue
-
                 tag = f"[#ORD{oid}]"
                 matched = None
                 matched_batch_id = None
@@ -744,50 +738,65 @@ class HailuoAutomationV2:
                     total_processing += 1
                     continue
 
-                # 查询该订单是否有子订单（批量）
+                # 读取订单的批量数量
                 with Session(engine) as session:
-                    from sqlmodel import select as sql_select
-                    children = session.exec(
-                        sql_select(VideoOrder).where(VideoOrder.batch_parent_id == oid).order_by(VideoOrder.batch_index)
-                    ).all()
-                    child_ids = [c.id for c in children]
+                    order_obj = session.get(VideoOrder, oid)
+                    order_quantity = getattr(order_obj, 'quantity', 1) if order_obj else 1
 
-                # 获取同 batchID 的所有视频
-                batch_videos = batch_groups.get(matched_batch_id, [matched])
-
-                # 按顺序分配：主订单 + 子订单
-                all_order_ids = [oid] + child_ids
-                for idx, order_id_to_complete in enumerate(all_order_ids):
-                    if idx >= len(batch_videos):
-                        print(f"[AUTO-V2] ⏳ 订单#{order_id_to_complete} 批量视频尚未全部生成（{idx+1}/{len(all_order_ids)}）")
-                        total_processing += 1
-                        continue
-
-                    v = batch_videos[idx]
-                    api_status = v.get("status")
-                    download_url = v.get("downloadURL", "")
+                if order_quantity <= 1:
+                    # 单个视频
+                    api_status = matched.get("status")
+                    download_url = matched.get("downloadURL", "")
 
                     if api_status == 2 and download_url:
-                        print(f"[AUTO-V2] ✅ 订单#{order_id_to_complete} API检测到已完成，downloadURL: {download_url[:80]}...")
+                        print(f"[AUTO-V2] ✅ 订单#{oid} API检测到已完成，downloadURL: {download_url[:80]}...")
                         total_completed += 1
 
-                        dedup_key = f"order_{order_id_to_complete}"
+                        dedup_key = f"order_{oid}"
                         if dedup_key in _processed_share_links:
                             continue
                         if len(_processed_share_links) > _MAX_SHARE_LINKS:
                             _processed_share_links.clear()
                         _processed_share_links.add(dedup_key)
 
-                        await self._complete_order(order_id_to_complete, download_url)
+                        await self._complete_order(oid, download_url)
                         if account_id in self._account_orders:
-                            self._account_orders[account_id].discard(order_id_to_complete)
+                            self._account_orders[account_id].discard(oid)
                     else:
-                        print(f"[AUTO-V2] ⏳ 订单#{order_id_to_complete} 状态={api_status}，生成中...")
+                        print(f"[AUTO-V2] ⏳ 订单#{oid} 状态={api_status}，生成中...")
                         total_processing += 1
+                else:
+                    # 批量：收集同 batchID 的所有视频
+                    batch_videos = batch_groups.get(matched_batch_id, [matched])
 
-                    # 标记子订单已处理
-                    if order_id_to_complete != oid:
-                        processed_child_oids.add(order_id_to_complete)
+                    ready_urls = []
+                    all_ready = True
+                    for idx in range(order_quantity):
+                        if idx >= len(batch_videos):
+                            all_ready = False
+                            break
+                        v = batch_videos[idx]
+                        if v.get("status") == 2 and v.get("downloadURL"):
+                            ready_urls.append(v["downloadURL"])
+                        else:
+                            all_ready = False
+                            break
+
+                    if all_ready and len(ready_urls) == order_quantity:
+                        dedup_key = f"order_{oid}"
+                        if dedup_key in _processed_share_links:
+                            continue
+                        if len(_processed_share_links) > _MAX_SHARE_LINKS:
+                            _processed_share_links.clear()
+                        _processed_share_links.add(dedup_key)
+
+                        await self._complete_batch_order(oid, ready_urls)
+                        if account_id in self._account_orders:
+                            self._account_orders[account_id].discard(oid)
+                        total_completed += 1
+                    else:
+                        print(f"[AUTO-V2] ⏳ 订单#{oid} 批量视频尚未全部生成（{len(ready_urls)}/{order_quantity}）")
+                        total_processing += 1
 
             if total_completed > 0 or total_processing > 0:
                 print(f"[AUTO-V2] 📊 账号{account_id} API扫描结果: 完成{total_completed}个, 生成中{total_processing}个")
@@ -891,29 +900,17 @@ class HailuoAutomationV2:
 
         order_id = order["id"]
 
-        # 子订单不单独提交（由主订单批量提交）
-        with Session(engine) as session:
-            current_order = session.get(VideoOrder, order_id)
-            if current_order and current_order.batch_parent_id is not None:
-                print(f"[AUTO-V2] 订单#{order_id}是子订单（主订单#{current_order.batch_parent_id}），跳过")
-                return
-
         # 先检查订单是否已经不是pending了（可能被扫描循环标记为completed）
         with Session(engine) as session:
             current_order = session.get(VideoOrder, order_id)
             if current_order and current_order.status != "pending":
                 print(f"[AUTO-V2] 订单#{order_id}状态已变为{current_order.status}，跳过处理")
                 return
-            # 查询批量子订单数量
-            batch_quantity = 1
-            if current_order and current_order.batch_index is not None:
-                from sqlmodel import select as sql_select
-                child_orders = session.exec(
-                    sql_select(VideoOrder).where(VideoOrder.batch_parent_id == order_id)
-                ).all()
-                batch_quantity = 1 + len(child_orders)
-                if batch_quantity > 1:
-                    print(f"[AUTO-V2] 订单#{order_id} 批量数量: {batch_quantity}")
+
+        # 直接从订单字典读取批量数量
+        batch_quantity = order.get("quantity", 1)
+        if batch_quantity > 1:
+            print(f"[AUTO-V2] 订单#{order_id} 批量数量: {batch_quantity}")
 
         prompt = order["prompt"]
         model_name = order.get("model_name", "Hailuo 2.3")
@@ -1153,43 +1150,14 @@ class HailuoAutomationV2:
                         if account_id not in self._account_orders:
                             self._account_orders[account_id] = set()
                         self._account_orders[account_id].add(order_id)
-                        # 批量子订单也标记为 generating 并加入扫描队列
-                        if batch_quantity > 1:
-                            with Session(engine) as session:
-                                from sqlmodel import select as sql_select
-                                children = session.exec(
-                                    sql_select(VideoOrder).where(VideoOrder.batch_parent_id == order_id)
-                                ).all()
-                                for child in children:
-                                    self.update_order_status(child.id, "generating")
-                                    self._account_orders[account_id].add(child.id)
-                                print(f"[AUTO-V2] 📌 批量子订单 {[c.id for c in children]} 也已标记generating")
                         print(f"[AUTO-V2] 📌 订单#{order_id} 已加入账号 {account_id} 的扫描队列，当前队列: {self._account_orders[account_id]}")
                     else:
                         print(f"[AUTO-V2] ❌ 订单#{order_id}重试3次后仍无确认信号，标记失败")
                         self.update_order_status(order_id, "failed")
-                        # 批量子订单也标记失败
-                        if batch_quantity > 1:
-                            with Session(engine) as session:
-                                from sqlmodel import select as sql_select
-                                children = session.exec(
-                                    sql_select(VideoOrder).where(VideoOrder.batch_parent_id == order_id)
-                                ).all()
-                                for child in children:
-                                    self.update_order_status(child.id, "failed")
-                                print(f"[AUTO-V2] ❌ 批量子订单 {[c.id for c in children]} 也已标记失败")
                         return
                 else:
                     print(f"[AUTO-V2] ❌ 未找到生成按钮")
                     self.update_order_status(order_id, "failed")
-                    if batch_quantity > 1:
-                        with Session(engine) as session:
-                            from sqlmodel import select as sql_select
-                            children = session.exec(
-                                sql_select(VideoOrder).where(VideoOrder.batch_parent_id == order_id)
-                            ).all()
-                            for child in children:
-                                self.update_order_status(child.id, "failed")
                     return
             # ===== 提交锁释放 =====
 
@@ -1436,6 +1404,48 @@ class HailuoAutomationV2:
             session.add(order)
             session.commit()
         print(f"[AUTO-V2] ✅ 订单#{order_id} 已完成，视频: {local_url}")
+        self._processing_order_ids.discard(order_id)
+
+    async def _complete_batch_order(self, order_id: int, download_urls: list):
+        """下载批量视频并存储到 video_urls（JSON数组）"""
+        import httpx
+        import json
+
+        local_urls = []
+        for idx, download_url in enumerate(download_urls):
+            filename = f"order_{order_id}_{idx+1}.mp4"
+            filepath = os.path.join(VIDEOS_DIR, filename)
+            local_url = f"/videos/{filename}"
+
+            try:
+                print(f"[AUTO-V2] 📥 订单#{order_id} 下载视频 {idx+1}/{len(download_urls)}...")
+                async with httpx.AsyncClient(timeout=120, follow_redirects=True) as client:
+                    resp = await client.get(download_url)
+                    if resp.status_code == 200:
+                        with open(filepath, "wb") as f:
+                            f.write(resp.content)
+                        size_mb = os.path.getsize(filepath) / (1024 * 1024)
+                        print(f"[AUTO-V2] 📥 订单#{order_id} 视频{idx+1} 下载完成 ({size_mb:.1f}MB)")
+                    else:
+                        local_url = download_url
+            except Exception as e:
+                print(f"[AUTO-V2] ❌ 订单#{order_id} 视频{idx+1} 下载异常: {str(e)[:80]}")
+                local_url = download_url
+
+            local_urls.append(local_url)
+
+        with Session(engine) as session:
+            order = session.get(VideoOrder, order_id)
+            if not order or order.status == "completed":
+                return
+            order.video_url = local_urls[0]
+            order.video_urls = json.dumps(local_urls)
+            order.status = "completed"
+            order.progress = 100
+            order.updated_at = datetime.utcnow()
+            session.add(order)
+            session.commit()
+        print(f"[AUTO-V2] ✅ 订单#{order_id} 批量完成，{len(local_urls)}个视频")
         self._processing_order_ids.discard(order_id)
 
     def update_order_status(self, order_id: int, status: str):

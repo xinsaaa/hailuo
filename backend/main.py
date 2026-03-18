@@ -1167,79 +1167,49 @@ async def create_order(
     current_user.balance -= total_cost
     session.add(current_user)
 
-    # 创建主订单
+    # 创建订单（单条记录，quantity记录批量数量）
     new_order = VideoOrder(
         user_id=current_user.id,
         prompt=prompt,
         video_url=None,
-        cost=cost,
+        cost=total_cost,
         model_name=model_name,
         video_type=video_type,
         resolution=resolution,
         duration=duration,
         first_frame_image=first_frame_path,
         last_frame_image=last_frame_path,
-        batch_parent_id=None,
-        batch_index=0 if quantity > 1 else None,
+        quantity=quantity,
     )
     session.add(new_order)
-    session.flush()  # 获取主订单ID
+    session.flush()
 
     transaction = Transaction(
         user_id=current_user.id,
-        amount=cost,
+        amount=total_cost,
         bonus=0,
         type="expense"
     )
     session.add(transaction)
 
-    # 创建子订单
-    child_orders = []
-    for i in range(1, quantity):
-        child = VideoOrder(
-            user_id=current_user.id,
-            prompt=prompt,
-            video_url=None,
-            cost=cost,
-            model_name=model_name,
-            video_type=video_type,
-            resolution=resolution,
-            duration=duration,
-            first_frame_image=first_frame_path,
-            last_frame_image=last_frame_path,
-            batch_parent_id=new_order.id,
-            batch_index=i,
-        )
-        session.add(child)
-        child_tx = Transaction(
-            user_id=current_user.id,
-            amount=cost,
-            bonus=0,
-            type="expense"
-        )
-        session.add(child_tx)
-        child_orders.append(child)
-
     session.commit()
     session.refresh(new_order)
-    for c in child_orders:
-        session.refresh(c)
-    
-    # 根据运行模式选择订单路由（只对主订单触发自动化）
+
+    # 根据运行模式选择订单路由
     enable_multi_account = os.getenv("ENABLE_MULTI_ACCOUNT", "true").lower() == "true"
     if enable_multi_account:
         try:
             from backend.automation_v2 import process_order_immediately
             import asyncio
             asyncio.create_task(process_order_immediately(new_order.id))
-            app_logger.info(f"订单#{new_order.id}已提交立即处理（批量{quantity}）")
+            app_logger.info(f"订单#{new_order.id}已提交立即处理（数量{quantity}）")
         except Exception as e:
             app_logger.error(f"提交订单立即处理失败: {e}")
     else:
         import asyncio
         asyncio.create_task(run_hailuo_task(new_order.id))
 
-    return [new_order] + child_orders if child_orders else new_order
+    return new_order
 
 
 @app.get("/api/orders")

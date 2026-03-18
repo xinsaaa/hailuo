@@ -37,8 +37,10 @@ class VideoOrder(SQLModel, table=True):
     resolution: Optional[str] = Field(default="768p")  # 768p 或 1080p
     duration: Optional[str] = Field(default="6s")  # 6s 或 10s（1080p只能6s）
     # 批量生成
-    batch_parent_id: Optional[int] = Field(default=None, index=True)  # 批量主订单ID（子订单指向主订单）
-    batch_index: Optional[int] = Field(default=None)  # 批量内序号 0,1,2,3
+    batch_parent_id: Optional[int] = Field(default=None, index=True)  # 已废弃，保留兼容
+    batch_index: Optional[int] = Field(default=None)  # 已废弃，保留兼容
+    quantity: int = Field(default=1)  # 批量数量 1-4
+    video_urls: Optional[str] = None  # 批量视频URL列表（JSON数组）
 
 class Transaction(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
@@ -205,6 +207,9 @@ def _auto_migrate():
         ("aimodel", "price_per_second", "REAL DEFAULT 0"),
         ("aimodel", "created_at", "TEXT"),
         ("aimodel", "updated_at", "TEXT"),
+        # 批量订单简化
+        ("videoorder", "quantity", "INTEGER DEFAULT 1"),
+        ("videoorder", "video_urls", "TEXT"),
     ]
 
     # 缓存每张表的现有列
