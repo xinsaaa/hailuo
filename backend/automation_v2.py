@@ -63,7 +63,7 @@ from backend.multi_account_manager import MultiAccountManager, AccountConfig
 
 HAILUO_URL = "https://hailuoai.com/create/image-to-video"
 HAILUO_TEXT_URL = "https://hailuoai.com/create/text-to-video"
-HAILUO_API_KEYWORD = "multimodal/video/my/batchCursor"
+HAILUO_API_KEYWORD = "feed/creation/my/batch"
 
 # ============ 海螺 API 响应解析 ============
 
