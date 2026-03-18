@@ -1054,10 +1054,8 @@ class HailuoAutomationV2:
                 # 步骤4.6: 设置批量数量（如果 > 1）
                 if batch_quantity > 1:
                     try:
-                        # 点击批量按钮（包含层叠图标 svg 的按钮，旁边有数量 span）
-                        batch_btn = page.locator("div.cursor-pointer:has(svg) > span.text-hl_text_02, div.cursor-pointer:has(svg):has(span)").first
-                        # 更精确：找包含数字的批量按钮
-                        batch_btn = page.locator("div.cursor-pointer:has(span.ml-1)").first
+                        # 点击批量按钮：包含层叠svg图标和数字span的div
+                        batch_btn = page.locator("div.cursor-pointer:has(svg):has(span.ml-1)").first
                         if await batch_btn.is_visible(timeout=3000):
                             await batch_btn.click()
                             await asyncio.sleep(1)
@@ -1065,7 +1063,7 @@ class HailuoAutomationV2:
                             # 在弹出的 quantity-popover 中选择数量
                             qty_popover = page.locator("div.quantity-popover").first
                             if await qty_popover.is_visible(timeout=3000):
-                                qty_btn = qty_popover.locator(f"button:has(div:text('{batch_quantity}'))").first
+                                qty_btn = qty_popover.locator(f"button:has(div > div:text-is('{batch_quantity}'))").first
                                 if await qty_btn.is_visible(timeout=2000):
                                     await qty_btn.click()
                                     await asyncio.sleep(0.5)
