@@ -79,7 +79,29 @@ async def fetch_hailuo_videos_via_api(page) -> list:
         try:
             if HAILUO_API_KEYWORD in response.url and response.status == 200:
                 data = await response.json()
+                # 调试：打印API返回的顶层key
+                top_keys = list(data.keys()) if isinstance(data, dict) else type(data).__name__
+                data_keys = list(data.get("data", {}).keys()) if isinstance(data.get("data"), dict) else "N/A"
+                print(f"[API-DEBUG] 顶层keys: {top_keys}, data keys: {data_keys}")
+
                 batches = data.get("data", {}).get("batchVideos", [])
+                if not batches:
+                    # 尝试新版数据结构
+                    items = data.get("data", {}).get("items", [])
+                    if not items:
+                        items = data.get("data", {}).get("videos", [])
+                    if not items:
+                        items = data.get("data", {}).get("list", [])
+                    if items:
+                        print(f"[API-DEBUG] 使用备选字段，找到 {len(items)} 条记录")
+                        # 打印第一条记录的keys用于调试
+                        if items:
+                            print(f"[API-DEBUG] 第一条记录keys: {list(items[0].keys()) if isinstance(items[0], dict) else 'N/A'}")
+                    else:
+                        # 打印完整data用于调试（截断）
+                        import json
+                        print(f"[API-DEBUG] 未找到已知字段，data内容: {json.dumps(data.get('data', {}), ensure_ascii=False)[:500]}")
+
                 for batch in batches:
                     for asset in batch.get("assets", []):
                         captured.append({
@@ -1017,35 +1039,40 @@ class HailuoAutomationV2:
 
                 # 步骤4.5: 选择分辨率和秒数
                 try:
-                    # 触发器：包含768p/1080p和6s/10s文字的border按钮
-                    settings_btn = page.locator("div.border-hl_line_01.cursor-pointer:has(span)").first
+                    # 触发器：包含768p/1080p和时长文字的border按钮（sm:flex，桌面端可见）
+                    settings_btn = page.locator("div.border-hl_line_01.cursor-pointer").first
+                    if not await settings_btn.is_visible(timeout=3000):
+                        # 备选：通过文字内容匹配
+                        settings_btn = page.locator("div.cursor-pointer:has(span:text-is('768p')), div.cursor-pointer:has(span:text-is('1080p'))").first
+
                     if await settings_btn.is_visible(timeout=5000):
                         await settings_btn.scroll_into_view_if_needed()
                         await asyncio.sleep(0.3)
                         await settings_btn.click(force=True)
                         await asyncio.sleep(1)
 
-                        # 弹出面板：bg-hl_bg_05 容器
+                        # 弹出面板：bg-hl_bg_05 容器，包含分辨率和时长选项
                         popover = page.locator("div.bg-hl_bg_05:has(div.font-medium)").last
-                        await popover.wait_for(state="visible", timeout=3000)
+                        if await popover.is_visible(timeout=3000):
+                            # 选择分辨率：text-is 精确匹配
+                            res_option = popover.locator(f"div:has(> div.font-medium:text-is('{resolution}'))").first
+                            if await res_option.is_visible(timeout=2000):
+                                await res_option.click()
+                                await asyncio.sleep(0.3)
+                                print(f"[AUTO-V2] ✅ 订单#{order_id} 选择分辨率: {resolution}")
 
-                        # 选择分辨率
-                        res_option = popover.locator(f"div.cursor-pointer:has(div.font-medium:text-is('{resolution}'))").first
-                        if await res_option.is_visible(timeout=2000):
-                            await res_option.click()
+                            # 选择时长
+                            dur_option = popover.locator(f"div:has(> div.font-medium:text-is('{duration}'))").first
+                            if await dur_option.is_visible(timeout=2000):
+                                await dur_option.click()
+                                await asyncio.sleep(0.3)
+                                print(f"[AUTO-V2] ✅ 订单#{order_id} 选择时长: {duration}")
+
+                            # 关闭 popover
+                            await page.mouse.click(10, 10)
                             await asyncio.sleep(0.3)
-                            print(f"[AUTO-V2] ✅ 订单#{order_id} 选择分辨率: {resolution}")
-
-                        # 选择时长
-                        dur_option = popover.locator(f"div.cursor-pointer:has(div.font-medium:text-is('{duration}'))").first
-                        if await dur_option.is_visible(timeout=2000):
-                            await dur_option.click()
-                            await asyncio.sleep(0.3)
-                            print(f"[AUTO-V2] ✅ 订单#{order_id} 选择时长: {duration}")
-
-                        # 关闭 popover
-                        await page.mouse.click(10, 10)
-                        await asyncio.sleep(0.3)
+                        else:
+                            print(f"[AUTO-V2] ⚠️ 订单#{order_id} 分辨率弹窗未出现")
                     else:
                         print(f"[AUTO-V2] ⚠️ 订单#{order_id} 未找到分辨率设置按钮，使用默认值")
                 except Exception as e:
