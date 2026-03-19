@@ -1418,10 +1418,15 @@ class HailuoAutomationV2:
                 for idx, oid in enumerate(order_ids):
                     print(f"[AUTO-V2] 🖱️ 批量第{idx+1}/{len(order_ids)}个，订单#{oid}")
 
+                    # 第一个订单：模型/分辨率设置刚完成，等页面稳定
+                    if idx == 0:
+                        await asyncio.sleep(2)
+                        await self._dismiss_popup(page)
+
                     if idx > 0:
                         new_prompt = add_tracking_id(prompt, oid)
                         try:
-                            await text_input.click(force=True, timeout=5000)
+                            await text_input.click(force=True, timeout=10000)
                             await asyncio.sleep(0.3)
                             await page.keyboard.press("Control+A")
                             await page.keyboard.press("Delete")
@@ -1497,7 +1502,8 @@ class HailuoAutomationV2:
                         self.update_order_status(oid, "failed")
 
                     if idx < len(order_ids) - 1:
-                        await asyncio.sleep(3)
+                        await asyncio.sleep(5)
+                        await self._dismiss_popup(page)
 
             # 全部提交完成后刷新页面
             print(f"[AUTO-V2] 🔄 批量提交完成，刷新页面...")
