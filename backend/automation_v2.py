@@ -625,7 +625,49 @@ class HailuoAutomationV2:
                             aid = k.rsplit("_", 1)[0]
                             busy_accounts.add(aid)
 
+                    # 按 batch_parent_id 分组批量订单
+                    batch_groups = {}  # batch_parent_id -> [orders]
+                    single_orders = []
                     for order in pending_orders:
+                        if order['id'] in self._processing_order_ids:
+                            continue
+                        bpid = order.get('batch_parent_id')
+                        if bpid:
+                            if bpid not in batch_groups:
+                                batch_groups[bpid] = []
+                            batch_groups[bpid].append(order)
+                        else:
+                            single_orders.append(order)
+
+                    # 处理批量订单组
+                    for bpid, batch_orders in batch_groups.items():
+                        if len(batch_orders) < 2:
+                            single_orders.extend(batch_orders)
+                            continue
+                        account_id = self.manager.get_best_account_for_task(
+                            model_name=batch_orders[0].get('model_name', ''),
+                            account_credits=getattr(self, '_account_credits', {})
+                        )
+                        if not account_id or account_id in busy_accounts:
+                            continue
+                        last_submit = self._account_last_submit.get(account_id)
+                        if last_submit:
+                            elapsed = (datetime.utcnow() - last_submit).total_seconds()
+                            if elapsed < self._submit_cooldown:
+                                continue
+                        for o in batch_orders:
+                            self._processing_order_ids.add(o['id'])
+                            if account_id not in self._account_orders:
+                                self._account_orders[account_id] = set()
+                            self._account_orders[account_id].add(o['id'])
+                        task = asyncio.create_task(self.process_batch_orders(account_id, batch_orders))
+                        batch_key = f"{account_id}_batch_{bpid}"
+                        self.task_handlers[batch_key] = task
+                        busy_accounts.add(account_id)
+                        print(f"[AUTO-V2] 批量订单组 {[o['id'] for o in batch_orders]} 分配给账号 {account_id}")
+
+                    # 处理单个订单
+                    for order in single_orders:
                         if order['id'] in self._processing_order_ids:
                             continue
                         account_id = self.manager.get_best_account_for_task(
@@ -736,6 +778,7 @@ class HailuoAutomationV2:
                     "resolution": getattr(o, 'resolution', '768p'),
                     "duration": getattr(o, 'duration', '6s'),
                     "quantity": getattr(o, 'quantity', 1),
+                    "batch_parent_id": getattr(o, 'batch_parent_id', None),
                 }
                 for o in orders
             ]
@@ -991,11 +1034,6 @@ class HailuoAutomationV2:
                 print(f"[AUTO-V2] 订单#{order_id}状态已变为{current_order.status}，跳过处理")
                 return
 
-        # 直接从订单字典读取批量数量
-        batch_quantity = order.get("quantity", 1)
-        if batch_quantity > 1:
-            print(f"[AUTO-V2] 订单#{order_id} 批量数量: {batch_quantity}")
-
         prompt = order["prompt"]
         model_name = order.get("model_name", "Hailuo 2.3")
         video_type = order.get("video_type", "image_to_video")
@@ -1137,32 +1175,6 @@ class HailuoAutomationV2:
                 except Exception as e:
                     print(f"[AUTO-V2] ⚠️ 订单#{order_id} 设置分辨率/秒数失败: {str(e)[:60]}")
 
-                # 步骤4.6: 设置批量数量（如果 > 1）
-                if batch_quantity > 1:
-                    try:
-                        # 点击批量按钮：包含层叠svg图标和数字span的div
-                        batch_btn = page.locator("div.cursor-pointer:has(svg):has(span.ml-1)").first
-                        if await batch_btn.is_visible(timeout=3000):
-                            await batch_btn.click()
-                            await asyncio.sleep(1)
-
-                            # 在弹出的 quantity-popover 中选择数量
-                            qty_popover = page.locator("div.quantity-popover").first
-                            if await qty_popover.is_visible(timeout=3000):
-                                qty_btn = qty_popover.locator(f"button:has(div > div:text-is('{batch_quantity}'))").first
-                                if await qty_btn.is_visible(timeout=2000):
-                                    await qty_btn.click()
-                                    await asyncio.sleep(0.5)
-                                    print(f"[AUTO-V2] ✅ 订单#{order_id} 设置批量数量: {batch_quantity}")
-                                else:
-                                    print(f"[AUTO-V2] ⚠️ 订单#{order_id} 未找到数量{batch_quantity}的按钮")
-                            else:
-                                print(f"[AUTO-V2] ⚠️ 订单#{order_id} 批量选择弹窗未出现")
-                        else:
-                            print(f"[AUTO-V2] ⚠️ 订单#{order_id} 未找到批量按钮")
-                    except Exception as e:
-                        print(f"[AUTO-V2] ⚠️ 订单#{order_id} 设置批量数量失败: {str(e)[:60]}")
-
                 # 步骤5: 等待popover完全关闭后再找生成按钮
                 await asyncio.sleep(0.5)
                 for pop_sel in [".ant-popover:not(.ant-popover-hidden)"]:
@@ -1256,7 +1268,219 @@ class HailuoAutomationV2:
         finally:
             account.current_tasks = max(0, account.current_tasks - 1)
             self._processing_order_ids.discard(order_id)
-    
+
+    async def process_batch_orders(self, account_id: str, orders: list):
+        """批量处理多个订单 - 填一次表单，点N次生成按钮，每次更换追踪标识"""
+        account = self.manager.accounts.get(account_id)
+        if not account:
+            for o in orders:
+                self.update_order_status(o["id"], "failed")
+            return
+
+        page = self.manager.pages.get(account_id)
+        if not page:
+            for o in orders:
+                self.update_order_status(o["id"], "failed")
+            return
+
+        first_order = orders[0]
+        prompt = first_order["prompt"]
+        model_name = first_order.get("model_name", "Hailuo 2.3")
+        video_type = first_order.get("video_type", "image_to_video")
+        resolution = first_order.get("resolution", "768p")
+        duration = first_order.get("duration", "6s")
+        first_frame_path = first_order.get("first_frame_image")
+        last_frame_path = first_order.get("last_frame_image")
+        is_text_mode = video_type == "text_to_video"
+        order_ids = [o["id"] for o in orders]
+
+        print(f"[AUTO-V2] 🔄 账号 {account.display_name} 开始批量处理 {len(orders)} 个订单: {order_ids}")
+        account.current_tasks += 1
+
+        try:
+            for o in orders:
+                self.update_order_status(o["id"], "processing")
+
+            try:
+                _ = page.url
+            except Exception:
+                try:
+                    await self.manager.create_account_context(account_id)
+                    page = self.manager.pages.get(account_id)
+                    if not page:
+                        raise Exception("页面恢复失败")
+                except Exception:
+                    for o in orders:
+                        self.update_order_status(o["id"], "failed")
+                    return
+
+            target_url = HAILUO_TEXT_URL if is_text_mode else HAILUO_URL
+            nav_ok = False
+            for nav_attempt in range(3):
+                try:
+                    await page.goto(target_url, timeout=30000, wait_until="domcontentloaded")
+                    await asyncio.sleep(2)
+                    nav_ok = True
+                    break
+                except Exception as nav_err:
+                    print(f"[AUTO-V2] ⚠️ 批量订单导航失败(第{nav_attempt+1}次): {str(nav_err)[:80]}")
+                    await asyncio.sleep(3)
+            if not nav_ok:
+                for o in orders:
+                    self.update_order_status(o["id"], "failed")
+                return
+
+            await self._dismiss_popup(page)
+
+            if not is_text_mode:
+                if first_frame_path:
+                    await self._upload_first_frame(page, first_frame_path)
+                if last_frame_path:
+                    await self._switch_to_last_frame_mode(page)
+                    await self._upload_last_frame(page, last_frame_path)
+
+            if account_id not in self._submit_locks:
+                self._submit_locks[account_id] = asyncio.Lock()
+
+            async with self._submit_locks[account_id]:
+                # 填写第一个订单的提示词
+                first_prompt = add_tracking_id(prompt, order_ids[0])
+                text_input = page.locator("#video-create-textarea")
+                if not await text_input.is_visible(timeout=5000):
+                    for o in orders:
+                        self.update_order_status(o["id"], "failed")
+                    return
+                await text_input.click(force=True, timeout=5000)
+                await asyncio.sleep(0.3)
+                await page.keyboard.press("Control+A")
+                await page.keyboard.press("Delete")
+                await page.keyboard.type(first_prompt, delay=10)
+                print(f"[AUTO-V2] ✅ 批量提示词填写完成")
+
+                await self.select_model(page, model_name)
+
+                try:
+                    settings_btn = page.locator("div.border-hl_line_01.cursor-pointer").first
+                    if await settings_btn.is_visible(timeout=5000):
+                        await settings_btn.scroll_into_view_if_needed()
+                        await asyncio.sleep(0.3)
+                        await settings_btn.click(force=True)
+                        await asyncio.sleep(1)
+                        popover = page.locator("div.flex.flex-col.gap-3.p-3").last
+                        if await popover.is_visible(timeout=3000):
+                            res_option = popover.locator(f"div.cursor-pointer:has(div.font-medium:text-is('{resolution}'))").first
+                            if await res_option.is_visible(timeout=2000):
+                                await res_option.click()
+                                await asyncio.sleep(0.3)
+                            dur_option = popover.locator(f"div.cursor-pointer:has(div.font-medium:text-is('{duration}'))").first
+                            if await dur_option.is_visible(timeout=2000):
+                                await dur_option.click()
+                                await asyncio.sleep(0.3)
+                            await page.mouse.click(10, 10)
+                            await asyncio.sleep(0.3)
+                except Exception as e:
+                    print(f"[AUTO-V2] ⚠️ 批量设置分辨率/时长失败: {str(e)[:60]}")
+
+                await asyncio.sleep(0.5)
+                for pop_sel in [".ant-popover:not(.ant-popover-hidden)"]:
+                    try:
+                        pop = page.locator(pop_sel).first
+                        if await pop.is_visible():
+                            await page.keyboard.press("Escape")
+                            await asyncio.sleep(0.5)
+                    except:
+                        pass
+
+                # 逐个点击生成按钮
+                for idx, oid in enumerate(order_ids):
+                    print(f"[AUTO-V2] 🖱️ 批量第{idx+1}/{len(order_ids)}个，订单#{oid}")
+
+                    if idx > 0:
+                        new_prompt = add_tracking_id(prompt, oid)
+                        try:
+                            await text_input.click(force=True, timeout=5000)
+                            await asyncio.sleep(0.3)
+                            await page.keyboard.press("Control+A")
+                            await page.keyboard.press("Delete")
+                            await page.keyboard.type(new_prompt, delay=10)
+                            print(f"[AUTO-V2] ✅ 已更新追踪标识为 [#ORD{oid}]")
+                        except Exception as e:
+                            print(f"[AUTO-V2] ❌ 订单#{oid} 更新追踪标识失败: {str(e)[:60]}")
+                            self.update_order_status(oid, "failed")
+                            continue
+
+                    generate_btn = None
+                    for selector in ["button.new-color-btn-bg", "button:has-text('生成')", "button:has-text('开始生成')", "button[type='submit']"]:
+                        try:
+                            btn = page.locator(selector).first
+                            if await btn.count() > 0:
+                                generate_btn = btn
+                                break
+                        except:
+                            continue
+
+                    if not generate_btn:
+                        print(f"[AUTO-V2] ❌ 订单#{oid} 未找到生成按钮")
+                        self.update_order_status(oid, "failed")
+                        continue
+
+                    submit_confirmed = False
+                    for click_attempt in range(3):
+                        if click_attempt > 0:
+                            await asyncio.sleep(2)
+                            for selector in ["button.new-color-btn-bg", "button:has-text('生成')", "button:has-text('开始生成')"]:
+                                try:
+                                    btn = page.locator(selector).first
+                                    if await btn.count() > 0:
+                                        generate_btn = btn
+                                        break
+                                except:
+                                    continue
+                        try:
+                            await generate_btn.scroll_into_view_if_needed()
+                            await asyncio.sleep(0.5)
+                        except:
+                            pass
+                        await generate_btn.click(force=True)
+                        print(f"[AUTO-V2] 🖱️ 订单#{oid} 已点击生成（第{click_attempt+1}次）")
+
+                        await asyncio.sleep(8)
+                        result = await check_order_in_api(page, oid)
+                        if result:
+                            submit_confirmed = True
+                            print(f"[AUTO-V2] ✅ API确认订单#{oid}已提交")
+                            break
+
+                    if submit_confirmed:
+                        self.update_order_status(oid, "generating")
+                        self._account_last_submit[account_id] = datetime.utcnow()
+                        if account_id not in self._account_orders:
+                            self._account_orders[account_id] = set()
+                        self._account_orders[account_id].add(oid)
+                    else:
+                        print(f"[AUTO-V2] ❌ 订单#{oid} 3次点击均未确认，标记失败")
+                        self.update_order_status(oid, "failed")
+
+                    if idx < len(order_ids) - 1:
+                        await asyncio.sleep(3)
+
+            # 全部提交完成后刷新页面
+            print(f"[AUTO-V2] 🔄 批量提交完成，刷新页面...")
+            await asyncio.sleep(2)
+            await page.goto(HAILUO_URL, timeout=30000, wait_until="domcontentloaded")
+            await asyncio.sleep(3)
+            print(f"[AUTO-V2] ✅ 批量订单 {order_ids} 处理完成")
+
+        except Exception as e:
+            print(f"[AUTO-V2] ❌ 批量处理异常: {e}")
+            for o in orders:
+                if o["id"] not in self._account_orders.get(account_id, set()):
+                    self.update_order_status(o["id"], "failed")
+        finally:
+            account.current_tasks = max(0, account.current_tasks - 1)
+            for o in orders:
+                self._processing_order_ids.discard(o["id"])
+
     async def select_model(self, page: Page, model_name: str):
         """选择指定的AI模型"""
         try:
@@ -1652,6 +1876,66 @@ class HailuoAutomationV2:
         self.task_handlers[f"{account_id}_{order_id}"] = task
         log_success(f"⚡ 订单#{order_id}已立即分配给账号 {account_id}")
         return True
+
+    async def process_batch_immediately(self, order_ids: list) -> bool:
+        """批量立即处理 - 多个订单一起提交，填一次表单点N次生成"""
+        if not self.is_running:
+            print(f"[AUTO-V2] ⚠️ 系统未运行，批量订单无法处理")
+            return False
+
+        order_dicts = []
+        with Session(engine) as session:
+            for oid in order_ids:
+                order = session.get(VideoOrder, oid)
+                if not order or order.status != "pending":
+                    continue
+                order_dicts.append({
+                    "id": order.id,
+                    "prompt": order.prompt,
+                    "model_name": order.model_name,
+                    "first_frame_image": getattr(order, 'first_frame_image', None),
+                    "last_frame_image": getattr(order, 'last_frame_image', None),
+                    "user_id": order.user_id,
+                    "video_type": getattr(order, 'video_type', 'image_to_video'),
+                    "resolution": getattr(order, 'resolution', '768p'),
+                    "duration": getattr(order, 'duration', '6s'),
+                })
+
+        if not order_dicts:
+            print(f"[AUTO-V2] ⚠️ 批量订单中无有效pending订单")
+            return False
+
+        model_name = order_dicts[0].get("model_name", "")
+        account_id = self.manager.get_best_account_for_task(
+            model_name=model_name,
+            account_credits=getattr(self, '_account_credits', {})
+        )
+
+        if not account_id:
+            log_info(f"📭 批量订单{order_ids}暂无可用账号，等待主循环处理")
+            return False
+
+        account_has_task = any(
+            k.startswith(f"{account_id}_") for k, t in self.task_handlers.items()
+            if not t.done()
+        )
+        if account_has_task:
+            log_info(f"账号 {account_id} 已有任务运行，批量订单等待主循环处理")
+            return False
+
+        for o in order_dicts:
+            self._processing_order_ids.add(o["id"])
+            if account_id not in self._account_orders:
+                self._account_orders[account_id] = set()
+            self._account_orders[account_id].add(o["id"])
+
+        task = asyncio.create_task(
+            self.process_batch_orders(account_id, order_dicts)
+        )
+        batch_key = f"{account_id}_batch_{'_'.join(str(o['id']) for o in order_dicts)}"
+        self.task_handlers[batch_key] = task
+        log_success(f"⚡ 批量订单{order_ids}已立即分配给账号 {account_id}")
+        return True
     
     async def stop(self):
         """停止自动化系统"""
@@ -1740,6 +2024,10 @@ def get_automation_v2_status():
 async def process_order_immediately(order_id: int) -> bool:
     """立即处理订单 - 供 API 直接调用"""
     return await automation_v2.process_order_immediately(order_id)
+
+async def process_batch_immediately(order_ids: list) -> bool:
+    """批量立即处理 - 供 API 直接调用"""
+    return await automation_v2.process_batch_immediately(order_ids)
 
 async def add_account(account_config: dict):
     """添加新账号（只保存配置，不自动登录，登录由用户手动触发）"""
