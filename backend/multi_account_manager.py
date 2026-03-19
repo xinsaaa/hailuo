@@ -536,34 +536,41 @@ class MultiAccountManager:
             return account_id in self._verified_accounts
 
     async def get_account_credits(self, account_id: str) -> int:
-        """获取账号剩余积分 - 通过 fetch billing/credit API"""
+        """获取账号剩余积分 - 监听页面刷新时的 billing/credit API 响应"""
         if account_id not in self.pages:
             return -1
 
         page = self.pages[account_id]
+        captured_credits = {"value": -1}
+
+        async def on_response(response):
+            try:
+                if "billing/credit" in response.url and response.status == 200:
+                    data = await response.json()
+                    if data and data.get("data") and isinstance(data["data"].get("total_credit"), (int, float)):
+                        captured_credits["value"] = int(data["data"]["total_credit"])
+                        print(f"[CREDITS-DEBUG] 捕获到积分: {captured_credits['value']} from {response.url[:80]}")
+            except Exception as e:
+                print(f"[CREDITS-DEBUG] 解析响应异常: {str(e)[:80]}")
 
         try:
-            credits = await page.evaluate("""async () => {
-                try {
-                    const resp = await fetch('/v1/api/billing/credit', {credentials: 'include'});
-                    const data = await resp.json();
-                    if (data && data.data && typeof data.data.total_credit === 'number') {
-                        return data.data.total_credit;
-                    }
-                    return -1;
-                } catch(e) {
-                    return -1;
-                }
-            }""")
+            page.on("response", on_response)
+            try:
+                await page.reload(timeout=30000, wait_until="networkidle")
+                await asyncio.sleep(2)
+            except Exception as e:
+                print(f"[CREDITS-DEBUG] reload异常: {str(e)[:80]}")
+            page.remove_listener("response", on_response)
 
-            if credits >= 0:
-                print(f"[MULTI-ACCOUNT] ✅ 账号 {account_id} 积分: {credits}")
+            if captured_credits["value"] >= 0:
+                print(f"[MULTI-ACCOUNT] ✅ 账号 {account_id} 积分: {captured_credits['value']}")
             else:
-                print(f"[MULTI-ACCOUNT] ⚠️ 账号 {account_id} 获取积分失败")
+                print(f"[MULTI-ACCOUNT] ⚠️ 账号 {account_id} 未捕获到积分响应")
 
-            return credits
+            return captured_credits["value"]
 
         except Exception as e:
+            page.remove_listener("response", on_response)
             print(f"[MULTI-ACCOUNT] 获取积分失败 {account_id}: {e}")
             return -1
 

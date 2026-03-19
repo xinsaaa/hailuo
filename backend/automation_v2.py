@@ -67,17 +67,30 @@ HAILUO_API_KEYWORD = "feed/creation/my/batch"
 
 # ============ 海螺 SSR 数据解析 ============
 
-async def fetch_hailuo_videos_via_api(page) -> list:
+async def fetch_hailuo_videos_via_api(page) -> tuple:
     """
-    刷新页面并从 SSR __next_f.push 数据中提取视频列表。
-    每个视频: {desc, status, downloadURL, videoURL, batchID, createTime}
-    status: 2=完成, 其他=生成中/失败
+    刷新页面并从 SSR __next_f.push 数据中提取视频列表，同时监听 billing/credit 获取积分。
+    返回: (video_list, credits)
+    credits: >= 0 表示成功，-1 表示未捕获
     """
+    captured_credits = {"value": -1}
+
+    async def on_response(response):
+        try:
+            if "billing/credit" in response.url and response.status == 200:
+                data = await response.json()
+                if data and data.get("data") and isinstance(data["data"].get("total_credit"), (int, float)):
+                    captured_credits["value"] = int(data["data"]["total_credit"])
+        except Exception:
+            pass
+
+    page.on("response", on_response)
     try:
         await page.reload(timeout=30000, wait_until="networkidle")
         await asyncio.sleep(2)
     except Exception as e:
         print(f"[API-DEBUG] reload异常: {str(e)[:80]}")
+    page.remove_listener("response", on_response)
 
     # 从页面 SSR 数据中提取 batchFeeds
     # 数据在 self.__next_f.push([1, "..."]) 的转义字符串里
@@ -163,9 +176,10 @@ async def fetch_hailuo_videos_via_api(page) -> list:
     else:
         print(f"[API-DEBUG] 从SSR数据提取到 {len(video_list)} 个视频")
 
-    return video_list
+    if captured_credits["value"] >= 0:
+        print(f"[API-DEBUG] 捕获积分: {captured_credits['value']}")
 
-    return captured
+    return video_list, captured_credits["value"]
 
 
 async def check_order_in_api(page, order_id: int) -> dict | None:
@@ -173,7 +187,7 @@ async def check_order_in_api(page, order_id: int) -> dict | None:
     刷新页面，通过 API 监听检查指定订单是否存在。
     返回匹配的视频信息 dict 或 None。
     """
-    videos = await fetch_hailuo_videos_via_api(page)
+    videos, _credits = await fetch_hailuo_videos_via_api(page)
     tag = f"[#ORD{order_id}]"
     for v in videos:
         if tag in v.get("desc", ""):
@@ -773,8 +787,15 @@ class HailuoAutomationV2:
 
             # 监听 API 响应并刷新页面
             print(f"[AUTO-V2] 🔍 账号{account_id} 通过API扫描 {len(pending_orders)} 个订单...")
-            videos = await fetch_hailuo_videos_via_api(page)
+            videos, credits = await fetch_hailuo_videos_via_api(page)
             print(f"[AUTO-V2] 📡 API返回 {len(videos)} 个视频记录")
+
+            # 顺便更新积分缓存
+            if credits >= 0:
+                if not hasattr(self, '_account_credits'):
+                    self._account_credits = {}
+                self._account_credits[account_id] = credits
+                print(f"[AUTO-V2] 💰 账号{account_id} 积分: {credits}")
 
             total_completed = 0
             total_processing = 0
