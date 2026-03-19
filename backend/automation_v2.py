@@ -260,6 +260,10 @@ class HailuoAutomationV2:
         self._account_last_submit: Dict[str, datetime] = {}
         # 提交冷却时间（秒）：同一账号两次提交之间的最小间隔
         self._submit_cooldown = 10
+        # 提交确认：account_id -> asyncio.Event，点击生成前 set event，监听到响应后 set
+        self._submit_events: Dict[str, asyncio.Event] = {}
+        # 提交结果：account_id -> dict (API响应data)
+        self._submit_results: Dict[str, dict] = {}
         
     async def start(self):
         """启动多账号自动化系统"""
@@ -323,7 +327,12 @@ class HailuoAutomationV2:
                 login_results = await asyncio.gather(*login_tasks, return_exceptions=True)
                 success_count = sum(1 for result in login_results if result is True)
                 log_success(f"成功登录 {success_count}/{len(login_tasks)} 个账号")
-            
+
+            # 为每个已登录账号的页面注册 processing API 进度监听器
+            for account_id, page in self.manager.pages.items():
+                if account_id in self.manager._verified_accounts:
+                    self._setup_progress_listener(page, account_id)
+
             # 启动任务处理循环
             log_info("启动任务处理循环...")
             self._loop_task = asyncio.create_task(self.task_processing_loop())
@@ -459,6 +468,10 @@ class HailuoAutomationV2:
                 results = await asyncio.gather(*login_tasks, return_exceptions=True)
                 success_count = sum(1 for r in results if r is True)
                 print(f"[AUTO-V2] ✅ 重启后成功登录 {success_count}/{len(login_tasks)} 个账号")
+                # 重新注册进度监听器
+                for account_id, page in self.manager.pages.items():
+                    if account_id in self.manager._verified_accounts:
+                        self._setup_progress_listener(page, account_id)
         except Exception as e:
             print(f"[AUTO-V2] ❌ 重启时重新登录失败: {e}")
 
@@ -1207,7 +1220,13 @@ class HailuoAutomationV2:
 
                 if generate_btn:
                     submit_confirmed = False
+                    # 初始化提交确认事件
+                    self._submit_events[account_id] = asyncio.Event()
+                    self._submit_results.pop(account_id, None)
                     for click_attempt in range(3):
+                        # 每次重试前重置事件
+                        self._submit_events[account_id].clear()
+                        self._submit_results.pop(account_id, None)
                         if click_attempt > 0:
                             print(f"[AUTO-V2] 🔁 订单#{order_id}第{click_attempt+1}次尝试点击生成按钮...")
                             await asyncio.sleep(2)
@@ -1229,13 +1248,17 @@ class HailuoAutomationV2:
                         await generate_btn.click(force=True)
                         print(f"[AUTO-V2] 🖱️ 已点击生成按钮（第{click_attempt+1}次）")
 
-                        # 确认信号：等待后刷新页面，通过 API 监听检测订单是否提交成功
-                        await asyncio.sleep(8)
-                        result = await check_order_in_api(page, order_id)
-                        if result:
-                            submit_confirmed = True
-                            print(f"[AUTO-V2] ✅ API确认订单#{order_id}已提交，status={result.get('status')}")
-                            break
+                        # 通过 API 监听确认提交成功（监听 generate/video 响应）
+                        try:
+                            await asyncio.wait_for(self._submit_events[account_id].wait(), timeout=15)
+                            submit_result = self._submit_results.get(account_id)
+                            if submit_result:
+                                submit_confirmed = True
+                                batch_id = submit_result.get("task", {}).get("batchID", "")
+                                print(f"[AUTO-V2] ✅ API确认订单#{order_id}已提交，batchID={batch_id}")
+                                break
+                        except asyncio.TimeoutError:
+                            print(f"[AUTO-V2] ⏳ 订单#{order_id}第{click_attempt+1}次点击未收到API确认，重试...")
 
                     if submit_confirmed:
                         print(f"[AUTO-V2] ✅ 订单#{order_id}已确认提交生成")
@@ -1425,7 +1448,13 @@ class HailuoAutomationV2:
                         continue
 
                     submit_confirmed = False
+                    # 初始化提交确认事件
+                    self._submit_events[account_id] = asyncio.Event()
+                    self._submit_results.pop(account_id, None)
                     for click_attempt in range(3):
+                        # 每次重试前重置事件
+                        self._submit_events[account_id].clear()
+                        self._submit_results.pop(account_id, None)
                         if click_attempt > 0:
                             await asyncio.sleep(2)
                             for selector in ["button.new-color-btn-bg", "button:has-text('生成')", "button:has-text('开始生成')"]:
@@ -1444,11 +1473,17 @@ class HailuoAutomationV2:
                         await generate_btn.click(force=True)
                         print(f"[AUTO-V2] 🖱️ 订单#{oid} 已点击生成（第{click_attempt+1}次）")
 
-                        await asyncio.sleep(8)
-                        result = await check_order_in_api(page, oid)
-                        if result:
-                            submit_confirmed = True
-                            print(f"[AUTO-V2] ✅ API确认订单#{oid}已提交")
+                        # 通过 API 监听确认提交成功
+                        try:
+                            await asyncio.wait_for(self._submit_events[account_id].wait(), timeout=15)
+                            submit_result = self._submit_results.get(account_id)
+                            if submit_result:
+                                submit_confirmed = True
+                                batch_id = submit_result.get("task", {}).get("batchID", "")
+                                print(f"[AUTO-V2] ✅ API确认订单#{oid}已提交，batchID={batch_id}")
+                                break
+                        except asyncio.TimeoutError:
+                            print(f"[AUTO-V2] ⏳ 订单#{oid}第{click_attempt+1}次点击未收到API确认，重试...")
                             break
 
                     if submit_confirmed:
@@ -1589,6 +1624,61 @@ class HailuoAutomationV2:
                 order.progress = progress
                 session.add(order)
                 session.commit()
+
+    def _setup_progress_listener(self, page, account_id: str):
+        """为页面注册 API 监听器：提交确认 + 进度同步"""
+        async def _on_api_response(response):
+            try:
+                url = response.url
+                # 1. 提交确认：监听 generate/video 接口
+                if "multimodal/generate/video" in url and response.status == 200:
+                    # 从请求载荷中提取 desc，判断是否属于当前等待的订单
+                    try:
+                        req_body = response.request.post_data
+                        if req_body:
+                            import json as _json
+                            req_data = _json.loads(req_body)
+                            desc = req_data.get("parameter", {}).get("desc", "")
+                            req_order_id = extract_order_id_from_text(desc)
+                            if req_order_id:
+                                print(f"[SUBMIT-API] 检测到订单#{req_order_id}的提交请求")
+                    except Exception:
+                        req_order_id = None
+
+                    data = await response.json()
+                    status_info = data.get("statusInfo", {})
+                    if status_info.get("code") == 0 and data.get("data"):
+                        self._submit_results[account_id] = data["data"]
+                        event = self._submit_events.get(account_id)
+                        if event:
+                            event.set()
+                            batch_id = data['data'].get('task', {}).get('batchID', '')
+                            print(f"[SUBMIT-API] 账号{account_id} 提交成功，batchID={batch_id}")
+                    return
+
+                # 2. 进度同步：监听 processing 接口
+                if "feed/creation/my/processing" in url and response.status == 200:
+                    data = await response.json()
+                    if not data or not data.get("data"):
+                        return
+                    batch_feeds = data["data"].get("batchFeeds", [])
+                    for batch in batch_feeds:
+                        for feed in batch.get("feeds", []):
+                            common_info = feed.get("commonInfo", {})
+                            content_info = feed.get("contentInfo", {})
+                            percent = common_info.get("percent", 0)
+                            status = common_info.get("status", 0)
+                            title = content_info.get("title", "")
+                            order_id = extract_order_id_from_text(title)
+                            if order_id and percent > 0:
+                                self._update_order_progress(order_id, percent)
+                                if status == 2:
+                                    print(f"[PROGRESS] 订单#{order_id} 已完成 (100%)")
+            except Exception:
+                pass
+
+        page.on("response", _on_api_response)
+        print(f"[AUTO-V2] 📡 账号{account_id} 已注册 API 监听器（提交确认+进度同步）")
 
     async def _dismiss_popup(self, page: Page):
         """关闭弹窗 - 移植自V1"""

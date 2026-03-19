@@ -43,6 +43,9 @@ const videoMode = ref('image') // 'text' 或 'image'
 const resolution = ref('768p') // '768p' 或 '1080p'
 const duration = ref('6s') // '6s' 或 '10s'
 
+// 批量生成数量（1-5）
+const batchCount = ref(1)
+
 // 1080p只能选6s
 watch(resolution, (val) => {
   if (val === '1080p') {
@@ -279,7 +282,7 @@ const handleCreateOrder = async () => {
   }
 
   const modelPrice = (duration.value === '10s' && selectedModel.value?.price_10s) ? selectedModel.value.price_10s : (selectedModel.value?.price || 0.99)
-  const totalCost = modelPrice
+  const totalCost = modelPrice * batchCount.value
   if (!user.value || user.value.balance < totalCost) {
     showBalanceInsufficient(totalCost)
     return
@@ -297,7 +300,8 @@ const handleCreateOrder = async () => {
       videoMode.value === 'image' ? lastFrameImage.value : null,
       videoType,
       resolution.value,
-      duration.value
+      duration.value,
+      batchCount.value
     )
     showNotification('订单提交成功！AI 正在为您生成...', 'success')
     prompt.value = ''
@@ -734,6 +738,20 @@ const handleLogout = () => {
                   </div>
                   <span v-if="resolution === '1080p'" class="text-gray-500 text-xs">1080p仅支持6秒</span>
                 </div>
+                <!-- 批量生成 -->
+                <div class="flex items-center gap-2">
+                  <span class="text-gray-400 text-sm">数量</span>
+                  <div class="flex items-center gap-1 p-1 bg-black/30 rounded-xl border border-white/10">
+                    <button
+                      v-for="n in 5" :key="n"
+                      @click="batchCount = n"
+                      class="px-3 py-1.5 text-sm font-medium rounded-lg transition-all duration-200"
+                      :class="batchCount === n
+                        ? 'bg-gradient-to-r from-emerald-500/80 to-teal-500/80 text-white shadow-lg shadow-emerald-900/30'
+                        : 'text-gray-400 hover:text-white hover:bg-white/5'"
+                    >{{ n }}</button>
+                  </div>
+                </div>
               </div>
 
               <div class="relative group">
@@ -866,8 +884,8 @@ const handleLogout = () => {
                 
                 <div class="flex items-center gap-6">
                   <div class="text-right">
-                     <span class="text-xs text-gray-500 block">本次消耗</span>
-                     <span class="text-lg font-bold text-white leading-none">¥{{ currentPrice.toFixed(2) }}</span>
+                     <span class="text-xs text-gray-500 block">本次消耗{{ batchCount > 1 ? ` (${batchCount}个)` : '' }}</span>
+                     <span class="text-lg font-bold text-white leading-none">¥{{ (currentPrice * batchCount).toFixed(2) }}</span>
                   </div>
                   <button 
                     @click="handleCreateOrder"

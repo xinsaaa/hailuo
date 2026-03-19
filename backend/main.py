@@ -1114,8 +1114,8 @@ async def create_order(
         raise HTTPException(status_code=400, detail="1080p分辨率仅支持6秒")
 
     # 校验批量数量
-    if quantity < 1 or quantity > 4:
-        raise HTTPException(status_code=400, detail="批量数量仅支持1-4")
+    if quantity < 1 or quantity > 5:
+        raise HTTPException(status_code=400, detail="批量数量仅支持1-5")
 
     # 图生视频必须上传首帧图片
     if video_type == "image_to_video" and not first_frame_image:
@@ -1170,22 +1170,28 @@ async def create_order(
     current_user.balance -= total_cost
     session.add(current_user)
 
-    # 创建订单（单条记录，quantity记录批量数量）
-    new_order = VideoOrder(
-        user_id=current_user.id,
-        prompt=prompt,
-        video_url=None,
-        cost=total_cost,
-        model_name=model_name,
-        video_type=video_type,
-        resolution=resolution,
-        duration=duration,
-        first_frame_image=first_frame_path,
-        last_frame_image=last_frame_path,
-        quantity=quantity,
-    )
-    session.add(new_order)
-    session.flush()
+    # 批量创建N个独立订单，每个订单对应一次生成按钮点击
+    created_orders = []
+    batch_group = None
+    for i in range(quantity):
+        new_order = VideoOrder(
+            user_id=current_user.id,
+            prompt=prompt,
+            video_url=None,
+            cost=cost,  # 每个订单的单价
+            model_name=model_name,
+            video_type=video_type,
+            resolution=resolution,
+            duration=duration,
+            first_frame_image=first_frame_path,
+            last_frame_image=last_frame_path,
+            quantity=1,
+        )
+        session.add(new_order)
+        session.flush()
+        created_orders.append(new_order)
+        if batch_group is None:
+            batch_group = new_order.id  # 用第一个订单ID作为批次标识
 
     transaction = Transaction(
         user_id=current_user.id,
@@ -1196,23 +1202,32 @@ async def create_order(
     session.add(transaction)
 
     session.commit()
-    session.refresh(new_order)
+    for o in created_orders:
+        session.refresh(o)
 
     # 根据运行模式选择订单路由
     enable_multi_account = os.getenv("ENABLE_MULTI_ACCOUNT", "true").lower() == "true"
     if enable_multi_account:
         try:
-            from backend.automation_v2 import process_order_immediately
+            from backend.automation_v2 import process_order_immediately, process_batch_immediately
             import asyncio
-            asyncio.create_task(process_order_immediately(new_order.id))
-            app_logger.info(f"订单#{new_order.id}已提交立即处理（数量{quantity}）")
+            if quantity > 1:
+                # 批量订单：一起提交，填一次表单点N次生成
+                order_ids = [o.id for o in created_orders]
+                asyncio.create_task(process_batch_immediately(order_ids))
+                app_logger.info(f"批量订单 {order_ids} 已提交批量处理")
+            else:
+                asyncio.create_task(process_order_immediately(created_orders[0].id))
+                app_logger.info(f"订单#{created_orders[0].id}已提交立即处理")
         except Exception as e:
             app_logger.error(f"提交订单立即处理失败: {e}")
     else:
         import asyncio
-        asyncio.create_task(run_hailuo_task(new_order.id))
+        for o in created_orders:
+            asyncio.create_task(run_hailuo_task(o.id))
 
-    return new_order
+    # 返回第一个订单（前端兼容）
+    return created_orders[0]
 
 
 @app.get("/api/orders")
