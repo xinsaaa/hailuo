@@ -288,6 +288,17 @@ const handleCreateOrder = async () => {
     return
   }
 
+  // 批量生成时弹窗确认
+  if (batchCount.value > 1) {
+    showBatchWarning.value = true
+    return
+  }
+
+  await doCreateOrder()
+}
+
+const doCreateOrder = async () => {
+  showBatchWarning.value = false
   loading.value = true
 
   const videoType = videoMode.value === 'text' ? 'text_to_video' : 'image_to_video'
@@ -396,6 +407,9 @@ const showBalanceInsufficient = (price) => {
   insufficientPrice.value = price
   showInsufficientModal.value = true
 }
+
+// 批量生成确认弹窗
+const showBatchWarning = ref(false)
 
 // 失败订单重试
 const retryOrder = async (order) => {
@@ -995,6 +1009,28 @@ const handleLogout = () => {
             <div class="flex gap-3">
               <button @click="showInsufficientModal = false" class="flex-1 py-2.5 bg-white/5 hover:bg-white/10 text-gray-300 rounded-xl text-sm font-medium border border-white/10 transition-all">取消</button>
               <button @click="showInsufficientModal = false; router.push('/recharge')" class="flex-1 py-2.5 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white rounded-xl text-sm font-bold transition-all shadow-lg shadow-cyan-900/30">去充值</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Transition>
+
+    <!-- 批量生成确认弹窗 -->
+    <Transition name="toast">
+      <div v-if="showBatchWarning" class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50" @click.self="showBatchWarning = false">
+        <div class="bg-[#0f1115]/95 border border-white/10 rounded-2xl p-8 max-w-sm w-full mx-4 shadow-2xl">
+          <div class="text-center">
+            <div class="w-16 h-16 bg-amber-500/10 rounded-full flex items-center justify-center mx-auto mb-4">
+              <svg class="w-8 h-8 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+              </svg>
+            </div>
+            <h3 class="text-lg font-bold text-white mb-2">批量生成提示</h3>
+            <p class="text-gray-400 text-sm mb-1">您选择了批量生成 <span class="text-white font-bold">{{ batchCount }}</span> 个视频</p>
+            <p class="text-gray-500 text-sm mb-6">批量生成存在一定失败几率，失败的订单将自动退还余额</p>
+            <div class="flex gap-3">
+              <button @click="showBatchWarning = false" class="flex-1 py-2.5 bg-white/5 hover:bg-white/10 text-gray-300 rounded-xl text-sm font-medium border border-white/10 transition-all">取消</button>
+              <button @click="doCreateOrder()" class="flex-1 py-2.5 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white rounded-xl text-sm font-bold transition-all shadow-lg shadow-cyan-900/30">确认生成</button>
             </div>
           </div>
         </div>
