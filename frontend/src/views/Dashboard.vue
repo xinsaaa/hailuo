@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { getCurrentUser, createOrder, getOrders, getPublicConfig, getAvailableModels, forceScanOrder as forceScanOrderApi } from '../api'
+import { getCurrentUser, createOrder, getOrders, getPublicConfig, getAvailableModels } from '../api'
 
 const route = useRoute()
 const router = useRouter()
@@ -403,25 +403,6 @@ const retryOrder = async (order) => {
   showNotification('已填入原始描述，请点击生成', 'info')
 }
 
-// 强制扫描卡住的订单
-const forceScanning = ref(false)
-const forceScanOrder = async (orderId) => {
-  if (forceScanning.value) return
-  forceScanning.value = true
-  try {
-    await forceScanOrderApi(orderId)
-    showNotification('已触发扫描，请稍候...', 'success')
-    // 3秒后刷新订单列表
-    setTimeout(() => {
-      loadData()
-    }, 3000)
-  } catch (err) {
-    showNotification(err.response?.data?.detail || '扫描失败', 'error')
-  } finally {
-    forceScanning.value = false
-  }
-}
-
 // 格式化 UTC 时间为本地时间显示
 const formatUTCTime = (utcTimeStr) => {
   if (!utcTimeStr) return ''
@@ -431,25 +412,7 @@ const formatUTCTime = (utcTimeStr) => {
 }
 
 // 判断订单是否卡住（生成中但进度为0%超过2分钟）
-const isOrderStuck = (order) => {
-  // 条件1: 状态必须是 generating 或 processing
-  if (order.status !== 'generating' && order.status !== 'processing') return false
-  
-  // 条件2: 进度必须为 0、null 或 undefined（无进度更新）
-  const progress = order.progress ?? 0
-  if (progress > 0) return false
-  
-  // 条件3: 订单创建时间超过 2 分钟
-  // 注意：服务器返回的是 UTC 时间字符串，需要正确解析
-  const createdAt = new Date(order.created_at + 'Z')  // 添加 Z 表示 UTC
-  const now = new Date()
-  const minutesDiff = (now - createdAt) / 1000 / 60
-  
-  // 调试日志
-  console.log(`[isOrderStuck] 订单#${order.id}: status=${order.status}, progress=${progress}, minutesDiff=${minutesDiff.toFixed(1)}`)
-  
-  return minutesDiff > 2
-}
+
 
 const copyInviteCode = () => {
   if (!user.value || !user.value.invite_code) return
@@ -990,49 +953,14 @@ const handleLogout = () => {
                     </span>
                   </div>
                 </div>
-                <!-- 进度条 -->
+                <!-- 生成中提示 -->
                 <div v-if="order.status === 'processing' || order.status === 'generating'" class="mt-4 bg-white/5 rounded-lg p-3 border border-white/5">
-                  <div class="flex items-center justify-between mb-2">
-                    <span class="text-xs text-gray-400 flex items-center gap-1">
-                       <svg class="w-3 h-3 text-cyan-400 animate-spin" fill="none" viewBox="0 0 24 24">
-                           <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                           <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                       </svg>
-                       {{ order.progress === -1 ? '排队中，等待生成...' : 'AI 正在努力生成中...' }}
-                    </span>
-                    <div class="flex items-center gap-2">
-                      <span class="text-xs font-mono font-bold text-cyan-400">
-                        {{ order.progress === -1 ? '准备中...' : (order.progress || 0) + '%' }}
-                      </span>
-                      <!-- 刷新按钮：订单卡住时显示 -->
-                      <button 
-                        v-if="isOrderStuck(order)"
-                        @click="forceScanOrder(order.id)"
-                        :disabled="forceScanning"
-                        class="px-2 py-1 bg-orange-500/20 hover:bg-orange-500/30 text-orange-400 text-xs rounded border border-orange-500/30 hover:border-orange-500/50 transition-all flex items-center gap-1"
-                        title="订单似乎卡住了，点击尝试刷新状态"
-                      >
-                        <svg class="w-3 h-3" :class="{ 'animate-spin': forceScanning }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-                        </svg>
-                        刷新
-                      </button>
-                    </div>
-                  </div>
-                  <div class="h-1.5 bg-gray-700/50 rounded-full overflow-hidden">
-                    <div 
-                      class="h-full bg-gradient-to-r from-cyan-500 via-purple-500 to-pink-500 rounded-full transition-all duration-500 relative"
-                      :style="{ width: order.progress === -1 ? '5%' : (order.progress || 0) + '%' }"
-                    >
-                       <div class="absolute inset-0 bg-white/20 animate-pulse"></div>
-                    </div>
-                  </div>
-                  <!-- 卡住提示 -->
-                  <div v-if="isOrderStuck(order)" class="mt-2 text-xs text-orange-400/80 flex items-center gap-1">
-                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                  <div class="flex items-center gap-2">
+                    <svg class="w-4 h-4 text-cyan-400 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                      <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                     </svg>
-                    订单可能卡住了，点击刷新按钮尝试恢复
+                    <span class="text-sm text-gray-400">AI 正在生成中...</span>
                   </div>
                 </div>
               </div>

@@ -217,11 +217,6 @@ export const getOrders = async () => {
     return response.data
 }
 
-export const forceScanOrder = async (orderId) => {
-    const response = await api.post(`/orders/${orderId}/force-scan`)
-    return response.data
-}
-
 export const getAvailableModels = async () => {
     const response = await api.get('/models')
     return response.data
