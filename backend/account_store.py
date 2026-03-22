@@ -84,26 +84,30 @@ class AccountStore:
 
     # ---- CRUD ----
 
-    def add_account(self, cfg: dict) -> AccountConfig:
-        """添加账号。cfg 可含 cookie/uuid/device_id（凭证）"""
-        acc = AccountConfig(
-            account_id=cfg["account_id"],
-            phone_number=cfg.get("phone_number", ""),
-            display_name=cfg.get("display_name", cfg["account_id"]),
-            priority=cfg.get("priority", 5),
-            is_active=cfg.get("is_active", True),
-            max_concurrent=cfg.get("max_concurrent", 3),
-            current_tasks=0,
-            series=cfg.get("series", "2.3"),
-        )
+    def add_account(self, cfg) -> AccountConfig:
+        """添加账号。cfg 可为 AccountConfig 对象或含账号字段的 dict（dict 时可含 cookie/uuid/device_id 凭证）"""
+        if isinstance(cfg, AccountConfig):
+            acc = cfg
+            acc.current_tasks = 0
+        else:
+            acc = AccountConfig(
+                account_id=cfg["account_id"],
+                phone_number=cfg.get("phone_number", ""),
+                display_name=cfg.get("display_name", cfg["account_id"]),
+                priority=cfg.get("priority", 5),
+                is_active=cfg.get("is_active", True),
+                max_concurrent=cfg.get("max_concurrent", 3),
+                current_tasks=0,
+                series=cfg.get("series", "2.3"),
+            )
+            # 保存凭证
+            cred = {}
+            for k in ("cookie", "uuid", "device_id", "token"):
+                if k in cfg:
+                    cred[k] = cfg[k]
+            if cred:
+                self._creds[acc.account_id] = cred
         self.accounts[acc.account_id] = acc
-        # 保存凭证
-        cred = {}
-        for k in ("cookie", "uuid", "device_id", "token"):
-            if k in cfg:
-                cred[k] = cfg[k]
-        if cred:
-            self._creds[acc.account_id] = cred
         self.save()
         return acc
 
