@@ -10,7 +10,7 @@ from typing import Optional
 
 from sqlmodel import Session, select
 
-from backend.models import VideoOrder, engine
+from backend.models import VideoOrder, User, Transaction, engine
 from backend.account_store import account_store
 from backend.hailuo_api import HailuoApiClient
 
@@ -279,6 +279,20 @@ def _fail_order_in_session(session, order, reason: str = ""):
     order.updated_at = datetime.utcnow()
     if reason:
         logger.error(f"[worker] 订单#{order.id}失败: {reason}")
+    # 退款
+    if order.cost and order.cost > 0:
+        user = session.get(User, order.user_id)
+        if user:
+            user.balance += order.cost
+            session.add(user)
+            refund_tx = Transaction(
+                user_id=order.user_id,
+                amount=order.cost,
+                bonus=0,
+                type="refund"
+            )
+            session.add(refund_tx)
+            logger.info(f"[worker] 订单#{order.id}退款 ¥{order.cost} 给用户#{order.user_id}")
     session.add(order)
 
 
