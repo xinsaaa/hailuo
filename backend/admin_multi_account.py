@@ -199,6 +199,12 @@ async def create_account(data: AccountCreateRequest, admin=Depends(get_admin_use
 
 # ============ 单账号操作（/{account_id} 系列，必须放在所有固定路径之后） ============
 
+@router.post("/{account_id}/login")
+async def login_account_alias(account_id: str, admin=Depends(get_admin_user)):
+    """兼容旧前端：返回 success=False 让前端弹出验证码窗口"""
+    return {"success": False, "message": "请使用验证码登录"}
+
+
 @router.post("/{account_id}/send-code")
 async def send_code_for_account(account_id: str, admin=Depends(get_admin_user)):
     """为已有账号重新发送登录验证码"""

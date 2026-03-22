@@ -621,7 +621,7 @@ const sendVerificationCode = async () => {
   verificationModal.loading = true
   try {
     const response = await api.post(`/admin/accounts/${verificationModal.accountId}/send-code`, {}, { timeout: 60000 })
-    if (response.data.success) {
+    if (response.data.ok || response.data.success) {
       verificationModal.step = 'verify'
       startResendCountdown()
       alert('验证码已发送到绑定手机，请查收')
