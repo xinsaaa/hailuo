@@ -164,6 +164,61 @@ def get_account(account_id: str, admin=Depends(get_admin_user)):
     return status["accounts"][account_id]
 
 
+class SendCodeRequest(BaseModel):
+    phone_number: Optional[str] = None
+
+
+class VerifyCodeRequest(BaseModel):
+    code: str
+    phone_number: Optional[str] = None
+
+
+@router.post("/{account_id}/send-code")
+async def send_code_for_account(account_id: str, body: SendCodeRequest = SendCodeRequest(), admin=Depends(get_admin_user)):
+    """兼容旧前端：为已有账号发送登录验证码"""
+    if account_id not in account_store.accounts:
+        raise HTTPException(status_code=404, detail="账号不存在")
+    acc = account_store.accounts[account_id]
+    phone = body.phone_number or acc.phone_number
+    u = str(uuid_module.uuid4())
+    dev = str(random.randint(10**18, 10**19 - 1))
+    _pending_sms[phone] = {"uuid": u, "device_id": dev, "account_id": account_id}
+    resp = await send_sms_code(phone, u, dev)
+    code = resp.get("statusInfo", {}).get("code", -1)
+    if code != 0:
+        msg = resp.get("statusInfo", {}).get("message", "未知错误")
+        raise HTTPException(status_code=400, detail=f"发送验证码失败: {msg}")
+    return {"ok": True, "phone_number": phone}
+
+
+@router.post("/{account_id}/verify-code")
+async def verify_code_for_account(account_id: str, body: VerifyCodeRequest, admin=Depends(get_admin_user)):
+    """兼容旧前端：用验证码登录已有账号"""
+    if account_id not in account_store.accounts:
+        raise HTTPException(status_code=404, detail="账号不存在")
+    acc = account_store.accounts[account_id]
+    phone = body.phone_number or acc.phone_number
+    session = _pending_sms.get(phone)
+    if not session:
+        raise HTTPException(status_code=400, detail="请先发送验证码")
+    resp = await login_with_sms(phone, body.code, session["uuid"], session["device_id"])
+    code = resp.get("statusInfo", {}).get("code", -1)
+    if code != 0:
+        msg = resp.get("statusInfo", {}).get("message", "验证失败")
+        raise HTTPException(status_code=400, detail=f"登录失败: {msg}")
+    d = resp.get("data", {})
+    token = d.get("token", "")
+    if not token:
+        raise HTTPException(status_code=400, detail="未获取到 token")
+    account_store.set_credentials(account_id, {
+        "cookie": f"_token={token}",
+        "uuid": session["uuid"],
+        "device_id": session["device_id"],
+    })
+    _pending_sms.pop(phone, None)
+    return {"ok": True, "account_id": account_id}
+
+
 @router.put("/{account_id}")
 def update_account(account_id: str, data: AccountUpdateRequest, admin=Depends(get_admin_user)):
     if account_id not in account_store.accounts:
