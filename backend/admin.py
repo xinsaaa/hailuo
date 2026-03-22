@@ -15,7 +15,7 @@ from backend.security import (
     is_ip_banned, get_ban_remaining_seconds, get_fail_count,
     record_fail, record_success
 )
-from backend.automation_v2 import automation_v2, start_automation_v2, stop_automation_v2, get_automation_v2_status
+from backend.account_store import account_store
 from jose import JWTError, jwt
 
 # 中国时区 UTC+8
@@ -454,74 +454,47 @@ def update_order(
     return {"message": "更新成功", "order": {"id": order.id, "status": order.status, "video_url": order.video_url}}
 
 
+import logging
+_admin_logger = logging.getLogger("admin")
+
 # ============ 自动化控制 ============
-from backend.automation import automation_logger
 
 @router.get("/automation/status")
 def get_automation_status(admin=Depends(get_admin_user)):
-    """获取自动化运行状态（V2多账号版）"""
-    v2_status = get_automation_v2_status()
-
-    is_running = v2_status.get("is_running", False)
-    active_accounts = v2_status.get("active_accounts", 0)
-    total_accounts = v2_status.get("total_accounts", 0)
-    active_tasks = v2_status.get("active_tasks", 0)
-
-    # 兼容前端现有的 status 字段
-    if is_running and active_accounts > 0:
-        status = "running"
-    elif is_running:
-        status = "starting"
-    else:
-        status = "stopped"
+    """获取自动化运行状态（HTTP API多账号版）"""
+    status_data = account_store.get_status()
+    accounts = status_data.get("accounts", {})
+    active_accounts = sum(1 for a in accounts.values() if a.get("is_active") and a.get("is_logged_in"))
+    total_accounts = len(accounts)
 
     return {
-        "status": status,
-        "is_running": is_running,
+        "status": "running" if active_accounts > 0 else "stopped",
+        "is_running": active_accounts > 0,
         "total_accounts": total_accounts,
         "active_accounts": active_accounts,
-        "active_tasks": active_tasks,
-        "accounts": v2_status.get("accounts", {})
+        "active_tasks": sum(a.get("current_tasks", 0) for a in accounts.values()),
+        "accounts": accounts
     }
 
 
 @router.get("/automation/logs")
 def get_automation_logs(limit: int = 50, admin=Depends(get_admin_user)):
     """获取自动化运行日志"""
-    logs = automation_logger.get_logs(limit)
     return {
-        "logs": logs,
-        "total": len(logs)
+        "logs": [],
+        "total": 0
     }
 
 @router.post("/automation/start")
 async def start_automation(admin=Depends(get_admin_user)):
-    """启动自动化（V2多账号版）"""
-    if automation_v2.is_running:
-        return {"message": "自动化已在运行中"}
-
-    try:
-        automation_logger.info("收到启动请求，正在初始化V2多账号系统...")
-        await start_automation_v2()
-        return {"message": "多账号自动化启动成功"}
-    except Exception as e:
-        automation_logger.error(f"启动失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"启动失败: {str(e)}")
+    """HTTP API模式无需手动启动"""
+    return {"message": "HTTP API模式，账号已就绪，无需启动"}
 
 
 @router.post("/automation/stop")
 async def stop_automation(admin=Depends(get_admin_user)):
-    """停止自动化（V2多账号版）"""
-    if not automation_v2.is_running:
-        return {"message": "自动化未在运行"}
-
-    try:
-        await stop_automation_v2()
-        automation_logger.info("多账号自动化系统已停止")
-        return {"message": "多账号自动化已停止"}
-    except Exception as e:
-        automation_logger.error(f"停止失败: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"停止失败: {str(e)}")
+    """HTTP API模式无需手动停止"""
+    return {"message": "HTTP API模式，无需停止"}
 
 
 # ============ 安全管理 ============
@@ -872,7 +845,7 @@ def manual_cleanup(admin=Depends(get_admin_user)):
         
         return {"message": "清理任务执行成功"}
     except Exception as e:
-        automation_logger.error(f"手动清理失败: {str(e)}")
+        _admin_logger.error(f"手动清理失败: {str(e)}")
         raise HTTPException(status_code=500, detail=f"清理失败: {str(e)}")
 
 

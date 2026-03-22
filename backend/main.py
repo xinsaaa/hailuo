@@ -23,7 +23,7 @@ import re
 from backend.auth import get_password_hash, verify_password, create_access_token, SECRET_KEY, ALGORITHM, generate_invite_code
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import JWTError, jwt
-from backend.automation import run_hailuo_task, start_automation_worker
+from backend.automation import run_hailuo_task, start_automation_worker  # 单账号模式保留
 from backend.security import (
     generate_captcha_challenge, verify_captcha,
     check_rate_limit, is_ip_banned, record_fail, record_success,
@@ -200,39 +200,13 @@ async def startup_event():
     else:
         app_logger.info("Automation worker disabled by config")
     
-    # 自动启动多账号管理系统
+    # HTTP API多账号模式无需启动浏览器
     enable_multi_account = os.getenv("ENABLE_MULTI_ACCOUNT", "true").lower() == "true"
     if enable_multi_account:
-        app_logger.info("Auto-starting multi-account system...")
-        try:
-            import asyncio
-            from backend.automation_v2 import automation_v2
-            # 在后台任务中启动多账号系统（异步）
-            asyncio.create_task(start_multi_account_system())
-            app_logger.info("Multi-account system startup initiated")
-        except Exception as e:
-            app_logger.error("Failed to start multi-account system", exc_info=e)
+        from backend.account_store import account_store
+        app_logger.info(f"HTTP API多账号模式就绪，已加载 {len(account_store.accounts)} 个账号")
     else:
         app_logger.info("Multi-account system disabled by config")
-
-
-async def start_multi_account_system():
-    """异步启动多账号管理系统"""
-    try:
-        from backend.automation_v2 import automation_v2
-        app_logger.info("Starting multi-account system...")
-        await automation_v2.start()
-        
-        # 验证启动状态
-        if automation_v2.is_running:
-            app_logger.info("✅ Multi-account system started successfully")
-        else:
-            app_logger.warning("⚠️ Multi-account system startup completed but is_running=False")
-            
-    except Exception as e:
-        app_logger.error(f"❌ Multi-account system startup failed: {e}", exc_info=True)
-        # 重新抛出异常以便上层处理
-        raise
 
 
 def init_default_models():
@@ -1170,28 +1144,22 @@ async def create_order(
     current_user.balance -= total_cost
     session.add(current_user)
 
-    # 批量创建N个独立订单，每个订单对应一次生成按钮点击
-    created_orders = []
-    batch_group = None
-    for i in range(quantity):
-        new_order = VideoOrder(
-            user_id=current_user.id,
-            prompt=prompt,
-            video_url=None,
-            cost=cost,  # 每个订单的单价
-            model_name=model_name,
-            video_type=video_type,
-            resolution=resolution,
-            duration=duration,
-            first_frame_image=first_frame_path,
-            last_frame_image=last_frame_path,
-            quantity=1,
-        )
-        session.add(new_order)
-        session.flush()
-        created_orders.append(new_order)
-        if batch_group is None:
-            batch_group = new_order.id  # 用第一个订单ID作为批次标识
+    # 创建单条订单，quantity 字段记录批量数量，cost 为总价
+    new_order = VideoOrder(
+        user_id=current_user.id,
+        prompt=prompt,
+        video_url=None,
+        cost=total_cost,
+        model_name=model_name,
+        video_type=video_type,
+        resolution=resolution,
+        duration=duration,
+        first_frame_image=first_frame_path,
+        last_frame_image=last_frame_path,
+        quantity=quantity,
+    )
+    session.add(new_order)
+    session.flush()
 
     transaction = Transaction(
         user_id=current_user.id,
@@ -1202,32 +1170,21 @@ async def create_order(
     session.add(transaction)
 
     session.commit()
-    for o in created_orders:
-        session.refresh(o)
+    session.refresh(new_order)
 
-    # 根据运行模式选择订单路由
+    # 提交订单到HTTP API工作器处理
     enable_multi_account = os.getenv("ENABLE_MULTI_ACCOUNT", "true").lower() == "true"
     if enable_multi_account:
         try:
-            from backend.automation_v2 import process_order_immediately, process_batch_immediately
-            import asyncio
-            if quantity > 1:
-                # 批量订单：一起提交，填一次表单点N次生成
-                order_ids = [o.id for o in created_orders]
-                asyncio.create_task(process_batch_immediately(order_ids))
-                app_logger.info(f"批量订单 {order_ids} 已提交批量处理")
-            else:
-                asyncio.create_task(process_order_immediately(created_orders[0].id))
-                app_logger.info(f"订单#{created_orders[0].id}已提交立即处理")
+            from backend.order_worker import submit_order
+            asyncio.create_task(submit_order(new_order.id))
+            app_logger.info(f"订单#{new_order.id}(quantity={quantity})已提交HTTP API处理")
         except Exception as e:
-            app_logger.error(f"提交订单立即处理失败: {e}")
+            app_logger.error(f"提交订单处理失败: {e}")
     else:
-        import asyncio
-        for o in created_orders:
-            asyncio.create_task(run_hailuo_task(o.id))
+        asyncio.create_task(run_hailuo_task(new_order.id))
 
-    # 返回第一个订单（前端兼容）
-    return created_orders[0]
+    return new_order
 
 
 @app.get("/api/orders")
@@ -1248,34 +1205,17 @@ async def force_scan_order(order_id: int, current_user: User = Depends(get_curre
     if order.status not in ("generating", "processing"):
         raise HTTPException(status_code=400, detail="订单状态不允许扫描")
     
-    # 调用 automation_v2 的强制扫描
-    from backend.automation_v2 import automation_v2
-    if automation_v2 and automation_v2.is_running:
-        asyncio.create_task(automation_v2.force_scan_order(order_id))
-        return {"message": "已触发扫描", "order_id": order_id}
-    else:
-        raise HTTPException(status_code=503, detail="自动化服务未运行")
+    from backend.order_worker import poll_order_status
+    asyncio.create_task(poll_order_status(order_id))
+    return {"message": "已触发扫描", "order_id": order_id}
 
 
 @app.post("/api/admin/force-scan-all")
 async def force_scan_all(admin=Depends(get_admin_user)):
     """强制扫描所有生成中的订单（管理员专用）"""
-    from backend.automation_v2 import automation_v2
-    if not automation_v2 or not automation_v2.is_running:
-        raise HTTPException(status_code=503, detail="自动化服务未运行")
-
-    # 唤醒主循环
-    from backend.automation_v2 import _get_new_order_event
-    _get_new_order_event().set()
-
-    # 对所有已登录账号异步触发扫描
-    scanned = []
-    for account_id, page in list(automation_v2.manager.pages.items()):
-        if account_id in automation_v2.manager._verified_accounts:
-            asyncio.create_task(automation_v2._scan_completed_videos(page, account_id))
-            scanned.append(account_id)
-
-    return {"message": f"已触发扫描", "accounts": scanned}
+    from backend.order_worker import poll_all_pending_orders
+    asyncio.create_task(poll_all_pending_orders())
+    return {"message": "已触发全量扫描"}
 
 
 @app.post("/api/hailuo/code")
@@ -1289,10 +1229,9 @@ def upload_verification_code(request: VerificationCodeRequest, session: Session 
     
     code_str = match.group(1)
     
-    # 添加到自动化日志中显示
-    from backend.automation import automation_logger
-    automation_logger.success(f"📱 收到短信验证码: {code_str}")
-    automation_logger.info(f"📄 完整短信内容: {request.text}")
+    # 添加到日志中显示
+    app_logger.info(f"收到短信验证码: {code_str}")
+    app_logger.info(f"完整短信内容: {request.text}")
     
     vc = VerificationCode(
         code=code_str,

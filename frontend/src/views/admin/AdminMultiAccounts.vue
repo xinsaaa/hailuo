@@ -250,14 +250,16 @@
     </div>
 
     <!-- 添加账号弹窗 -->
-    <div v-if="showAddModal" class="fixed inset-0 bg-black/60 flex items-center justify-center z-50" @click.self="showAddModal = false">
+    <div v-if="showAddModal" class="fixed inset-0 bg-black/60 flex items-center justify-center z-50" @click.self="closeAddModal">
       <div class="bg-gray-800 p-6 rounded-xl border border-gray-700 w-full max-w-md mx-4">
         <h3 class="text-lg font-semibold text-white mb-4 flex items-center gap-2">
           <span class="w-1.5 h-5 bg-blue-500 rounded-full"></span>
           添加海螺账号
+          <span class="ml-auto text-xs text-gray-400">步骤 {{ addStep }}/2</span>
         </h3>
 
-        <form @submit.prevent="addAccount">
+        <!-- 步骤1: 填写信息 + 发送验证码 -->
+        <form v-if="addStep === 1" @submit.prevent="sendAddSms">
           <div class="space-y-4">
             <div>
               <label class="block text-sm font-medium text-gray-300 mb-2">账号ID</label>
@@ -288,22 +290,47 @@
               <label class="block text-sm font-medium text-gray-300 mb-2">模型系列</label>
               <select v-model="newAccount.series"
                 class="w-full px-3 py-2 bg-gray-700 border border-gray-600 text-white rounded-lg focus:ring-blue-500 focus:border-blue-500">
-                <option value="2.3">2.3系列</option>
-                <option value="3.1">3.1系列</option>
+                <option value="2.3">2.3 系列</option>
+                <option value="3.1">3.1 系列 (Pro)</option>
               </select>
             </div>
           </div>
-          <div class="flex justify-end space-x-3 mt-6">
-            <button type="button" @click="showAddModal = false"
-              class="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors">
+          <div class="flex justify-end gap-3 mt-6">
+            <button type="button" @click="closeAddModal"
+              class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors">
               取消
             </button>
-            <button type="submit"
-              class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors">
-              添加
+            <button type="submit" :disabled="addLoading"
+              class="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg transition-colors">
+              {{ addLoading ? '发送中...' : '发送验证码' }}
             </button>
           </div>
         </form>
+
+        <!-- 步骤2: 输入验证码 -->
+        <div v-else>
+          <p class="text-sm text-gray-400 mb-4">验证码已发送至 <span class="text-white">{{ newAccount.phone_number }}</span>，请在下方输入。</p>
+          <div class="space-y-4">
+            <div>
+              <label class="block text-sm font-medium text-gray-300 mb-2">验证码</label>
+              <input v-model="addSmsCode" type="text" maxlength="6" placeholder="请输入6位验证码" autofocus
+                class="w-full px-3 py-2 bg-gray-700 border border-gray-600 text-white rounded-lg focus:ring-blue-500 focus:border-blue-500">
+            </div>
+          </div>
+          <div class="flex justify-between items-center mt-6">
+            <button @click="addStep = 1" class="text-sm text-gray-400 hover:text-white transition-colors">重新发送</button>
+            <div class="flex gap-3">
+              <button @click="closeAddModal"
+                class="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-colors">
+                取消
+              </button>
+              <button @click="confirmAddAccount" :disabled="addLoading || addSmsCode.length < 4"
+                class="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white rounded-lg transition-colors">
+                {{ addLoading ? '登录中...' : '完成添加' }}
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -421,6 +448,9 @@ const newAccount = reactive({
   max_concurrent: 3,
   series: '2.3'
 })
+const addStep = ref('info')   // 'info' | 'code'
+const addLoading = ref(false)
+const addSmsCode = ref('')
 
 // 获取系统状态
 const getSystemStatus = async () => {
@@ -492,23 +522,45 @@ const refreshAccounts = async () => {
 
 // 系统状态说明：多账号管理系统现在自动启动，无需手动控制
 
-// 添加账号
-const addAccount = async () => {
+// 重置添加账号弹窗
+const resetAddModal = () => {
+  showAddModal.value = false
+  addStep.value = 'info'
+  addLoading.value = false
+  addSmsCode.value = ''
+  Object.assign(newAccount, { account_id: '', phone_number: '', display_name: '', priority: 5, max_concurrent: 3, series: '2.3' })
+}
+
+// 步骤1: 发送验证码
+const sendAddSms = async () => {
+  if (!newAccount.phone_number) return
+  addLoading.value = true
   try {
-    await api.post('/admin/accounts/create', newAccount)
-    showAddModal.value = false
-    Object.assign(newAccount, {
-      account_id: '',
-      phone_number: '',
-      display_name: '',
-      priority: 5,
-      max_concurrent: 3,
-      series: '2.3'
+    await api.post('/admin/accounts/sms/send', { phone_number: newAccount.phone_number })
+    addStep.value = 'code'
+  } catch (error) {
+    alert('发送验证码失败: ' + (error.response?.data?.detail || error.message))
+  } finally {
+    addLoading.value = false
+  }
+}
+
+// 步骤2: 验证码登录并创建账号
+const confirmAddAccount = async () => {
+  if (addSmsCode.value.length < 4) return
+  addLoading.value = true
+  try {
+    await api.post('/admin/accounts/sms/login', {
+      ...newAccount,
+      code: addSmsCode.value
     })
     await refreshAccounts()
     alert('账号添加成功')
+    resetAddModal()
   } catch (error) {
-    alert('添加失败: ' + error.response?.data?.detail)
+    alert('添加失败: ' + (error.response?.data?.detail || error.message))
+  } finally {
+    addLoading.value = false
   }
 }
 

@@ -1,14 +1,19 @@
 """
-多账号管理后台API
+多账号管理后台API — 纯HTTP模式（无浏览器）
 """
+import random
+import uuid as uuid_module
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from typing import List, Dict, Any, Optional
+from typing import Optional
 from backend.admin import get_admin_user
-from backend.automation_v2 import automation_v2, add_account, toggle_account
-from backend.multi_account_manager import AccountConfig
+from backend.account_store import account_store, AccountConfig
+from backend.hailuo_api import send_sms_code, login_with_sms
 
 router = APIRouter(prefix="/api/admin/accounts", tags=["多账号管理"])
+
+# 临时存储待验证的短信会话 {phone_number: {uuid, device_id}}
+_pending_sms: dict = {}
 
 
 class AccountCreateRequest(BaseModel):
@@ -20,264 +25,189 @@ class AccountCreateRequest(BaseModel):
     series: str = "2.3"
 
 
+class SmsSendRequest(BaseModel):
+    phone_number: str
+
+
+class SmsCreateRequest(BaseModel):
+    account_id: str
+    phone_number: str
+    display_name: str
+    code: str
+    priority: int = 5
+    max_concurrent: int = 3
+    series: str = "2.3"
+
+
 class AccountUpdateRequest(BaseModel):
     display_name: Optional[str] = None
     priority: Optional[int] = None
     max_concurrent: Optional[int] = None
-    is_active: Optional[bool] = None
     series: Optional[str] = None
-
-
-@router.get("/list")
-def list_accounts(admin=Depends(get_admin_user)):
-    """获取所有账号列表"""
-    # 一次性获取所有账号状态，避免循环内重复调用
-    all_status = automation_v2.manager.get_account_status()
-    accounts = []
-    for account_id, account in automation_v2.manager.accounts.items():
-        status = all_status.get(account_id, {})
-        accounts.append({
-            "account_id": account_id,
-            "phone_number": account.phone_number,
-            "display_name": account.display_name,
-            "priority": account.priority,
-            "is_active": account.is_active,
-            "max_concurrent": account.max_concurrent,
-            "current_tasks": account.current_tasks,
-            "is_logged_in": status.get("is_logged_in", False),
-            "utilization": status.get("utilization", 0),
-            "series": account.series
-        })
-    
-    return {
-        "accounts": accounts,
-        "total": len(accounts),
-        "active": sum(1 for acc in accounts if acc["is_active"]),
-        "logged_in": sum(1 for acc in accounts if acc["is_logged_in"])
-    }
-
-
-@router.post("/create")
-async def create_account(data: AccountCreateRequest, admin=Depends(get_admin_user)):
-    """创建新账号"""
-    # 检查账号ID是否已存在
-    if data.account_id in automation_v2.manager.accounts:
-        raise HTTPException(status_code=400, detail="账号ID已存在")
-    
-    # 创建账号
-    await add_account({
-        "account_id": data.account_id,
-        "phone_number": data.phone_number,
-        "display_name": data.display_name,
-        "priority": data.priority,
-        "max_concurrent": data.max_concurrent,
-        "is_active": True,
-        "current_tasks": 0,
-        "series": data.series
-    })
-    
-    return {"message": "账号创建成功", "account_id": data.account_id}
-
-
-@router.put("/{account_id}")
-async def update_account(
-    account_id: str,
-    data: AccountUpdateRequest,
-    admin=Depends(get_admin_user)
-):
-    """更新账号信息"""
-    if account_id not in automation_v2.manager.accounts:
-        raise HTTPException(status_code=404, detail="账号不存在")
-    
-    account = automation_v2.manager.accounts[account_id]
-    
-    # 更新字段
-    if data.display_name is not None:
-        account.display_name = data.display_name
-    if data.priority is not None:
-        account.priority = data.priority
-    if data.max_concurrent is not None:
-        account.max_concurrent = data.max_concurrent
-    if data.is_active is not None:
-        await toggle_account(account_id, data.is_active)
-    if data.series is not None:
-        account.series = data.series
-    
-    # 保存配置到文件（toggle_account内部会保存，但其他字段修改也需要保存）
-    accounts_list = list(automation_v2.manager.accounts.values())
-    automation_v2.manager.save_accounts_config(accounts_list)
-    
-    return {"message": "账号更新成功"}
-
-
-@router.post("/{account_id}/login")
-async def login_account(account_id: str, admin=Depends(get_admin_user)):
-    """尝试使用Cookie登录账号"""
-    if account_id not in automation_v2.manager.accounts:
-        raise HTTPException(status_code=404, detail="账号不存在")
-    
-    try:
-        # 确保浏览器上下文存在
-        if account_id not in automation_v2.manager.contexts:
-            await automation_v2.manager.create_account_context(account_id)
-        
-        # 检查是否有保存的登录状态
-        has_saved_state = automation_v2.manager._check_saved_login_state(account_id)
-        
-        if has_saved_state:
-            # 有保存的状态，尝试快速检查登录
-            try:
-                result = await automation_v2.manager.login_account(account_id)
-                if result:
-                    return {"message": f"账号 {account_id} 登录成功", "success": True}
-            except Exception as e:
-                print(f"[API] Cookie登录检查失败: {e}")
-        
-        # 没有保存状态或Cookie登录失败，需要验证码
-        return {"message": f"账号 {account_id} 需要验证码登录", "success": False, "require_code": True}
-    except Exception as e:
-        # 即使出错也返回需要验证码，而不是500错误
-        print(f"[API] 登录失败: {e}")
-        return {"message": f"登录检查失败，请使用验证码登录", "success": False, "require_code": True}
-
-
-@router.post("/{account_id}/send-code")
-async def send_verification_code(account_id: str, admin=Depends(get_admin_user)):
-    """发送验证码到账号手机"""
-    if account_id not in automation_v2.manager.accounts:
-        raise HTTPException(status_code=404, detail="账号不存在")
-    
-    try:
-        # 确保浏览器上下文存在
-        if account_id not in automation_v2.manager.contexts:
-            await automation_v2.manager.create_account_context(account_id)
-        
-        result = await automation_v2.manager.send_verification_code(account_id)
-        if result:
-            return {"message": "验证码已发送", "success": True}
-        else:
-            return {"message": "发送验证码失败，请重试", "success": False}
-    except Exception as e:
-        print(f"[API] 发送验证码失败: {e}")
-        return {"message": f"发送验证码失败: {str(e)}", "success": False}
 
 
 class VerificationCodeRequest(BaseModel):
     verification_code: str
 
-@router.post("/{account_id}/verify-code")
-async def verify_and_login(account_id: str, data: VerificationCodeRequest, admin=Depends(get_admin_user)):
-    """使用验证码完成登录"""
-    try:
-        result = await automation_v2.manager.verify_code_and_login(account_id, data.verification_code)
-        if result:
-            return {"message": f"账号 {account_id} 登录成功", "success": True}
-        else:
-            return {"message": "验证码错误或登录失败", "success": False}
-    except Exception as e:
-        print(f"[API] 验证码登录失败: {e}")
-        return {"message": f"验证码登录失败: {str(e)}", "success": False}
+
+# ============ 短信登录流程 ============
+
+@router.post("/sms/send")
+async def send_sms(data: SmsSendRequest, admin=Depends(get_admin_user)):
+    """Step1: 向手机号发送登录验证码"""
+    u = str(uuid_module.uuid4())
+    dev = str(random.randint(10**18, 10**19 - 1))
+    _pending_sms[data.phone_number] = {"uuid": u, "device_id": dev}
+    resp = await send_sms_code(data.phone_number, u, dev)
+    code = resp.get("statusInfo", {}).get("code", -1)
+    if code != 0:
+        msg = resp.get("statusInfo", {}).get("message", "未知错误")
+        raise HTTPException(status_code=400, detail=f"发送验证码失败: {msg}")
+    return {"ok": True}
 
 
-@router.get("/{account_id}/credits")
-async def get_account_credits(account_id: str, admin=Depends(get_admin_user)):
-    """获取账号剩余积分"""
-    if account_id not in automation_v2.manager.accounts:
+@router.post("/sms/login")
+async def sms_login(data: SmsCreateRequest, admin=Depends(get_admin_user)):
+    """Step2: 用验证码完成登录并创建账号"""
+    session = _pending_sms.get(data.phone_number)
+    if not session:
+        raise HTTPException(status_code=400, detail="请先发送验证码")
+
+    resp = await login_with_sms(data.phone_number, data.code, session["uuid"], session["device_id"])
+    code = resp.get("statusInfo", {}).get("code", -1)
+    if code != 0:
+        msg = resp.get("statusInfo", {}).get("message", "验证失败")
+        raise HTTPException(status_code=400, detail=f"登录失败: {msg}")
+
+    d = resp.get("data", {})
+    token = d.get("token", "")
+    if not token:
+        raise HTTPException(status_code=400, detail="未获取到 token")
+
+    if data.account_id in account_store.accounts:
+        raise HTTPException(status_code=400, detail="账号ID已存在")
+
+    cfg = AccountConfig(
+        account_id=data.account_id,
+        phone_number=data.phone_number,
+        display_name=data.display_name,
+        priority=data.priority,
+        max_concurrent=data.max_concurrent,
+        is_active=True,
+        series=data.series,
+    )
+    account_store.add_account(cfg)
+    account_store.set_credentials(data.account_id, {
+        "cookie": f"_token={token}",
+        "uuid": session["uuid"],
+        "device_id": session["device_id"],
+    })
+    _pending_sms.pop(data.phone_number, None)
+    return {"ok": True, "account_id": data.account_id}
+
+
+@router.post("/create")
+async def create_account(data: AccountCreateRequest, admin=Depends(get_admin_user)):
+    """创建新账号（无凭证，后续通过短信登录获取cookie）"""
+    if data.account_id in account_store.accounts:
+        raise HTTPException(status_code=400, detail="账号ID已存在")
+    cfg = AccountConfig(
+        account_id=data.account_id,
+        phone_number=data.phone_number,
+        display_name=data.display_name,
+        priority=data.priority,
+        max_concurrent=data.max_concurrent,
+        is_active=True,
+        series=data.series,
+    )
+    account_store.add_account(cfg)
+    return {"ok": True, "message": "账号已创建，请通过短信登录获取凭证"}
+
+
+# ============ 账号管理 ============
+
+@router.get("")
+def list_accounts(admin=Depends(get_admin_user)):
+    """获取所有账号列表"""
+    status = account_store.get_status()
+    return list(status["accounts"].values())
+
+
+@router.get("/{account_id}")
+def get_account(account_id: str, admin=Depends(get_admin_user)):
+    if account_id not in account_store.accounts:
         raise HTTPException(status_code=404, detail="账号不存在")
-    try:
-        credits = await automation_v2.manager.get_account_credits(account_id)
-        # -1 表示暂时无法读取（账号未登录或正在扫描），不作为错误处理
-        return {"credits": credits if credits >= 0 else None, "success": credits >= 0}
-    except Exception as e:
-        # 积分读取失败不应影响前端，返回空而非500
-        return {"credits": None, "success": False, "message": str(e)}
+    status = account_store.get_status()
+    return status["accounts"][account_id]
 
-@router.post("/{account_id}/logout")
-async def logout_account(account_id: str, admin=Depends(get_admin_user)):
-    """手动登出账号"""
-    if account_id not in automation_v2.manager.accounts:
+
+@router.put("/{account_id}")
+def update_account(account_id: str, data: AccountUpdateRequest, admin=Depends(get_admin_user)):
+    if account_id not in account_store.accounts:
         raise HTTPException(status_code=404, detail="账号不存在")
-    
-    await automation_v2.manager.close_account(account_id)
-    return {"message": "账号已登出", "account_id": account_id}
+    acc = account_store.accounts[account_id]
+    if data.display_name is not None:
+        acc.display_name = data.display_name
+    if data.priority is not None:
+        acc.priority = data.priority
+    if data.max_concurrent is not None:
+        acc.max_concurrent = data.max_concurrent
+    if data.series is not None:
+        acc.series = data.series
+    account_store.save()
+    return {"ok": True}
+
+
+@router.post("/{account_id}/toggle")
+def toggle_account(account_id: str, admin=Depends(get_admin_user)):
+    if account_id not in account_store.accounts:
+        raise HTTPException(status_code=404, detail="账号不存在")
+    acc = account_store.accounts[account_id]
+    acc.is_active = not acc.is_active
+    account_store.save()
+    return {"ok": True, "is_active": acc.is_active}
 
 
 @router.delete("/{account_id}")
-async def delete_account(account_id: str, admin=Depends(get_admin_user)):
-    """删除账号"""
-    if account_id not in automation_v2.manager.accounts:
+def delete_account(account_id: str, admin=Depends(get_admin_user)):
+    if account_id not in account_store.accounts:
         raise HTTPException(status_code=404, detail="账号不存在")
-    
-    # 先关闭账号上下文
-    await automation_v2.manager.close_account(account_id)
-    
-    # 从配置中删除
-    del automation_v2.manager.accounts[account_id]
-    
-    # 保存配置
-    accounts_list = list(automation_v2.manager.accounts.values())
-    automation_v2.manager.save_accounts_config(accounts_list)
-    
+    account_store.remove_account(account_id)
     return {"message": "账号删除成功", "account_id": account_id}
 
+
+# ============ 系统状态 ============
 
 @router.get("/status")
 def get_system_status(admin=Depends(get_admin_user)):
     """获取多账号系统状态"""
-    try:
-        status = automation_v2.get_system_status()
-        # 添加额外的调试信息
-        status["debug_info"] = {
-            "browser_initialized": automation_v2.manager.browser is not None,
-            "contexts_count": len(automation_v2.manager.contexts),
-            "pages_count": len(automation_v2.manager.pages),
-            "last_error": getattr(automation_v2, 'last_error', None)
-        }
-        return status
-    except Exception as e:
-        return {
-            "is_running": False,
-            "error": str(e),
-            "debug_info": {
-                "exception_type": type(e).__name__
-            }
-        }
+    return account_store.get_status()
 
 
 @router.post("/start")
-async def start_multi_account_system(admin=Depends(get_admin_user)):
-    """启动多账号系统"""
-    try:
-        await automation_v2.start()
-        return {"message": "多账号系统启动成功"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"启动失败: {str(e)}")
+async def start_system(admin=Depends(get_admin_user)):
+    """HTTP模式无需启动，直接返回就绪"""
+    return {"ok": True, "message": "HTTP API模式已就绪"}
 
 
 @router.post("/stop")
-async def stop_multi_account_system(admin=Depends(get_admin_user)):
-    """停止多账号系统"""
-    try:
-        await automation_v2.stop()
-        return {"message": "多账号系统停止成功"}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"停止失败: {str(e)}")
+async def stop_system(admin=Depends(get_admin_user)):
+    return {"ok": True, "message": "HTTP API模式无需停止"}
 
 
 @router.get("/performance")
 def get_performance_metrics(admin=Depends(get_admin_user)):
-    """获取性能指标 - 字段必须与前端AdminMultiAccounts.vue的performance对象匹配"""
-    status = automation_v2.get_system_status()
-    accounts = status["accounts"]
-    
-    total_accounts = len(automation_v2.manager.accounts)
-    active_accounts = sum(1 for acc in automation_v2.manager.accounts.values() if acc.is_active)
-    logged_in_accounts = sum(1 for acc_status in accounts.values() if acc_status["is_logged_in"])
-    total_capacity = sum(acc.max_concurrent for acc in automation_v2.manager.accounts.values() if acc.is_active)
-    current_load = sum(acc.current_tasks for acc in automation_v2.manager.accounts.values())
+    """获取性能指标"""
+    accounts = account_store.accounts
+    creds = account_store._creds
+
+    total_accounts = len(accounts)
+    active_accounts = sum(1 for a in accounts.values() if a.is_active)
+    logged_in_accounts = sum(1 for aid in accounts if aid in creds)
+    total_capacity = sum(a.max_concurrent for a in accounts.values() if a.is_active)
+    current_load = sum(a.current_tasks for a in accounts.values())
     utilization = current_load / total_capacity if total_capacity > 0 else 0
-    
-    # 性能等级
+
     if utilization < 0.3:
         performance_level = "优秀"
     elif utilization < 0.6:
@@ -286,7 +216,7 @@ def get_performance_metrics(admin=Depends(get_admin_user)):
         performance_level = "一般"
     else:
         performance_level = "繁忙"
-    
+
     return {
         "total_accounts": total_accounts,
         "active_accounts": active_accounts,
@@ -296,7 +226,7 @@ def get_performance_metrics(admin=Depends(get_admin_user)):
         "utilization": utilization,
         "performance_level": performance_level,
         "available_slots": total_capacity - current_load,
-        "efficiency_score": (logged_in_accounts / active_accounts * 100) if active_accounts > 0 else 0
+        "efficiency_score": (logged_in_accounts / active_accounts * 100) if active_accounts > 0 else 0,
     }
 
 

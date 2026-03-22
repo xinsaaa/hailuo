@@ -1055,6 +1055,13 @@ class HailuoAutomationV2:
         first_frame_path = order.get("first_frame_image")
         last_frame_path = order.get("last_frame_image")
         is_text_mode = video_type == "text_to_video"
+        order_quantity = order.get("quantity", 1)
+
+        # 批量订单：复用 process_batch_orders 逻辑（填一次表单点N次生成）
+        if order_quantity > 1:
+            batch_orders = [dict(order) for _ in range(order_quantity)]
+            await self.process_batch_orders(account_id, batch_orders)
+            return
 
         print(f"[AUTO-V2] 账号 {account.display_name} 开始处理订单 {order_id} ({'文生视频' if is_text_mode else '图生视频'})")
         account.current_tasks += 1
@@ -1499,7 +1506,11 @@ class HailuoAutomationV2:
                         self._account_orders[account_id].add(oid)
                     else:
                         print(f"[AUTO-V2] ❌ 订单#{oid} 3次点击均未确认，标记失败")
-                        self.update_order_status(oid, "failed")
+                        # 若同一订单之前的某次点击已经提交成功（generating），不覆盖
+                        with Session(engine) as _s:
+                            _o = _s.get(VideoOrder, oid)
+                            if not _o or _o.status != "generating":
+                                self.update_order_status(oid, "failed")
 
                     if idx < len(order_ids) - 1:
                         await asyncio.sleep(5)
@@ -1940,6 +1951,7 @@ class HailuoAutomationV2:
                 "video_type": getattr(order, 'video_type', 'image_to_video'),
                 "resolution": getattr(order, 'resolution', '768p'),
                 "duration": getattr(order, 'duration', '6s'),
+                "quantity": getattr(order, 'quantity', 1),
             }
         
         model_name = order_dict.get("model_name", "")
