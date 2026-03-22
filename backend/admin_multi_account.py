@@ -133,6 +133,29 @@ def list_accounts(admin=Depends(get_admin_user)):
     return list(status["accounts"].values())
 
 
+@router.get("/list")
+def list_accounts_alias(admin=Depends(get_admin_user)):
+    """/list 别名，兼容旧前端"""
+    status = account_store.get_status()
+    return {"accounts": list(status["accounts"].values())}
+
+
+@router.get("/status")
+def get_status_alias(admin=Depends(get_admin_user)):
+    """/status 别名，兼容旧前端"""
+    status_data = account_store.get_status()
+    accounts = status_data.get("accounts", {})
+    active_accounts = sum(1 for a in accounts.values() if a.get("is_active") and a.get("is_logged_in"))
+    return {
+        "status": "running" if active_accounts > 0 else "stopped",
+        "is_running": active_accounts > 0,
+        "total_accounts": len(accounts),
+        "active_accounts": active_accounts,
+        "active_tasks": sum(a.get("current_tasks", 0) for a in accounts.values()),
+        "accounts": accounts,
+    }
+
+
 @router.get("/{account_id}")
 def get_account(account_id: str, admin=Depends(get_admin_user)):
     if account_id not in account_store.accounts:
