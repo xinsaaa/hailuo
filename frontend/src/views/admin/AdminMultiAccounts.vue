@@ -666,7 +666,7 @@ const verifyAndLogin = async () => {
       verification_code: verificationModal.code
     }, { timeout: 60000 })
     
-    if (response.data.success) {
+    if (response.data.ok || response.data.success) {
       verificationModal.show = false
       verificationModal.code = ''
       await refreshAccounts()
