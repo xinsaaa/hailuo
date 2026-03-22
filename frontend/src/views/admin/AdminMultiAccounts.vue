@@ -640,7 +640,7 @@ const resendVerificationCode = async () => {
   verificationModal.loading = true
   try {
     const response = await api.post(`/admin/accounts/${verificationModal.accountId}/send-code`, {}, { timeout: 60000 })
-    if (response.data.success) {
+    if (response.data.ok || response.data.success) {
       startResendCountdown()
       alert('验证码已重新发送，请查收')
     } else {
