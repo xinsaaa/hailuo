@@ -199,6 +199,25 @@ async def create_account(data: AccountCreateRequest, admin=Depends(get_admin_use
 
 # ============ 单账号操作（/{account_id} 系列，必须放在所有固定路径之后） ============
 
+@router.get("/{account_id}/credits")
+async def get_account_credits(account_id: str, admin=Depends(get_admin_user)):
+    """查询账号贝壳积分"""
+    if account_id not in account_store.accounts:
+        raise HTTPException(status_code=404, detail="账号不存在")
+    creds = account_store.get_credentials(account_id)
+    if not creds:
+        return {"success": False, "credits": -1, "message": "未登录"}
+    from backend.hailuo_api import HailuoApiClient
+    client = HailuoApiClient(cookie=creds["cookie"], uuid=creds["uuid"], device_id=creds["device_id"])
+    try:
+        credits = await client.get_credits()
+        return {"success": True, "credits": credits}
+    except Exception as e:
+        return {"success": False, "credits": -1, "message": str(e)}
+    finally:
+        await client.close()
+
+
 @router.post("/{account_id}/login")
 async def login_account_alias(account_id: str, admin=Depends(get_admin_user)):
     """兼容旧前端：返回 success=False 让前端弹出验证码窗口"""
