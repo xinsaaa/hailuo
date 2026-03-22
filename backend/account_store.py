@@ -138,6 +138,17 @@ class AccountStore:
         self._creds[account_id] = {"cookie": cookie, "uuid": uuid, "device_id": device_id}
         self.save()
 
+    def set_credentials(self, account_id: str, creds: dict):
+        """别名：兼容 {cookie, uuid, device_id} dict 入参"""
+        self._creds[account_id] = creds
+        self.save()
+
+    def get_credentials(self, account_id: str) -> Optional[dict]:
+        return self._creds.get(account_id)
+
+    def has_credentials(self, account_id: str) -> bool:
+        return account_id in self._creds
+
     # ---- 调度辅助 ----
 
     def pick_account_for_series(self, series: str) -> Optional[str]:
