@@ -448,16 +448,16 @@ const newAccount = reactive({
   max_concurrent: 3,
   series: '2.3'
 })
-const addStep = ref('info')   // 'info' | 'code'
+const addStep = ref(1)   // 1: 填信息, 2: 输验证码
 const addLoading = ref(false)
 const addSmsCode = ref('')
 
 // 获取系统状态
 const getSystemStatus = async () => {
   try {
-    const response = await api.get('/admin/accounts/status')
+    const response = await api.get('/admin/automation/status')
     Object.assign(systemStatus, response.data)
-    
+
     const perfResponse = await api.get('/admin/accounts/performance')
     Object.assign(performance, perfResponse.data)
   } catch (error) {
@@ -468,9 +468,9 @@ const getSystemStatus = async () => {
 // 获取账号列表
 const getAccounts = async () => {
   try {
-    const response = await api.get('/admin/accounts/list')
+    const response = await api.get('/admin/accounts')
     // 为每个账号初始化积分字段
-    accounts.value = response.data.accounts.map(account => ({
+    accounts.value = response.data.map(account => ({
       ...account,
       credits: -1 // -1 表示未获取
     }))
@@ -525,11 +525,13 @@ const refreshAccounts = async () => {
 // 重置添加账号弹窗
 const resetAddModal = () => {
   showAddModal.value = false
-  addStep.value = 'info'
+  addStep.value = 1
   addLoading.value = false
   addSmsCode.value = ''
   Object.assign(newAccount, { account_id: '', phone_number: '', display_name: '', priority: 5, max_concurrent: 3, series: '2.3' })
 }
+
+const closeAddModal = resetAddModal
 
 // 步骤1: 发送验证码
 const sendAddSms = async () => {
@@ -537,7 +539,7 @@ const sendAddSms = async () => {
   addLoading.value = true
   try {
     await api.post('/admin/accounts/sms/send', { phone_number: newAccount.phone_number })
-    addStep.value = 'code'
+    addStep.value = 2
   } catch (error) {
     alert('发送验证码失败: ' + (error.response?.data?.detail || error.message))
   } finally {
