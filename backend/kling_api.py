@@ -561,8 +561,8 @@ async def get_user_points(cookie: str) -> dict:
         data = r.json()
     points = data.get("data", {}).get("userPoints", {})
     return {
-        "total": points.get("total", 0),
-        "expireIn5DaysAmount": points.get("expireIn5DaysAmount", 0),
+        "total": points.get("total", 0) / 100,
+        "expireIn5DaysAmount": points.get("expireIn5DaysAmount", 0) / 100,
     }
 
 
