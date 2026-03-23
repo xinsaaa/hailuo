@@ -366,8 +366,8 @@ async def _submit_kling_order(order_id: int):
         try:
             pts = await kling_api.get_user_points(cookie)
             total_pts = pts.get("total", 0)
-            if total_pts <= 0:
-                _fail_order(order_id, f"可灵账号积分不足（剩余{total_pts}），请联系管理员充值")
+            if total_pts < 100:
+                _fail_order(order_id, f"可灵账号积分不足（剩余{total_pts}），需要至少100积分，请联系管理员充值")
                 return
         except Exception as e:
             logger.warning(f"[worker] 可灵积分查询失败: {e}，继续尝试提交")
