@@ -348,9 +348,13 @@ async def check_login(cookie: str) -> bool:
                 },
             )
             data = resp.json()
-            d = data.get("data", {})
-            return d.get("isLogin") is True or d.get("login") is True
-    except Exception:
+            d = data.get("data") or {}
+            is_ok = d.get("isLogin") is True or d.get("login") is True
+            if not is_ok:
+                logger.warning(f"[check_login] 验证失败, resp={data}")
+            return is_ok
+    except Exception as e:
+        logger.error(f"[check_login] 异常: {e}")
         return False
 
 
