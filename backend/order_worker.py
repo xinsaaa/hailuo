@@ -353,7 +353,7 @@ def _pick_kling_account() -> Optional[tuple]:
 
 
 async def _submit_kling_order(order_id: int):
-    """可灵订单提交：上传图片（如有）→ 提交任务 → 更新状态为 generating"""
+    """可灵订单提交：预检积分 → 上传图片（如有）→ 提交任务 → 更新状态为 generating"""
     result = _pick_kling_account()
     if not result:
         _fail_order(order_id, "无可用可灵账号")
@@ -362,6 +362,16 @@ async def _submit_kling_order(order_id: int):
     acc_id, cookie = result
 
     try:
+        # 预检查可灵账号积分
+        try:
+            pts = await kling_api.get_user_points(cookie)
+            total_pts = pts.get("total", 0)
+            if total_pts <= 0:
+                _fail_order(order_id, f"可灵账号积分不足（剩余{total_pts}），请联系管理员充值")
+                return
+        except Exception as e:
+            logger.warning(f"[worker] 可灵积分查询失败: {e}，继续尝试提交")
+
         with Session(engine) as session:
             order = session.get(VideoOrder, order_id)
             if not order:
