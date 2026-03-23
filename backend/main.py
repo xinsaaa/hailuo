@@ -214,7 +214,7 @@ async def startup_event():
 
     # 启动可灵账号登录状态监测
     from backend.kling_api import start_monitor
-    asyncio.create_task(start_monitor())
+    start_monitor()
     app_logger.info("可灵账号登录监测已启动")
 
 
