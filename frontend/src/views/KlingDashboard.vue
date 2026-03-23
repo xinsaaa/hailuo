@@ -165,9 +165,9 @@ const loadData = async () => {
       o.model_name && (o.model_name.startsWith('Kling') || o.model_name.startsWith('可灵'))
     )
     if (modelsData && modelsData.models) {
-      // 只保留可灵系列模型
+      // 只保留可灵系列模型（优先按platform，兼容id匹配）
       const klingModels = modelsData.models.filter(model =>
-        model.id?.includes('kling') || model.name?.startsWith('Kling')
+        model.platform === 'kling' || model.id?.includes('kling') || model.name?.startsWith('Kling')
       )
       availableModels.value = klingModels
       if (klingModels.length > 0 && !selectedModel.value) {

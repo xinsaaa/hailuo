@@ -231,16 +231,20 @@ const loadData = async () => {
       if (configData.site_announcement) siteAnnouncement.value = configData.site_announcement
     }
     if (modelsData && modelsData.models) {
+      // 先排除可灵模型（可灵有独立页面）
+      const hailuoModels = modelsData.models.filter(model =>
+        model.platform !== 'kling' && !model.id?.includes('kling')
+      )
       // 根据系列过滤模型
-      let filteredModels = modelsData.models
+      let filteredModels = hailuoModels
       if (modelSeries.value === '2.3') {
-        filteredModels = modelsData.models.filter(model => 
+        filteredModels = hailuoModels.filter(model => 
           model.id.includes('2_0') || 
           model.id.includes('2_3') || 
           model.id.includes('hailuo_1_0')
         )
       } else if (modelSeries.value === '3.1') {
-        filteredModels = modelsData.models.filter(model => 
+        filteredModels = hailuoModels.filter(model => 
           model.id.includes('3_1') || 
           model.id.includes('beta_3')
         )

@@ -147,39 +147,42 @@ class ModelConfigManager:
                 "name": "Kling 3.0",
                 "display_name": "可灵 3.0",
                 "description": "可灵最新旗舰，电影级画质，运动流畅自然",
-                "features": json.dumps(["1080P", "5s-10s", "仅首帧"]),
+                "features": json.dumps(["1080P", "5s-10s", "首尾帧"]),
                 "badge": "NEW",
-                "supports_last_frame": False,
+                "supports_last_frame": True,
                 "is_default": False,
                 "is_enabled": True,
                 "sort_order": 11,
-                "price": 1.49
+                "price": 1.49,
+                "platform": "kling"
             },
             {
                 "model_id": "kling_2_6",
                 "name": "Kling 2.6",
                 "display_name": "可灵 2.6",
                 "description": "可灵高性能版本，细节丰富，动作精准",
-                "features": json.dumps(["1080P", "5s-10s", "仅首帧"]),
+                "features": json.dumps(["1080P", "5s-10s", "首尾帧"]),
                 "badge": None,
-                "supports_last_frame": False,
+                "supports_last_frame": True,
                 "is_default": False,
                 "is_enabled": True,
                 "sort_order": 12,
-                "price": 1.19
+                "price": 1.19,
+                "platform": "kling"
             },
             {
                 "model_id": "kling_2_5_turbo",
                 "name": "Kling 2.5 Turbo",
                 "display_name": "可灵 2.5 Turbo",
                 "description": "可灵专业版，极速生成，高性价比",
-                "features": json.dumps(["1080P", "5s-10s", "仅首帧"]),
+                "features": json.dumps(["1080P", "5s-10s", "首尾帧"]),
                 "badge": "PRO",
-                "supports_last_frame": False,
+                "supports_last_frame": True,
                 "is_default": False,
                 "is_enabled": True,
                 "sort_order": 13,
-                "price": 0.99
+                "price": 0.99,
+                "platform": "kling"
             }
         ]
     

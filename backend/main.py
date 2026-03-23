@@ -240,7 +240,12 @@ def init_default_models():
                 app_logger.info(f"Created new model: {model_data['model_id']} with price ¥{model_data['price']}")
             else:
                 # 模型已存在，保持现有数据（特别是价格）
-                app_logger.info(f"Model already exists: {existing_model.model_id}, keeping existing price ¥{existing_model.price}")
+                # 但同步 platform 字段（确保分类正确）
+                new_platform = model_data.get("platform", "hailuo")
+                if existing_model.platform != new_platform:
+                    existing_model.platform = new_platform
+                    session.add(existing_model)
+                    app_logger.info(f"Updated model {existing_model.model_id} platform: {existing_model.platform} -> {new_platform}")
         
         session.commit()
         if created_count > 0:
@@ -1319,6 +1324,7 @@ def get_available_models(session: Session = Depends(get_session)):
             "display_name": m.display_name,
             "description": m.description,
             "type": m.model_type,
+            "platform": m.platform or "hailuo",
             "is_default": m.is_default,
             "features": json.loads(m.features) if m.features else [],
             "badge": m.badge,
