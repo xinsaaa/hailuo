@@ -258,10 +258,13 @@ async def verify_code_for_account(account_id: str, data: VerificationCodeRequest
     token = (resp.get("data") or {}).get("token", "")
     if not token:
         raise HTTPException(status_code=400, detail="登录成功但未获取到token")
+    # 保存完整 cookie（包含 _token 及 sensors 统计 cookie）
+    base_cookie = f"_token={token}"
     account_store.set_credentials(account_id, {
-        "cookie": f"_token={token}",
+        "cookie": base_cookie,
         "uuid": session["uuid"],
         "device_id": session["device_id"],
+        "token": token,
     })
     _pending_sms.pop(acc.phone_number, None)
     return {"ok": True, "account_id": account_id}

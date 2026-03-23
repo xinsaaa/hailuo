@@ -32,6 +32,7 @@ from backend.security import (
 from backend.admin import router as admin_router, get_admin_user
 from backend.email_service import send_verification_code, verify_email_code
 from backend.admin_multi_account import include_multi_account_routes
+from backend.admin_kling_account import router as kling_account_router
 
 # 导入日志和异常处理
 from backend.logger import app_logger
@@ -62,6 +63,9 @@ include_multi_account_routes(app)
 # 注册即梦账号管理路由
 from backend.admin_jimeng_account import router as jimeng_router
 app.include_router(jimeng_router)
+
+# 注册可灵账号管理路由
+app.include_router(kling_account_router)
 
 # 注册即梦订单路由
 from backend.jimeng_api import router as jimeng_api_router
@@ -207,6 +211,11 @@ async def startup_event():
         app_logger.info(f"HTTP API多账号模式就绪，已加载 {len(account_store.accounts)} 个账号")
     else:
         app_logger.info("Multi-account system disabled by config")
+
+    # 启动可灵账号登录状态监测
+    from backend.kling_api import start_monitor
+    asyncio.create_task(start_monitor())
+    app_logger.info("可灵账号登录监测已启动")
 
 
 def init_default_models():
@@ -1082,8 +1091,8 @@ async def create_order(
     # 校验分辨率和秒数
     if resolution not in ("768p", "1080p"):
         raise HTTPException(status_code=400, detail="无效的分辨率，仅支持768p和1080p")
-    if duration not in ("6s", "10s"):
-        raise HTTPException(status_code=400, detail="无效的时长，仅支持6s和10s")
+    if duration not in ("5s", "6s", "10s"):
+        raise HTTPException(status_code=400, detail="无效的时长，仅支持5s、6s和10s")
     if resolution == "1080p" and duration == "10s":
         raise HTTPException(status_code=400, detail="1080p分辨率仅支持6秒")
 

@@ -141,6 +141,45 @@ class ModelConfigManager:
                 "is_enabled": True,
                 "sort_order": 10,
                 "price": 0.49
+            },
+            {
+                "model_id": "kling_3_0",
+                "name": "Kling 3.0",
+                "display_name": "可灵 3.0",
+                "description": "可灵最新旗舰，电影级画质，运动流畅自然",
+                "features": json.dumps(["1080P", "5s-10s", "仅首帧"]),
+                "badge": "NEW",
+                "supports_last_frame": False,
+                "is_default": False,
+                "is_enabled": True,
+                "sort_order": 11,
+                "price": 1.49
+            },
+            {
+                "model_id": "kling_2_6",
+                "name": "Kling 2.6",
+                "display_name": "可灵 2.6",
+                "description": "可灵高性能版本，细节丰富，动作精准",
+                "features": json.dumps(["1080P", "5s-10s", "仅首帧"]),
+                "badge": None,
+                "supports_last_frame": False,
+                "is_default": False,
+                "is_enabled": True,
+                "sort_order": 12,
+                "price": 1.19
+            },
+            {
+                "model_id": "kling_2_5_turbo",
+                "name": "Kling 2.5 Turbo",
+                "display_name": "可灵 2.5 Turbo",
+                "description": "可灵专业版，极速生成，高性价比",
+                "features": json.dumps(["1080P", "5s-10s", "仅首帧"]),
+                "badge": "PRO",
+                "supports_last_frame": False,
+                "is_default": False,
+                "is_enabled": True,
+                "sort_order": 13,
+                "price": 0.99
             }
         ]
     
@@ -150,6 +189,7 @@ class ModelConfigManager:
         series_mapping = {
             "2.3": ["hailuo_2_3", "hailuo_2_3_fast", "hailuo_2_0", "hailuo_1_0", "hailuo_1_0_director", "hailuo_1_0_live"],
             "3.1": ["hailuo_3_1", "hailuo_3_1_pro", "beta_3_1", "beta_3_1_fast"],
+            "kling": ["kling_3_0", "kling_2_6", "kling_2_5_turbo"],
             "all": [model["model_id"] for model in ModelConfigManager.get_default_models()]
         }
         return series_mapping.get(series, series_mapping["all"])

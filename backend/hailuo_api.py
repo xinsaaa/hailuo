@@ -93,10 +93,10 @@ def verify_signature() -> bool:
     yy, _ = _generate_yy("/v2/api/multimodal/generate/video", body, UNIX, UUID, DEVICE_ID)
     expected = "f083fff6e011bfee00c50deadcd46c7a"
     if yy == expected:
-        print("[HailuoAPI] ✅ 签名算法验证通过")
+        print("[HailuoAPI] OK 签名算法验证通过")
         return True
     else:
-        print(f"[HailuoAPI] ❌ 签名算法验证失败: got={yy} expected={expected}")
+        print(f"[HailuoAPI] FAIL 签名算法验证失败: got={yy} expected={expected}")
         return False
 
 
@@ -351,6 +351,7 @@ async def login_with_sms(phone: str, code: str, uuid: str, device_id: str) -> di
     Step 2: 短信验证码登录
     POST /v1/api/user/login/phone
     成功时返回 data.token / data.deviceID / data.realUserID
+    返回 {"json": ..., "cookies": "cookie字符串"}
     """
     url_path = "/v1/api/user/login/phone"
     body = {"phone": phone, "code": code, "loginType": ""}
@@ -365,7 +366,9 @@ async def login_with_sms(phone: str, code: str, uuid: str, device_id: str) -> di
     async with httpx.AsyncClient(base_url=BASE_URL, timeout=30.0) as client:
         resp = await client.post(full_path, content=body_str.encode(), headers=headers)
         resp.raise_for_status()
-        return resp.json()
+        # 收集 Set-Cookie
+        cookie_parts = [f"{k}={v}" for k, v in resp.cookies.items()]
+        return {"json": resp.json(), "cookies": "; ".join(cookie_parts)}
 
 
 # ============ 快捷函数（供 worker 用）============

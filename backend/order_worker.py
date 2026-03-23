@@ -13,10 +13,23 @@ from sqlmodel import Session, select
 from backend.models import VideoOrder, User, Transaction, engine
 from backend.account_store import account_store
 from backend.hailuo_api import HailuoApiClient
+from backend import kling_api
 
 logger = logging.getLogger(__name__)
 
 # ---- model_name -> API modelID 映射 ----
+# 可灵模型名 → (kling_version, mode)
+KLING_MODEL_MAP: dict = {
+    "Kling 3.0":       ("3.0", "std"),
+    "Kling 2.6":       ("2.6", "std"),
+    "Kling 2.5 Turbo": ("2.5", "pro"),
+}
+
+
+def _is_kling_model(model_name: Optional[str]) -> bool:
+    return bool(model_name and model_name in KLING_MODEL_MAP)
+
+
 MODEL_ID_MAP: dict = {
     "Hailuo 2.3":          "23217",
     "Hailuo 2.3-Fast":     "23218",
@@ -72,6 +85,11 @@ async def submit_order(order_id: int):
         if order.status != "pending":
             logger.warning(f"[worker] 订单#{order_id}状态={order.status}，跳过提交")
             return
+        model_name = order.model_name
+
+    if _is_kling_model(model_name):
+        await _submit_kling_order(order_id)
+        return
 
     result = _pick_account()
     if not result:
@@ -304,8 +322,139 @@ async def poll_all_pending_orders():
                 VideoOrder.status.in_(["generating", "processing"])
             )
         ).all()
-        order_ids = [o.id for o in orders]
+        order_data = [(o.id, o.model_name) for o in orders]
 
-    logger.info(f"[worker] 全量扫描：找到 {len(order_ids)} 个进行中订单")
-    for oid in order_ids:
-        asyncio.create_task(poll_order_status(oid))
+    logger.info(f"[worker] 全量扫描：找到 {len(order_data)} 个进行中订单")
+    for oid, mname in order_data:
+        if _is_kling_model(mname):
+            asyncio.create_task(poll_kling_order(oid))
+        else:
+            asyncio.create_task(poll_order_status(oid))
+
+
+# ============ 可灵分支 ============
+
+def _pick_kling_account() -> Optional[tuple]:
+    """从 kling_accounts.json 中选出可用账号，返回 (account_id, cookie)"""
+    accounts = kling_api.list_kling_accounts()
+    active = [
+        a for a in accounts
+        if a.get("is_active") and a.get("is_logged_in")
+    ]
+    if not active:
+        return None
+    active.sort(key=lambda x: -x.get("priority", 5))
+    acc = active[0]
+    acc_id = acc["account_id"]
+    creds = kling_api.get_kling_credentials(acc_id)
+    if not creds:
+        return None
+    return acc_id, creds["cookie"]
+
+
+async def _submit_kling_order(order_id: int):
+    """可灵订单提交：上传图片（如有）→ 提交任务 → 更新状态为 generating"""
+    result = _pick_kling_account()
+    if not result:
+        _fail_order(order_id, "无可用可灵账号")
+        return
+
+    acc_id, cookie = result
+
+    try:
+        with Session(engine) as session:
+            order = session.get(VideoOrder, order_id)
+            if not order:
+                return
+            version, mode = KLING_MODEL_MAP[order.model_name]
+            duration_int = int((order.duration or "5s").replace("s", ""))
+            prompt = order.prompt or ""
+            first_frame = order.first_frame_image
+            last_frame = order.last_frame_image
+
+        image_url = ""
+        if first_frame:
+            try:
+                image_url = await kling_api.upload_image(cookie, first_frame)
+            except Exception as e:
+                logger.warning(f"[worker] 可灵上传首帧失败: {e}")
+
+        tail_image_url = ""
+        if last_frame:
+            try:
+                tail_image_url = await kling_api.upload_image(cookie, last_frame)
+            except Exception as e:
+                logger.warning(f"[worker] 可灵上传尾帧失败: {e}")
+
+        task_id = await kling_api.submit_task(
+            cookie=cookie,
+            prompt=prompt,
+            image_url=image_url,
+            tail_image_url=tail_image_url,
+            duration=duration_int,
+            version=version,
+            mode=mode,
+        )
+
+        with Session(engine) as session:
+            order = session.get(VideoOrder, order_id)
+            order.status = "generating"
+            order.task_id = task_id
+            order.updated_at = datetime.utcnow()
+            session.add(order)
+            session.commit()
+
+        logger.info(f"[worker] 可灵订单#{order_id}已提交，task_id={task_id}，账号={acc_id}")
+        asyncio.create_task(poll_kling_order(order_id, cookie=cookie))
+
+    except Exception as e:
+        logger.error(f"[worker] 可灵订单#{order_id}提交异常: {e}", exc_info=True)
+        _fail_order(order_id, str(e))
+
+
+async def poll_kling_order(order_id: int, cookie: Optional[str] = None):
+    """轮询可灵任务直到完成或超时"""
+    with Session(engine) as session:
+        order = session.get(VideoOrder, order_id)
+        if not order:
+            return
+        task_id = order.task_id
+        model_name = order.model_name
+
+    if not task_id:
+        logger.warning(f"[worker] 可灵订单#{order_id}没有task_id，停止轮询")
+        return
+
+    # 若没有传入 cookie，尝试从账号列表中获取任意可用账号
+    if not cookie:
+        result = _pick_kling_account()
+        if not result:
+            logger.warning(f"[worker] 可灵轮询订单#{order_id}：无可用账号")
+            _fail_order(order_id, "无可用可灵账号")
+            return
+        _, cookie = result
+
+    try:
+        result = await kling_api.poll_task(cookie, task_id, timeout=MAX_POLL_SECONDS)
+        video_url = result.get("video_url", "")
+
+        with Session(engine) as session:
+            order = session.get(VideoOrder, order_id)
+            if not order or order.status in ("completed", "failed"):
+                return
+            order.status = "completed"
+            order.progress = 100
+            order.video_url = video_url
+            order.video_urls = json.dumps([video_url]) if video_url else "[]"
+            order.updated_at = datetime.utcnow()
+            session.add(order)
+            session.commit()
+
+        logger.info(f"[worker] 可灵订单#{order_id}完成，video_url={video_url}")
+
+    except TimeoutError:
+        logger.error(f"[worker] 可灵订单#{order_id}生成超时")
+        _fail_order(order_id, "生成超时")
+    except Exception as e:
+        logger.error(f"[worker] 可灵订单#{order_id}轮询异常: {e}", exc_info=True)
+        _fail_order(order_id, str(e))

@@ -93,3 +93,25 @@ reset_*.py
 verify_*.py
 reset_*.bat
 reset_*.sh
+
+# 浏览器数据/调试
+browser_data/
+debug_submit*.py
+
+# 抓包/逆向临时文件
+kling_captured.json
+capture_kling.py
+capture_kling_playwright.py
+html.html
+可灵*.txt
+
+# Claude 配置
+.claude/
+
+# 可灵逆向 SDK（不提交到 git）
+可灵逆向/sdk_block.js
+
+# 账号数据（敏感）
+backend/kling_accounts.json
+backend/accounts.json
+backend/jimeng_cookie.txt

@@ -11,5 +11,7 @@ python-jose[cryptography]
 bcrypt
 requests
 starlette
+httpx
+qrcode[pil]
 loguru
 hypothesis

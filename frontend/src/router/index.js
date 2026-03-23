@@ -40,6 +40,12 @@ const routes = [
         meta: { requiresAuth: true }
     },
     {
+        path: '/kling',
+        name: 'KlingDashboard',
+        component: () => import('../views/KlingDashboard.vue'),
+        meta: { requiresAuth: true }
+    },
+    {
         path: '/recharge',
         name: 'Recharge',
         component: () => import('../views/Recharge.vue'),
@@ -113,6 +119,11 @@ const routes = [
                 path: 'jimeng-accounts',
                 name: '即梦账号',
                 component: () => import('../views/admin/AdminJimengAccounts.vue')
+            },
+            {
+                path: 'kling-accounts',
+                name: '可灵账号管理',
+                component: () => import('../views/admin/AdminKlingAccounts.vue')
             },
             {
                 path: 'settings',
