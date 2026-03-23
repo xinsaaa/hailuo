@@ -47,7 +47,7 @@
           </tr>
         </thead>
         <tbody class="divide-y divide-gray-700/30">
-          <tr v-for="account in accounts" :key="account.account_id" class="hover:bg-gray-700/20 transition-colors">
+          <tr v-for="account in sortedAccounts" :key="account.account_id" class="hover:bg-gray-700/20 transition-colors">
             <td class="px-4 py-3 text-white font-mono text-xs">{{ account.account_id }}</td>
             <td class="px-4 py-3 text-gray-200">{{ account.display_name }}</td>
             <td class="px-4 py-3"><span class="px-2 py-0.5 bg-gray-700 text-gray-300 rounded text-xs">{{ account.priority }}</span></td>
@@ -173,6 +173,13 @@ let countdownTimer = null
 
 const accountPoints = ref({})
 const pointsLoading = ref({})
+
+const sortedAccounts = computed(() => {
+  return [...accounts.value].sort((a, b) => {
+    if (a.is_active === b.is_active) return (b.priority || 0) - (a.priority || 0)
+    return a.is_active ? -1 : 1
+  })
+})
 
 const stats = computed(() => ({
   total: accounts.value.length,
