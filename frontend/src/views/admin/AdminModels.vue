@@ -11,7 +11,7 @@ const editingPPS = ref(null) // 正在编辑每秒单价的模型 ID
 const tempPrice = ref('') // 临时价格输入
 const tempPrice10s = ref('') // 临时10s价格输入
 const tempPPS = ref('') // 临时每秒单价输入
-const platformFilter = ref('all') // 平台筛选：all, hailuo, jimeng
+const platformFilter = ref('all') // 平台筛选：all, hailuo, jimeng, kling
 
 // 按平台筛选后的模型列表
 const filteredModels = computed(() => {
@@ -197,6 +197,13 @@ onMounted(() => {
           >
             即梦
           </button>
+          <button 
+            @click="platformFilter = 'kling'"
+            :class="platformFilter === 'kling' ? 'bg-orange-500 text-white' : 'text-gray-400 hover:text-white'"
+            class="px-3 py-1.5 text-sm font-medium rounded-md transition-all"
+          >
+            可灵
+          </button>
         </div>
         <button @click="loadModels" class="flex items-center gap-2 px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg transition-all active:scale-95">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
@@ -288,8 +295,8 @@ onMounted(() => {
                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
                   </button>
                 </div>
-                <!-- 10s价格（仅海螺模型） -->
-                <template v-if="model.platform === 'hailuo'">
+                <!-- 10s价格（海螺和可灵模型） -->
+                <template v-if="model.platform === 'hailuo' || model.platform === 'kling'">
                   <div v-if="editingPrice10s === model.id" class="flex items-center gap-2 mb-1">
                     <span class="text-xs text-gray-500 w-10">10s</span>
                     <input
@@ -317,8 +324,8 @@ onMounted(() => {
                   </div>
                   <div class="text-[10px] text-gray-600 mt-0.5 ml-10">10s时长价格，0则使用固定价格</div>
                 </template>
-                <!-- 每秒单价（仅即梦模型） -->
-                <template v-if="model.platform === 'jimeng'">
+                <!-- 每秒单价（即梦和可灵模型） -->
+                <template v-if="model.platform === 'jimeng' || model.platform === 'kling'">
                   <div v-if="editingPPS === model.id" class="flex items-center gap-2">
                     <span class="text-xs text-gray-500 w-10">每秒</span>
                     <input
@@ -344,7 +351,7 @@ onMounted(() => {
                       <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
                     </button>
                   </div>
-                  <div class="text-[10px] text-gray-600 mt-0.5 ml-10">设置后按秒计费，优先于固定价格</div>
+                  <div class="text-[10px] text-gray-600 mt-0.5 ml-10">设置后按秒计费，优先于固定和10s价格</div>
                 </template>
               </td>
               <td class="px-6 py-4">
@@ -409,7 +416,8 @@ onMounted(() => {
         <p class="font-medium text-blue-200">配置说明</p>
         <p>• 禁用模型后，用户前端将无法看到该选项。</p>
         <p>• 默认模型将在用户未手动选择时自动应用。</p>
-        <p>• 尾帧上传功能由 "supports_last_frame" 字段控制，仅特定模型支持。</p>
+        <p>• <span class="text-blue-300 font-medium">价格优先级</span>：每秒单价 &gt; 10s价格 &gt; 固定价格。设置了每秒单价后，用户选择任意时长都按 单价×秒数 计费。</p>
+        <p>• 可灵模型支持3-15秒自定义时长，建议设置每秒单价实现灵活计费。</p>
       </div>
     </div>
   </div>

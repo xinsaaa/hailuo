@@ -1160,11 +1160,15 @@ async def create_order(
 
     # 根据用户选择的模型获取价格
     model = session.exec(select(AIModel).where(AIModel.name == model_name)).first()
-    if duration == "10s" and model and model.price_10s > 0:
+    duration_seconds = int(duration.replace("s", "")) if duration else 5
+    if model and model.price_per_second and model.price_per_second > 0:
+        # 按秒计费（可灵/即梦）
+        cost = round(model.price_per_second * duration_seconds, 2)
+    elif duration == "10s" and model and model.price_10s > 0:
         cost = model.price_10s
     else:
         cost = model.price if model and model.price else 0.99
-    total_cost = cost * quantity
+    total_cost = round(cost * quantity, 2)
     if current_user.balance < total_cost:
         raise HTTPException(status_code=400, detail=f"余额不足，需要 ¥{total_cost}（单价 ¥{cost} × {quantity}）")
     
@@ -1384,7 +1388,8 @@ def get_available_models(session: Session = Depends(get_session)):
             "badge": m.badge,
             "supports_last_frame": m.supports_last_frame,
             "price": m.price or 0.99,
-            "price_10s": m.price_10s if m.price_10s and m.price_10s > 0 else None
+            "price_10s": m.price_10s if m.price_10s and m.price_10s > 0 else None,
+            "price_per_second": m.price_per_second if m.price_per_second and m.price_per_second > 0 else None
         })
     
     return {

@@ -91,8 +91,15 @@ const handleKeydown = (e) => {
 
 // 单价（根据时长）
 const unitPrice = computed(() => {
-  if (duration.value === '10s' && selectedModel.value?.price_10s) return selectedModel.value.price_10s
-  return selectedModel.value?.price || 1.49
+  const m = selectedModel.value
+  if (!m) return 1.49
+  // 按秒计费（可灵/即梦）
+  if (m.price_per_second) {
+    const seconds = parseInt(duration.value) || 5
+    return Math.round(m.price_per_second * seconds * 100) / 100
+  }
+  if (duration.value === '10s' && m.price_10s) return m.price_10s
+  return m.price || 1.49
 })
 // 总价 = 单价 * 数量
 const currentPrice = computed(() => unitPrice.value * quantity.value)
