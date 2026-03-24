@@ -264,15 +264,44 @@ async def check_task_status(cookie: str, task_id: str):
     w0 = works[0]
     r0 = w0.get("resource", {})
     v0 = r0.get("resource", "") if isinstance(r0, dict) else ""
+    creative_id = str(w0.get("creativeId", ""))
     print(f"\n{'='*60}")
     if v0:
         print(f"  结论: ✅ works[0].resource.resource 路径有效")
-        print(f"  代码的 poll_task 逻辑可以正确捕获视频URL")
+        print(f"  creativeId = {creative_id}")
     else:
         print(f"  结论: ❌ works[0].resource.resource 为空")
-        print(f"  可能原因: 任务未完成 / 已过期 / 数据结构不同")
-        print(f"  请检查上方完整原始JSON确认实际结构")
     print(f"{'='*60}")
+
+    # 测试无水印下载接口
+    if creative_id:
+        print(f"\n[步骤3] 测试无水印下载接口 /api/creatives/download ...")
+        body = {
+            "creatives": [{"creativeId": creative_id, "creativeType": "WORK"}],
+            "fwm": False,
+            "fileTypes": ["MP4"],
+        }
+        try:
+            dl_url = await sign_url("/api/creatives/download", request_body=body)
+            post_headers = {**make_headers(cookie), "Content-Type": "application/json"}
+            async with httpx.AsyncClient(timeout=30) as client:
+                r = await client.post(dl_url, headers=post_headers, json=body)
+                dl_data = r.json()
+            dump(f"POST /api/creatives/download  HTTP {r.status_code}", dl_data)
+
+            # 解析下载链接
+            dd = dl_data.get("data")
+            print(f"\n[解析] data 类型: {type(dd).__name__}")
+            if isinstance(dd, dict):
+                print(f"  data keys: {list(dd.keys())}")
+            elif isinstance(dd, list):
+                print(f"  data 长度: {len(dd)}")
+                if dd:
+                    print(f"  data[0] 类型: {type(dd[0]).__name__}")
+                    if isinstance(dd[0], dict):
+                        print(f"  data[0] keys: {list(dd[0].keys())}")
+        except Exception as e:
+            print(f"  ❌ 无水印下载接口调用失败: {e}")
 
 
 async def main():

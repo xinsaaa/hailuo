@@ -485,6 +485,19 @@ async def poll_kling_order(order_id: int, cookie: Optional[str] = None):
     try:
         result = await kling_api.poll_task(cookie, task_id, timeout=MAX_POLL_SECONDS)
         video_url = result.get("video_url", "")
+        creative_id = result.get("creative_id", "")
+
+        # 优先通过无水印下载接口获取视频链接
+        if creative_id:
+            try:
+                nowm_url = await kling_api.download_creative(cookie, creative_id)
+                if nowm_url:
+                    logger.info(f"[worker] 可灵订单#{order_id} 获取到无水印链接: {nowm_url[:80]}...")
+                    video_url = nowm_url
+                else:
+                    logger.warning(f"[worker] 可灵订单#{order_id} 无水印接口返回空，使用原始链接")
+            except Exception as e:
+                logger.warning(f"[worker] 可灵订单#{order_id} 无水印下载接口失败: {e}，使用原始链接")
 
         # 下载视频到本地
         if video_url:

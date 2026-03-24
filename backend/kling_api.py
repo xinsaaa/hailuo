@@ -589,11 +589,13 @@ async def poll_task(cookie: str, task_id: str, timeout: int = 600, interval: int
             resource = w.get("resource", {})
             video_url = resource.get("resource", "")
             if video_url:
-                logger.info(f"[poll] task={task_id} 完成, status={status}, video_url={video_url[:80]}...")
+                creative_id = str(w.get("creativeId", ""))
+                logger.info(f"[poll] task={task_id} 完成, status={status}, creativeId={creative_id}, video_url={video_url[:80]}...")
                 return {
                     "task_id": task_id,
                     "status": status,
                     "video_url": video_url,
+                    "creative_id": creative_id,
                     "cover_url": w.get("cover", {}).get("resource", ""),
                     "width": resource.get("width", 0),
                     "height": resource.get("height", 0),
@@ -605,6 +607,62 @@ async def poll_task(cookie: str, task_id: str, timeout: int = 600, interval: int
             logger.error(f"[poll] task={task_id} FAILED: status={status}, data={d}")
             raise RuntimeError(f"task {task_id} failed with status {status}: {d.get('message', '')}")
     raise TimeoutError(f"task {task_id} timed out after {timeout}s")
+
+
+async def download_creative(cookie: str, creative_id: str) -> str:
+    """
+    调用无水印下载接口，返回无水印视频URL。
+    前提：账号已开启 user_remove_aigc_watermark 和 user_watermark_switch。
+    """
+    body = {
+        "creatives": [{"creativeId": creative_id, "creativeType": "WORK"}],
+        "fwm": False,
+        "fileTypes": ["MP4"],
+    }
+    signed_url = await _sign_url("/api/creatives/download", request_body=body)
+    headers = {**_make_headers(), "Cookie": cookie, "Content-Type": "application/json"}
+    async with httpx.AsyncClient(timeout=30) as client:
+        r = await client.post(signed_url, headers=headers, json=body)
+        r.raise_for_status()
+        data = r.json()
+
+    logger.info(f"[download] creativeId={creative_id} resp: {data}")
+
+    # 解析响应：期望 data.data 中包含下载链接
+    d = data.get("data")
+    if not d:
+        logger.warning(f"[download] creativeId={creative_id} 响应无data，原始: {data}")
+        return ""
+
+    # 可能的结构: data 是 url 字符串
+    if isinstance(d, str):
+        return d
+
+    # 可能的结构: data 是 dict，包含 cdnUrl / url / downloadUrl / resource
+    if isinstance(d, dict):
+        for key in ("cdnUrl", "url", "downloadUrl", "resource", "download_url"):
+            if d.get(key):
+                return d[key]
+        # 可能包含 creatives 列表
+        creatives = d.get("creatives") or []
+        if creatives and isinstance(creatives, list):
+            c = creatives[0]
+            for key in ("url", "downloadUrl", "resource", "download_url"):
+                if c.get(key):
+                    return c[key]
+
+    # 可能的结构: data 是 list
+    if isinstance(d, list) and d:
+        item = d[0]
+        if isinstance(item, str):
+            return item
+        if isinstance(item, dict):
+            for key in ("url", "downloadUrl", "resource", "download_url"):
+                if item.get(key):
+                    return item[key]
+
+    logger.warning(f"[download] creativeId={creative_id} 无法解析下载链接，data={d}")
+    return ""
 
 
 async def get_user_points(cookie: str) -> dict:
