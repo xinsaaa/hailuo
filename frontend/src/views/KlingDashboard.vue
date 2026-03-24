@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { getCurrentUser, createOrder, getOrders, getPublicConfig, getAvailableModels } from '../api'
+import { getCurrentUser, createOrder, getOrders, getPublicConfig, getAvailableModels, klingPreUpload } from '../api'
 
 const router = useRouter()
 const siteName = ref(localStorage.getItem('site_name') || '大帝AI')
@@ -30,6 +30,12 @@ const firstFramePreview = ref(null)
 // 尾帧图片
 const lastFrameImage = ref(null)
 const lastFramePreview = ref(null)
+
+// 可灵CDN预上传状态
+const firstFrameCdnUrl = ref(null)
+const lastFrameCdnUrl = ref(null)
+const uploadingFirst = ref(false)
+const uploadingLast = ref(false)
 
 // 宽高比（文生视频用）
 const aspectRatio = ref('16:9')
@@ -206,18 +212,25 @@ const handleCreateOrder = async () => {
   const videoType = videoMode.value === 'text' ? 'text_to_video' : 'image_to_video'
 
   try {
+    const opts = {}
+    if (firstFrameCdnUrl.value) opts.firstFrameCdnUrl = firstFrameCdnUrl.value
+    if (lastFrameCdnUrl.value) opts.lastFrameCdnUrl = lastFrameCdnUrl.value
+
     await createOrder(
       prompt.value,
       selectedModel.value.name,
-      videoMode.value === 'image' ? firstFrameImage.value : null,
-      videoMode.value === 'image' ? lastFrameImage.value : null,
+      videoMode.value === 'image' && !firstFrameCdnUrl.value ? firstFrameImage.value : null,
+      videoMode.value === 'image' && !lastFrameCdnUrl.value ? lastFrameImage.value : null,
       videoType,
       '768p',
       duration.value,
-      1
+      1,
+      opts
     )
     showNotification('订单提交成功！可灵AI正在为您生成...', 'success')
     prompt.value = ''
+    firstFrameCdnUrl.value = null
+    lastFrameCdnUrl.value = null
     removeImage('all')
     await loadData()
   } catch (err) {
@@ -233,7 +246,7 @@ const selectModel = (model) => {
 }
 
 // 图片上传
-const processFile = (file) => {
+const processFile = async (file, type = 'first') => {
   if (!file) return
   if (!file.type.startsWith('image/')) {
     showNotification('请选择图片文件', 'error')
@@ -243,9 +256,42 @@ const processFile = (file) => {
     showNotification('图片大小不能超过5MB', 'error')
     return
   }
-  firstFrameImage.value = file
-  if (firstFramePreview.value) URL.revokeObjectURL(firstFramePreview.value)
-  firstFramePreview.value = URL.createObjectURL(file)
+
+  if (type === 'first') {
+    firstFrameImage.value = file
+    if (firstFramePreview.value) URL.revokeObjectURL(firstFramePreview.value)
+    firstFramePreview.value = URL.createObjectURL(file)
+    firstFrameCdnUrl.value = null
+    uploadingFirst.value = true
+    try {
+      const res = await klingPreUpload(file, 'first')
+      if (res.cdn_url) {
+        firstFrameCdnUrl.value = res.cdn_url
+        showNotification('图片已预上传到可灵CDN', 'success')
+      }
+    } catch (e) {
+      console.warn('预上传失败，提交时将重新上传', e)
+    } finally {
+      uploadingFirst.value = false
+    }
+  } else {
+    lastFrameImage.value = file
+    if (lastFramePreview.value) URL.revokeObjectURL(lastFramePreview.value)
+    lastFramePreview.value = URL.createObjectURL(file)
+    lastFrameCdnUrl.value = null
+    uploadingLast.value = true
+    try {
+      const res = await klingPreUpload(file, 'last')
+      if (res.cdn_url) {
+        lastFrameCdnUrl.value = res.cdn_url
+        showNotification('尾帧图片已预上传', 'success')
+      }
+    } catch (e) {
+      console.warn('尾帧预上传失败', e)
+    } finally {
+      uploadingLast.value = false
+    }
+  }
 }
 
 const handleImageUpload = (event) => { processFile(event.target.files[0]) }
@@ -262,26 +308,15 @@ const handlePaste = (event) => {
   }
 }
 
-const processLastFrameFile = (file) => {
-  if (!file) return
-  if (!file.type.startsWith('image/')) {
-    showNotification('请选择图片文件', 'error')
-    return
-  }
-  if (file.size > 5 * 1024 * 1024) {
-    showNotification('图片大小不能超过5MB', 'error')
-    return
-  }
-  lastFrameImage.value = file
-  if (lastFramePreview.value) URL.revokeObjectURL(lastFramePreview.value)
-  lastFramePreview.value = URL.createObjectURL(file)
-}
+const processLastFrameFile = (file) => { processFile(file, 'last') }
 const handleLastFrameUpload = (event) => { processLastFrameFile(event.target.files[0]) }
 const handleLastFrameDrop = (event) => { event.preventDefault(); processLastFrameFile(event.dataTransfer?.files?.[0]) }
 
 const removeImage = (type = 'first') => {
   if (type === 'first' || type === 'all') {
     firstFrameImage.value = null
+    firstFrameCdnUrl.value = null
+    uploadingFirst.value = false
     if (firstFramePreview.value) {
       URL.revokeObjectURL(firstFramePreview.value)
       firstFramePreview.value = null
@@ -289,6 +324,8 @@ const removeImage = (type = 'first') => {
   }
   if (type === 'last' || type === 'all') {
     lastFrameImage.value = null
+    lastFrameCdnUrl.value = null
+    uploadingLast.value = false
     if (lastFramePreview.value) {
       URL.revokeObjectURL(lastFramePreview.value)
       lastFramePreview.value = null
@@ -584,6 +621,12 @@ const handleLogout = () => {
                       <div class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center backdrop-blur-sm">
                         <span class="text-white text-xs font-medium border border-white/20 px-3 py-1.5 rounded-full bg-white/10">点击更换</span>
                       </div>
+                      <div v-if="uploadingFirst" class="absolute bottom-1 right-1 w-5 h-5 bg-black/70 rounded-full flex items-center justify-center">
+                        <svg class="w-3 h-3 text-orange-400 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                      </div>
+                      <div v-else-if="firstFrameCdnUrl" class="absolute bottom-1 right-1 w-5 h-5 bg-green-500/80 rounded-full flex items-center justify-center" title="已预上传到可灵CDN">
+                        <svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>
+                      </div>
                     </div>
                   </label>
                   <button
@@ -623,6 +666,12 @@ const handleLogout = () => {
                       <img :src="lastFramePreview" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
                       <div class="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center backdrop-blur-sm">
                         <span class="text-white text-xs font-medium border border-white/20 px-3 py-1.5 rounded-full bg-white/10">点击更换</span>
+                      </div>
+                      <div v-if="uploadingLast" class="absolute bottom-1 right-1 w-5 h-5 bg-black/70 rounded-full flex items-center justify-center">
+                        <svg class="w-3 h-3 text-orange-400 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
+                      </div>
+                      <div v-else-if="lastFrameCdnUrl" class="absolute bottom-1 right-1 w-5 h-5 bg-green-500/80 rounded-full flex items-center justify-center" title="已预上传到可灵CDN">
+                        <svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>
                       </div>
                     </div>
                   </label>

@@ -212,6 +212,16 @@ async def startup_event():
     else:
         app_logger.info("Multi-account system disabled by config")
 
+    # 配置可灵API日志输出DEBUG到终端
+    import logging
+    kling_logger = logging.getLogger("backend.kling_api")
+    kling_logger.setLevel(logging.DEBUG)
+    if not kling_logger.handlers:
+        _sh = logging.StreamHandler()
+        _sh.setLevel(logging.DEBUG)
+        _sh.setFormatter(logging.Formatter("[%(asctime)s] %(levelname)s %(name)s: %(message)s", datefmt="%H:%M:%S"))
+        kling_logger.addHandler(_sh)
+
     # 启动可灵账号登录状态监测
     from backend.kling_api import start_monitor
     start_monitor()
@@ -1076,6 +1086,43 @@ def get_payment_status(
     }
 
 
+@app.post("/api/kling/pre-upload")
+async def kling_pre_upload(
+    image: UploadFile = File(...),
+    frame_type: str = Form("first"),
+    current_user: User = Depends(get_current_user),
+):
+    """用户选择图片后立即上传到可灵CDN，返回CDN URL。避免提交订单时再上传导致延迟。"""
+    if not image.content_type.startswith('image/'):
+        raise HTTPException(status_code=400, detail="文件必须是图片")
+
+    from backend import kling_api
+    from backend.order_worker import _pick_kling_account
+
+    result = _pick_kling_account()
+    if not result:
+        raise HTTPException(status_code=503, detail="无可用可灵账号")
+    acc_id, cookie = result
+
+    # 保存到临时文件
+    import tempfile
+    import uuid as _uuid
+    ext = image.filename.split('.')[-1] if '.' in image.filename else 'jpg'
+    tmp_path = os.path.join(tempfile.gettempdir(), f"kling_pre_{_uuid.uuid4().hex[:8]}.{ext}")
+    try:
+        content = await image.read()
+        with open(tmp_path, "wb") as f:
+            f.write(content)
+        cdn_url = await kling_api.upload_image(cookie, tmp_path)
+        return {"success": True, "cdn_url": cdn_url, "frame_type": frame_type}
+    except Exception as e:
+        app_logger.error(f"可灵预上传失败: {e}")
+        raise HTTPException(status_code=502, detail=f"上传到可灵失败: {e}")
+    finally:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+
+
 @app.post("/api/orders/create")
 async def create_order(
     prompt: str = Form(...),
@@ -1086,6 +1133,8 @@ async def create_order(
     quantity: int = Form(1),
     first_frame_image: Optional[UploadFile] = File(None),
     last_frame_image: Optional[UploadFile] = File(None),
+    first_frame_cdn_url: Optional[str] = Form(None),
+    last_frame_cdn_url: Optional[str] = Form(None),
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_session)
 ):
@@ -1105,8 +1154,8 @@ async def create_order(
     if quantity < 1 or quantity > 5:
         raise HTTPException(status_code=400, detail="批量数量仅支持1-5")
 
-    # 图生视频必须上传首帧图片
-    if video_type == "image_to_video" and not first_frame_image:
+    # 图生视频必须上传首帧图片（或已预上传CDN URL）
+    if video_type == "image_to_video" and not first_frame_image and not first_frame_cdn_url:
         raise HTTPException(status_code=400, detail="图生视频模式必须上传首帧图片")
 
     # 根据用户选择的模型获取价格
@@ -1123,9 +1172,12 @@ async def create_order(
     import uuid as _uuid
     user_upload_dir = os.path.join("user_images", f"user_{current_user.id}")
     
-    # 处理首帧图片上传
+    # 处理首帧图片：优先使用已预上传的CDN URL（可灵），否则保存本地文件
     first_frame_path = None
-    if first_frame_image:
+    if first_frame_cdn_url:
+        # 已通过 /api/kling/pre-upload 预上传，直接记录CDN URL
+        first_frame_path = f"CDN:{first_frame_cdn_url}"
+    elif first_frame_image:
         if not first_frame_image.content_type.startswith('image/'):
             raise HTTPException(status_code=400, detail="首帧文件必须是图片")
         
@@ -1139,9 +1191,11 @@ async def create_order(
             content = await first_frame_image.read()
             f.write(content)
     
-    # 处理尾帧图片上传
+    # 处理尾帧图片：优先使用已预上传的CDN URL
     last_frame_path = None
-    if last_frame_image:
+    if last_frame_cdn_url:
+        last_frame_path = f"CDN:{last_frame_cdn_url}"
+    elif last_frame_image:
         if not last_frame_image.content_type.startswith('image/'):
             raise HTTPException(status_code=400, detail="尾帧文件必须是图片")
         

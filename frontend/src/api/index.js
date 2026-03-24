@@ -187,7 +187,18 @@ export const confirmPayment = async (params) => {
     return response.data
 }
 
-export const createOrder = async (prompt, model_name, firstFrameImage, lastFrameImage, videoType = 'image_to_video', resolution = '768p', duration = '6s', quantity = 1) => {
+export const klingPreUpload = async (imageFile, frameType = 'first') => {
+    const formData = new FormData();
+    formData.append('image', imageFile);
+    formData.append('frame_type', frameType);
+    const { data } = await api.post('/kling/pre-upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: 120000
+    });
+    return data;
+};
+
+export const createOrder = async (prompt, model_name, firstFrameImage, lastFrameImage, videoType = 'image_to_video', resolution = '768p', duration = '6s', quantity = 1, options = {}) => {
     const formData = new FormData();
     formData.append('prompt', prompt);
     formData.append('model_name', model_name || "Hailuo 2.3");
@@ -196,10 +207,14 @@ export const createOrder = async (prompt, model_name, firstFrameImage, lastFrame
     formData.append('duration', duration);
     formData.append('quantity', quantity);
 
-    if (firstFrameImage) {
+    if (options.firstFrameCdnUrl) {
+        formData.append('first_frame_cdn_url', options.firstFrameCdnUrl);
+    } else if (firstFrameImage) {
         formData.append('first_frame_image', firstFrameImage);
     }
-    if (lastFrameImage) {
+    if (options.lastFrameCdnUrl) {
+        formData.append('last_frame_cdn_url', options.lastFrameCdnUrl);
+    } else if (lastFrameImage) {
         formData.append('last_frame_image', lastFrameImage);
     }
 

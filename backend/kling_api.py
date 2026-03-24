@@ -359,6 +359,7 @@ async def check_login(cookie: str) -> bool:
                 },
             )
             data = resp.json()
+            logger.debug(f"[check_login] status={resp.status_code}, resp={data}")
             d = data.get("data") or {}
             is_ok = d.get("isLogin") is True or d.get("login") is True
             if not is_ok:
@@ -388,6 +389,7 @@ async def upload_image(cookie: str, image_path: str) -> str:
         r = await client.get(signed_issue, headers={**_make_headers(), "Cookie": cookie})
         r.raise_for_status()
         issue_data = r.json()
+    logger.debug(f"[upload] issue/token resp={issue_data}")
     if issue_data.get("result") != 1:
         raise RuntimeError(f"issue/token failed: {issue_data}")
     upload_token = issue_data["data"]["token"]
@@ -406,6 +408,7 @@ async def upload_image(cookie: str, image_path: str) -> str:
         )
         r.raise_for_status()
         frag_data = r.json()
+    logger.debug(f"[upload] fragment resp={frag_data}")
     if frag_data.get("result") != 1:
         raise RuntimeError(f"upload fragment failed: {frag_data}")
 
@@ -418,6 +421,7 @@ async def upload_image(cookie: str, image_path: str) -> str:
         )
         r.raise_for_status()
         complete_data = r.json()
+    logger.debug(f"[upload] complete resp={complete_data}")
     if complete_data.get("result") != 1:
         raise RuntimeError(f"upload complete failed: {complete_data}")
 
@@ -432,8 +436,11 @@ async def upload_image(cookie: str, image_path: str) -> str:
             r.raise_for_status()
             verify_data = r.json()
         vd = verify_data.get("data", {})
+        logger.debug(f"[upload] verify status={vd.get('status')}, resp={verify_data}")
         if vd.get("status") == 3:
-            return vd["url"]
+            cdn_url = vd["url"]
+            logger.info(f"[upload] 图片上传成功, CDN URL={cdn_url}")
+            return cdn_url
     raise TimeoutError("upload verify timed out")
 
 
@@ -500,9 +507,10 @@ async def submit_task(
             pr = await client.post(signed_price_url, headers=headers, json=price_body)
             pr.raise_for_status()
             price_data = pr.json()
+            logger.debug(f"[submit] task/price resp={price_data}")
             show_price = price_data.get("data", {}).get("price", {}).get("payAmount", 0)
-        except Exception:
-            pass  # 价格查询失败不阻塞提交
+        except Exception as e:
+            logger.warning(f"[submit] task/price 查询失败: {e}")
 
     # 把 showPrice 追加到 arguments
     if show_price:
@@ -513,12 +521,16 @@ async def submit_task(
         r = await client.post(signed_url, headers=headers, json=body)
         r.raise_for_status()
         data = r.json()
+    logger.debug(f"[submit] task/submit resp={data}")
     result_code = data.get("result", -1)
     if result_code != 1 or data.get("data") is None:
         err = data.get("error", {})
         msg = err.get("detail") or data.get("message") or str(data)
+        logger.error(f"[submit] task/submit FAILED: result={result_code}, status={data.get('status')}, msg={msg}")
         raise RuntimeError(f"task/submit failed (result={result_code}, status={data.get('status')}): {msg}")
-    return str(data["data"]["task"]["id"])
+    task_id = str(data["data"]["task"]["id"])
+    logger.info(f"[submit] 任务提交成功, task_id={task_id}")
+    return task_id
 
 
 async def poll_task(cookie: str, task_id: str, timeout: int = 600, interval: int = 5) -> dict:
@@ -538,6 +550,7 @@ async def poll_task(cookie: str, task_id: str, timeout: int = 600, interval: int
         d = data.get("data") or {}
         status = d.get("status", 0)
         works = d.get("works") or []
+        logger.debug(f"[poll] task={task_id}, status={status}, works_count={len(works)}")
         # status >= 50 means terminal state; works populated means success
         if works:
             w = works[0]
@@ -552,6 +565,7 @@ async def poll_task(cookie: str, task_id: str, timeout: int = 600, interval: int
                 "duration": resource.get("duration", 0),
             }
         if status >= 90:
+            logger.error(f"[poll] task={task_id} FAILED: status={status}, data={d}")
             raise RuntimeError(f"task {task_id} failed with status {status}: {d.get('message', '')}")
     raise TimeoutError(f"task {task_id} timed out after {timeout}s")
 
@@ -570,6 +584,7 @@ async def get_user_points(cookie: str) -> dict:
         r = await client.get(signed_url, headers=headers)
         r.raise_for_status()
         data = r.json()
+    logger.debug(f"[points] user/works/personal/feeds resp keys={list(data.get('data', {}).keys())}")
     points = data.get("data", {}).get("userPoints", {})
     return {
         "total": points.get("total", 0) / 100,

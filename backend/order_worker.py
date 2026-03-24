@@ -386,17 +386,25 @@ async def _submit_kling_order(order_id: int):
 
         image_url = ""
         if first_frame:
-            try:
-                image_url = await kling_api.upload_image(cookie, first_frame)
-            except Exception as e:
-                logger.warning(f"[worker] 可灵上传首帧失败: {e}")
+            if first_frame.startswith("CDN:"):
+                image_url = first_frame[4:]
+                logger.info(f"[worker] 可灵订单#{order_id} 首帧使用预上传CDN: {image_url}")
+            else:
+                try:
+                    image_url = await kling_api.upload_image(cookie, first_frame)
+                except Exception as e:
+                    logger.warning(f"[worker] 可灵上传首帧失败: {e}")
 
         tail_image_url = ""
         if last_frame:
-            try:
-                tail_image_url = await kling_api.upload_image(cookie, last_frame)
-            except Exception as e:
-                logger.warning(f"[worker] 可灵上传尾帧失败: {e}")
+            if last_frame.startswith("CDN:"):
+                tail_image_url = last_frame[4:]
+                logger.info(f"[worker] 可灵订单#{order_id} 尾帧使用预上传CDN: {tail_image_url}")
+            else:
+                try:
+                    tail_image_url = await kling_api.upload_image(cookie, last_frame)
+                except Exception as e:
+                    logger.warning(f"[worker] 可灵上传尾帧失败: {e}")
 
         task_id = await kling_api.submit_task(
             cookie=cookie,
