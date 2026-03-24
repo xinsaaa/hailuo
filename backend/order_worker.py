@@ -383,6 +383,9 @@ async def _submit_kling_order(order_id: int):
             prompt = order.prompt or ""
             first_frame = order.first_frame_image
             last_frame = order.last_frame_image
+            video_type = order.video_type or "image_to_video"
+            order_resolution = order.resolution or "1080p"
+            aspect_ratio = order.aspect_ratio or "16:9"
 
         image_url = ""
         if first_frame:
@@ -414,6 +417,7 @@ async def _submit_kling_order(order_id: int):
             duration=duration_int,
             version=version,
             mode=mode,
+            aspect_ratio=aspect_ratio,
         )
 
         with Session(engine) as session:

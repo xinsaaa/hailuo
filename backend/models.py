@@ -36,6 +36,7 @@ class VideoOrder(SQLModel, table=True):
     video_type: Optional[str] = Field(default="image_to_video")  # image_to_video 或 text_to_video
     resolution: Optional[str] = Field(default="768p")  # 768p 或 1080p
     duration: Optional[str] = Field(default="6s")  # 6s 或 10s（1080p只能6s）
+    aspect_ratio: Optional[str] = Field(default="16:9")  # 16:9, 1:1, 9:16
     # 批量生成
     batch_parent_id: Optional[int] = Field(default=None, index=True)  # 已废弃，保留兼容
     batch_index: Optional[int] = Field(default=None)  # 已废弃，保留兼容
@@ -212,6 +213,8 @@ def _auto_migrate():
         # 批量订单简化
         ("videoorder", "quantity", "INTEGER DEFAULT 1"),
         ("videoorder", "video_urls", "TEXT"),
+        # 宽高比
+        ("videoorder", "aspect_ratio", "TEXT DEFAULT '16:9'"),
     ]
 
     # 缓存每张表的现有列

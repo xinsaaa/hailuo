@@ -1137,6 +1137,7 @@ async def create_order(
     resolution: str = Form("768p"),
     duration: str = Form("6s"),
     quantity: int = Form(1),
+    aspect_ratio: str = Form("16:9"),
     first_frame_image: Optional[UploadFile] = File(None),
     last_frame_image: Optional[UploadFile] = File(None),
     first_frame_cdn_url: Optional[str] = Form(None),
@@ -1148,13 +1149,13 @@ async def create_order(
     if video_type not in ("image_to_video", "text_to_video"):
         raise HTTPException(status_code=400, detail="无效的视频类型")
 
-    # 校验分辨率和秒数
-    if resolution not in ("768p", "1080p"):
-        raise HTTPException(status_code=400, detail="无效的分辨率，仅支持768p和1080p")
-    if duration not in ("5s", "6s", "10s"):
-        raise HTTPException(status_code=400, detail="无效的时长，仅支持5s、6s和10s")
-    if resolution == "1080p" and duration == "10s":
-        raise HTTPException(status_code=400, detail="1080p分辨率仅支持6秒")
+    # 校验分辨率
+    if resolution not in ("720p", "768p", "1080p"):
+        raise HTTPException(status_code=400, detail="无效的分辨率")
+    # 校验时长：支持 3s-15s（可灵3.0滑块）和固定值 5s/6s/10s
+    dur_num = int(duration.replace("s", ""))
+    if dur_num < 3 or dur_num > 15:
+        raise HTTPException(status_code=400, detail="无效的时长，支持3-15秒")
 
     # 校验批量数量
     if quantity < 1 or quantity > 5:
@@ -1228,6 +1229,7 @@ async def create_order(
         video_type=video_type,
         resolution=resolution,
         duration=duration,
+        aspect_ratio=aspect_ratio,
         first_frame_image=first_frame_path,
         last_frame_image=last_frame_path,
         quantity=quantity,

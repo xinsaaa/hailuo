@@ -20,8 +20,15 @@ const showModelSelector = ref(false)
 // 视频模式：文生视频 / 图生视频
 const videoMode = ref('image')
 
-// 时长选择（可灵支持5s和10s）
+// 时长选择
 const duration = ref('5s')
+const durationSlider = ref(5)
+
+// 分辨率
+const resolution = ref('1080p')
+
+// 生成数量
+const quantity = ref(1)
 
 // 首帧图片
 const firstFrameImage = ref(null)
@@ -37,13 +44,38 @@ const lastFrameCdnUrl = ref(null)
 const uploadingFirst = ref(false)
 const uploadingLast = ref(false)
 
-// 宽高比（文生视频用）
+// 宽高比
 const aspectRatio = ref('16:9')
 const aspectRatioOptions = [
   { label: '16:9', icon: '▬', desc: '横屏' },
   { label: '9:16', icon: '▮', desc: '竖屏' },
   { label: '1:1', icon: '◻', desc: '方形' },
 ]
+
+// 根据模型名获取模型配置
+const modelConfig = computed(() => {
+  const name = selectedModel.value?.name || ''
+  if (name.includes('3.0')) return { resolutions: ['720p', '1080p'], durationMode: 'slider', durationMin: 3, durationMax: 15, quantities: [1, 2, 3, 4] }
+  if (name.includes('2.6')) return { resolutions: ['1080p'], durationMode: 'buttons', durationOptions: ['5s', '10s'], quantities: [1, 2, 3, 4] }
+  if (name.includes('2.5')) return { resolutions: ['720p', '1080p'], durationMode: 'buttons', durationOptions: ['5s', '10s'], quantities: [1, 2, 3, 4] }
+  return { resolutions: ['720p', '1080p'], durationMode: 'buttons', durationOptions: ['5s', '10s'], quantities: [1, 2, 3, 4] }
+})
+
+// 切换模型时重置参数到合法值
+watch(() => selectedModel.value, () => {
+  const cfg = modelConfig.value
+  if (!cfg.resolutions.includes(resolution.value)) resolution.value = cfg.resolutions[0]
+  if (cfg.durationMode === 'slider') {
+    durationSlider.value = Math.max(cfg.durationMin, Math.min(cfg.durationMax, durationSlider.value))
+    duration.value = durationSlider.value + 's'
+  } else {
+    if (!cfg.durationOptions.includes(duration.value)) duration.value = cfg.durationOptions[0]
+  }
+  if (!cfg.quantities.includes(quantity.value)) quantity.value = 1
+})
+
+// 滑块变化时同步duration
+watch(durationSlider, (val) => { duration.value = val + 's' })
 
 // prompt字数限制
 const maxPromptLength = 500
@@ -57,11 +89,13 @@ const handleKeydown = (e) => {
   }
 }
 
-// 当前价格
-const currentPrice = computed(() => {
+// 单价（根据时长）
+const unitPrice = computed(() => {
   if (duration.value === '10s' && selectedModel.value?.price_10s) return selectedModel.value.price_10s
   return selectedModel.value?.price || 1.49
 })
+// 总价 = 单价 * 数量
+const currentPrice = computed(() => unitPrice.value * quantity.value)
 
 // 订单自动刷新
 let ordersInterval = null
@@ -212,7 +246,7 @@ const handleCreateOrder = async () => {
   const videoType = videoMode.value === 'text' ? 'text_to_video' : 'image_to_video'
 
   try {
-    const opts = {}
+    const opts = { aspectRatio: aspectRatio.value }
     if (firstFrameCdnUrl.value) opts.firstFrameCdnUrl = firstFrameCdnUrl.value
     if (lastFrameCdnUrl.value) opts.lastFrameCdnUrl = lastFrameCdnUrl.value
 
@@ -222,9 +256,9 @@ const handleCreateOrder = async () => {
       videoMode.value === 'image' && !firstFrameCdnUrl.value ? firstFrameImage.value : null,
       videoMode.value === 'image' && !lastFrameCdnUrl.value ? lastFrameImage.value : null,
       videoType,
-      '768p',
+      resolution.value,
       duration.value,
-      1,
+      quantity.value,
       opts
     )
     showNotification('订单提交成功！可灵AI正在为您生成...', 'success')
@@ -536,26 +570,49 @@ const handleLogout = () => {
               <!-- 时长选择 -->
               <div class="flex items-center gap-2">
                 <span class="text-gray-400 text-sm">时长</span>
-                <div class="flex items-center gap-1 p-1 bg-black/30 rounded-xl border border-white/10">
+                <!-- 滑块模式（视频3.0） -->
+                <div v-if="modelConfig.durationMode === 'slider'" class="flex items-center gap-2 flex-1">
+                  <input
+                    type="range"
+                    :min="modelConfig.durationMin"
+                    :max="modelConfig.durationMax"
+                    v-model.number="durationSlider"
+                    class="flex-1 h-1.5 bg-white/10 rounded-full appearance-none cursor-pointer accent-orange-500 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-gradient-to-r [&::-webkit-slider-thumb]:from-orange-500 [&::-webkit-slider-thumb]:to-amber-500 [&::-webkit-slider-thumb]:shadow-lg [&::-webkit-slider-thumb]:shadow-orange-900/40"
+                  />
+                  <span class="text-white text-sm font-bold min-w-[36px] text-center bg-black/30 px-2 py-1 rounded-lg border border-white/10">{{ durationSlider }}s</span>
+                </div>
+                <!-- 按钮模式（视频2.6/2.5 Turbo） -->
+                <div v-else class="flex items-center gap-1 p-1 bg-black/30 rounded-xl border border-white/10">
                   <button
-                    @click="duration = '5s'"
+                    v-for="d in modelConfig.durationOptions"
+                    :key="d"
+                    @click="duration = d"
                     class="px-3 py-1.5 text-sm font-medium rounded-lg transition-all duration-200"
-                    :class="duration === '5s'
+                    :class="duration === d
                       ? 'bg-gradient-to-r from-orange-500/80 to-amber-500/80 text-white shadow-lg shadow-orange-900/30'
                       : 'text-gray-400 hover:text-white hover:bg-white/5'"
-                  >5秒</button>
-                  <button
-                    @click="duration = '10s'"
-                    class="px-3 py-1.5 text-sm font-medium rounded-lg transition-all duration-200"
-                    :class="duration === '10s'
-                      ? 'bg-gradient-to-r from-orange-500/80 to-amber-500/80 text-white shadow-lg shadow-orange-900/30'
-                      : 'text-gray-400 hover:text-white hover:bg-white/5'"
-                  >10秒</button>
+                  >{{ d.replace('s', '秒') }}</button>
                 </div>
               </div>
 
-              <!-- 宽高比选择（仅文生视频） -->
-              <div v-if="videoMode === 'text'" class="flex items-center gap-2">
+              <!-- 分辨率选择 -->
+              <div class="flex items-center gap-2">
+                <span class="text-gray-400 text-sm">画质</span>
+                <div class="flex items-center gap-1 p-1 bg-black/30 rounded-xl border border-white/10">
+                  <button
+                    v-for="res in modelConfig.resolutions"
+                    :key="res"
+                    @click="resolution = res"
+                    class="px-3 py-1.5 text-sm font-medium rounded-lg transition-all duration-200"
+                    :class="resolution === res
+                      ? 'bg-gradient-to-r from-orange-500/80 to-amber-500/80 text-white shadow-lg shadow-orange-900/30'
+                      : 'text-gray-400 hover:text-white hover:bg-white/5'"
+                  >{{ res }}</button>
+                </div>
+              </div>
+
+              <!-- 宽高比选择 -->
+              <div class="flex items-center gap-2">
                 <span class="text-gray-400 text-sm">比例</span>
                 <div class="flex items-center gap-1 p-1 bg-black/30 rounded-xl border border-white/10">
                   <button
@@ -570,6 +627,22 @@ const handleLogout = () => {
                     <span class="text-[10px]">{{ ar.icon }}</span>
                     {{ ar.desc }}
                   </button>
+                </div>
+              </div>
+
+              <!-- 生成数量选择 -->
+              <div class="flex items-center gap-2">
+                <span class="text-gray-400 text-sm">数量</span>
+                <div class="flex items-center gap-1 p-1 bg-black/30 rounded-xl border border-white/10">
+                  <button
+                    v-for="q in modelConfig.quantities"
+                    :key="q"
+                    @click="quantity = q"
+                    class="px-3 py-1.5 text-sm font-medium rounded-lg transition-all duration-200"
+                    :class="quantity === q
+                      ? 'bg-gradient-to-r from-orange-500/80 to-amber-500/80 text-white shadow-lg shadow-orange-900/30'
+                      : 'text-gray-400 hover:text-white hover:bg-white/5'"
+                  >{{ q }}</button>
                 </div>
               </div>
             </div>

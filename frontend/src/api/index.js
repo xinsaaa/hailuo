@@ -206,6 +206,9 @@ export const createOrder = async (prompt, model_name, firstFrameImage, lastFrame
     formData.append('resolution', resolution);
     formData.append('duration', duration);
     formData.append('quantity', quantity);
+    if (options.aspectRatio) {
+        formData.append('aspect_ratio', options.aspectRatio);
+    }
 
     if (options.firstFrameCdnUrl) {
         formData.append('first_frame_cdn_url', options.firstFrameCdnUrl);
