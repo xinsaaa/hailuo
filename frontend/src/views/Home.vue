@@ -295,6 +295,52 @@ const handleModelSeriesGenerate = (series) => {
           </div>
         </div>
         
+        <!-- 可灵AI模型 -->
+        <div :class="['group relative md:col-start-2 lg:col-start-auto', { 'opacity-60': !hasKling }]" @click="hasKling && router.push('/kling')">
+          <div v-if="hasKling" class="absolute -inset-0.5 bg-gradient-to-b from-orange-500/20 to-amber-500/5 rounded-3xl blur opacity-20 group-hover:opacity-60 transition-opacity duration-700"></div>
+
+          <div class="relative bg-white/5 border border-white/5 border-t-white/20 rounded-2xl p-6 shadow-2xl h-full cursor-pointer transition-all duration-500 hover:scale-[1.02] hover:-translate-y-1 backdrop-blur-3xl hover:bg-white/10 hover:shadow-orange-500/10">
+            <div class="flex justify-between items-center mb-4">
+              <div class="px-2.5 py-1 rounded-full bg-gradient-to-r from-orange-500 to-amber-500 text-white text-xs font-bold shadow-sm ring-1 ring-white/10">
+                NEW
+              </div>
+              <div class="text-xl font-bold text-white drop-shadow-sm tracking-wide">
+                ¥{{ klingPrice }}
+              </div>
+            </div>
+
+            <h3 class="text-xl font-bold text-white mb-4 flex items-center gap-2">
+              可灵 AI <span class="text-[10px] text-orange-400 font-normal px-1.5 py-0.5 border border-orange-400/30 rounded tracking-wider uppercase">KlingAI</span>
+              <div v-if="hasKling" class="w-1.5 h-1.5 rounded-full bg-orange-400 shadow-[0_0_8px_rgba(251,146,60,0.8)] animate-pulse"></div>
+            </h3>
+
+            <div class="space-y-2 mb-6">
+              <div class="px-3 py-2 rounded-lg bg-black/20 text-gray-300 text-xs font-medium flex items-center gap-2 border border-white/5 group-hover:border-white/10 transition-colors">
+                <svg class="w-3.5 h-3.5 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 4v16M17 4v16M3 8h4m10 0h4M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z"/></svg>
+                快手旗下，电影级画质
+              </div>
+              <div class="px-3 py-2 rounded-lg bg-black/20 text-gray-300 text-xs font-medium border border-white/5 group-hover:border-white/10 transition-colors">
+                运动自然流畅，支持5s-10s生成
+              </div>
+            </div>
+
+            <div class="text-center mb-6">
+              <div class="text-sm font-medium text-gray-400">
+                单次生成仅需 <span class="text-white font-bold mx-1">{{ klingPrice }}元</span>
+              </div>
+            </div>
+
+            <div>
+              <button v-if="hasKling" class="w-full py-3.5 bg-white text-black hover:bg-gray-50 rounded-xl font-bold text-sm transition-all duration-300 shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-95">
+                使用可灵生成
+              </button>
+              <button v-else class="w-full py-3.5 bg-gray-700 text-gray-500 rounded-xl font-bold text-sm cursor-not-allowed">
+                暂未开放
+              </button>
+            </div>
+          </div>
+        </div>
+        
         <!-- 即梦AI卡片 -->
         <div :class="['group relative md:col-start-2 lg:col-start-auto', { 'opacity-60 cursor-not-allowed': !hasJimeng }]" @click="hasJimeng && router.push('/jimeng')">
           <!-- 发光边框 -->
@@ -384,52 +430,6 @@ const handleModelSeriesGenerate = (series) => {
             <button class="w-full py-2 bg-gray-700 text-gray-500 rounded-xl font-bold text-sm cursor-not-allowed">
               即将推出
             </button>
-          </div>
-        </div>
-        
-        <!-- 可灵AI模型 -->
-        <div :class="['group relative md:col-start-2 lg:col-start-auto', { 'opacity-60': !hasKling }]" @click="hasKling && router.push('/kling')">
-          <div v-if="hasKling" class="absolute -inset-0.5 bg-gradient-to-b from-orange-500/20 to-amber-500/5 rounded-3xl blur opacity-20 group-hover:opacity-60 transition-opacity duration-700"></div>
-
-          <div class="relative bg-white/5 border border-white/5 border-t-white/20 rounded-2xl p-6 shadow-2xl h-full cursor-pointer transition-all duration-500 hover:scale-[1.02] hover:-translate-y-1 backdrop-blur-3xl hover:bg-white/10 hover:shadow-orange-500/10">
-            <div class="flex justify-between items-center mb-4">
-              <div class="px-2.5 py-1 rounded-full bg-gradient-to-r from-orange-500 to-amber-500 text-white text-xs font-bold shadow-sm ring-1 ring-white/10">
-                NEW
-              </div>
-              <div class="text-xl font-bold text-white drop-shadow-sm tracking-wide">
-                ¥{{ klingPrice }}
-              </div>
-            </div>
-
-            <h3 class="text-xl font-bold text-white mb-4 flex items-center gap-2">
-              可灵 AI <span class="text-[10px] text-orange-400 font-normal px-1.5 py-0.5 border border-orange-400/30 rounded tracking-wider uppercase">KlingAI</span>
-              <div v-if="hasKling" class="w-1.5 h-1.5 rounded-full bg-orange-400 shadow-[0_0_8px_rgba(251,146,60,0.8)] animate-pulse"></div>
-            </h3>
-
-            <div class="space-y-2 mb-6">
-              <div class="px-3 py-2 rounded-lg bg-black/20 text-gray-300 text-xs font-medium flex items-center gap-2 border border-white/5 group-hover:border-white/10 transition-colors">
-                <svg class="w-3.5 h-3.5 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 4v16M17 4v16M3 8h4m10 0h4M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z"/></svg>
-                快手旗下，电影级画质
-              </div>
-              <div class="px-3 py-2 rounded-lg bg-black/20 text-gray-300 text-xs font-medium border border-white/5 group-hover:border-white/10 transition-colors">
-                运动自然流畅，支持5s-10s生成
-              </div>
-            </div>
-
-            <div class="text-center mb-6">
-              <div class="text-sm font-medium text-gray-400">
-                单次生成仅需 <span class="text-white font-bold mx-1">{{ klingPrice }}元</span>
-              </div>
-            </div>
-
-            <div>
-              <button v-if="hasKling" class="w-full py-3.5 bg-white text-black hover:bg-gray-50 rounded-xl font-bold text-sm transition-all duration-300 shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-95">
-                使用可灵生成
-              </button>
-              <button v-else class="w-full py-3.5 bg-gray-700 text-gray-500 rounded-xl font-bold text-sm cursor-not-allowed">
-                暂未开放
-              </button>
-            </div>
           </div>
         </div>
         
