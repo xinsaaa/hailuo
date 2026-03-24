@@ -77,15 +77,13 @@ async def get_jimeng_models(
     session: Session = Depends(get_session),
 ):
     """获取即梦可用模型列表"""
-    models = session.exec(
-        select(AIModel).where(
-            AIModel.platform == "jimeng",
-            AIModel.is_enabled == True
-        )
+    # 先查数据库中是否有即梦模型记录（不管启用/禁用）
+    all_jimeng = session.exec(
+        select(AIModel).where(AIModel.platform == "jimeng")
     ).all()
 
-    # 如果数据库中没有即梦模型，返回默认列表
-    if not models:
+    if not all_jimeng:
+        # 数据库中完全没有即梦模型记录（初始化场景），返回默认列表
         return {
             "models": [
                 {
@@ -112,6 +110,11 @@ async def get_jimeng_models(
                 },
             ]
         }
+
+    # 数据库中有记录，只返回启用的模型（全禁用时返回空列表）
+    models = [m for m in all_jimeng if m.is_enabled]
+    if not models:
+        return {"models": []}
 
     # 返回数据库模型
     return {
