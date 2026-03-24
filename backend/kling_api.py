@@ -12,6 +12,7 @@ import asyncio
 import base64
 import io
 import json
+import logging
 import random
 import string
 import time
@@ -19,6 +20,8 @@ from pathlib import Path
 from typing import Optional
 
 import httpx
+
+logger = logging.getLogger(__name__)
 
 # ============ 常量 ============
 
