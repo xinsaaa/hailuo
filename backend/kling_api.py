@@ -33,8 +33,16 @@ DEFAULT_UA = (
     "Chrome/146.0.0.0 Safari/537.36"
 )
 
-DATA_DIR = Path(__file__).parent
+DATA_DIR = Path(__file__).parent.parent / "data"
+DATA_DIR.mkdir(parents=True, exist_ok=True)
 KLING_ACCOUNTS_FILE = DATA_DIR / "kling_accounts.json"
+
+# 自动迁移：如果旧路径有数据但新路径没有，复制过来
+_OLD_ACCOUNTS_FILE = Path(__file__).parent / "kling_accounts.json"
+if _OLD_ACCOUNTS_FILE.exists() and not KLING_ACCOUNTS_FILE.exists():
+    import shutil
+    shutil.copy2(_OLD_ACCOUNTS_FILE, KLING_ACCOUNTS_FILE)
+    logger.info(f"已迁移 kling_accounts.json 到 {KLING_ACCOUNTS_FILE}")
 
 # ============ 工具函数 ============
 

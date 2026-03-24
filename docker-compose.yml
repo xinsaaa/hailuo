@@ -27,6 +27,7 @@ services:
       - ./logs:/app/logs
       - ./uploads:/app/uploads
       - ./user_images:/app/user_images
+      - ./videos:/app/videos
       
       # 浏览器缓存(可选)
       - playwright_cache:/app/.cache/ms-playwright
