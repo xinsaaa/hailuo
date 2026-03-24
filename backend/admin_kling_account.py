@@ -144,11 +144,13 @@ async def cancel_qr_login(account_id: str, admin=Depends(get_admin_user)):
 
 @router.post("/{account_id}/check-login")
 async def check_account_login(account_id: str, admin=Depends(get_admin_user)):
-    """验证已保存 cookie 是否有效"""
+    """验证已保存 cookie 是否有效，失效时自动更新状态"""
     creds = get_kling_credentials(account_id)
     if not creds:
+        update_kling_account(account_id, is_logged_in=False)
         return {"is_logged_in": False}
     ok = await check_login(creds["cookie"])
+    update_kling_account(account_id, is_logged_in=ok)
     return {"is_logged_in": ok}
 
 
