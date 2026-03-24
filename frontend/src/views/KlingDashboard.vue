@@ -89,16 +89,34 @@ const handleKeydown = (e) => {
   }
 }
 
-// 单价（根据时长）
+// 单价（根据分辨率+时长）
 const unitPrice = computed(() => {
   const m = selectedModel.value
   if (!m) return 1.49
-  // 按秒计费（可灵/即梦）
+  const seconds = parseInt(duration.value) || 5
+
+  // 优先级1: pricing_matrix 矩阵定价
+  if (m.pricing_matrix) {
+    const resPrices = m.pricing_matrix[resolution.value]
+    if (resPrices) {
+      // 先找精确时长价格
+      const exact = resPrices[String(seconds)]
+      if (exact && exact > 0) return Math.round(exact * 100) / 100
+      // 用该分辨率的每秒单价
+      const pps = resPrices.per_second
+      if (pps && pps > 0) return Math.round(pps * seconds * 100) / 100
+    }
+  }
+
+  // 优先级2: price_per_second 统一按秒
   if (m.price_per_second) {
-    const seconds = parseInt(duration.value) || 5
     return Math.round(m.price_per_second * seconds * 100) / 100
   }
+
+  // 优先级3: price_10s
   if (duration.value === '10s' && m.price_10s) return m.price_10s
+
+  // 优先级4: 固定价格
   return m.price || 1.49
 })
 // 总价 = 单价 * 数量

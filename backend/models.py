@@ -140,6 +140,7 @@ class AIModel(SQLModel, table=True):
     price: float = Field(default=0.99)  # 模型价格（元/次）- 海螺固定价格（6s）
     price_10s: float = Field(default=0.0)  # 10s时长价格，0表示使用price
     price_per_second: float = Field(default=0.0)  # 每秒单价（元/秒）- 即梦按秒计费，0表示使用固定价格
+    pricing_matrix: Optional[str] = Field(default=None)  # 矩阵定价JSON，格式: {"720p":{"5":0.99,"per_second":0.15},"1080p":{"5":1.29,"per_second":0.20}}
     model_type: str = Field(default="image_to_video")  # 模型类型
     platform: str = Field(default="hailuo")  # 平台：hailuo / jimeng
     features: str = Field(default="[]")  # 功能列表 JSON
@@ -208,6 +209,7 @@ def _auto_migrate():
         ("aimodel", "sort_order", "INTEGER DEFAULT 0"),
         ("aimodel", "price_per_second", "REAL DEFAULT 0"),
         ("aimodel", "price_10s", "REAL DEFAULT 0"),
+        ("aimodel", "pricing_matrix", "TEXT"),
         ("aimodel", "created_at", "TEXT"),
         ("aimodel", "updated_at", "TEXT"),
         # 批量订单简化

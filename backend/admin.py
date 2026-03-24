@@ -860,6 +860,7 @@ class ModelUpdateRequest(BaseModel):
     price: Optional[float] = None  # 固定价格
     price_10s: Optional[float] = None  # 10s时长价格
     price_per_second: Optional[float] = None  # 每秒单价（即梦按秒计费）
+    pricing_matrix: Optional[dict] = None  # 矩阵定价 {"720p":{"5":0.99,"per_second":0.15},"1080p":{...}}
 
 
 class ModelOrderRequest(BaseModel):
@@ -894,6 +895,7 @@ def get_all_models(admin=Depends(get_admin_user), session: Session = Depends(get
             "price": m.price or 0.99,
             "price_10s": m.price_10s or 0,
             "price_per_second": m.price_per_second or 0,
+            "pricing_matrix": json.loads(m.pricing_matrix) if m.pricing_matrix else None,
             "created_at": utc_to_china_time(m.created_at),
             "updated_at": utc_to_china_time(m.updated_at)
         })
@@ -953,6 +955,16 @@ def update_model(
         if data.price_per_second < 0:
             raise HTTPException(status_code=400, detail="每秒单价不能为负数")
         model.price_per_second = data.price_per_second
+
+    if data.pricing_matrix is not None:
+        # 验证矩阵格式: {"720p": {"5": 0.99, "per_second": 0.15}, ...}
+        for res_key, res_prices in data.pricing_matrix.items():
+            if not isinstance(res_prices, dict):
+                raise HTTPException(status_code=400, detail=f"pricing_matrix.{res_key} 必须是对象")
+            for k, v in res_prices.items():
+                if not isinstance(v, (int, float)) or v < 0:
+                    raise HTTPException(status_code=400, detail=f"pricing_matrix.{res_key}.{k} 必须为非负数")
+        model.pricing_matrix = json.dumps(data.pricing_matrix, ensure_ascii=False)
     
     model.updated_at = datetime.utcnow()
     session.commit()

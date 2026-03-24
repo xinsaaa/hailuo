@@ -4,24 +4,114 @@ import { getAdminModels, updateAdminModel } from '../../api'
 
 const models = ref([])
 const loading = ref(false)
-const updating = ref(null) // 正在更新的模型 ID
-const editingPrice = ref(null) // 正在编辑价格的模型 ID
-const editingPrice10s = ref(null) // 正在编辑10s价格的模型 ID
-const editingPPS = ref(null) // 正在编辑每秒单价的模型 ID
-const tempPrice = ref('') // 临时价格输入
-const tempPrice10s = ref('') // 临时10s价格输入
-const tempPPS = ref('') // 临时每秒单价输入
-const platformFilter = ref('all') // 平台筛选：all, hailuo, jimeng, kling
+const updating = ref(null)
+const editingPrice = ref(null)
+const editingPrice10s = ref(null)
+const editingPPS = ref(null)
+const tempPrice = ref('')
+const tempPrice10s = ref('')
+const tempPPS = ref('')
+const platformFilter = ref('all')
+
+// ============ 矩阵定价弹窗 ============
+const showMatrixModal = ref(false)
+const matrixModel = ref(null) // 当前编辑矩阵的模型
+const matrixData = ref({})    // 编辑中的矩阵数据
+const matrixSaving = ref(false)
+
+// 可灵模型的分辨率和时长配置
+const klingResolutions = ['720p', '1080p']
+const klingDurations = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+
+const openMatrixEditor = (model) => {
+  matrixModel.value = model
+  // 深拷贝现有矩阵或初始化空矩阵
+  const existing = model.pricing_matrix || {}
+  const data = {}
+  for (const res of klingResolutions) {
+    data[res] = { per_second: 0, ...(existing[res] || {}) }
+    // 确保所有时长的key都存在
+    for (const d of klingDurations) {
+      if (data[res][String(d)] === undefined) data[res][String(d)] = 0
+    }
+  }
+  matrixData.value = data
+  showMatrixModal.value = true
+}
+
+const closeMatrixEditor = () => {
+  showMatrixModal.value = false
+  matrixModel.value = null
+}
+
+// 从per_second批量填充：用每秒单价自动填所有时长
+const fillFromPerSecond = (res) => {
+  const pps = parseFloat(matrixData.value[res].per_second) || 0
+  if (pps <= 0) return
+  for (const d of klingDurations) {
+    matrixData.value[res][String(d)] = Math.round(pps * d * 100) / 100
+  }
+}
+
+// 复制720p到1080p（按比例）
+const copyResolution = (fromRes, toRes, ratio = 1) => {
+  const src = matrixData.value[fromRes]
+  if (!src) return
+  for (const key of Object.keys(src)) {
+    matrixData.value[toRes][key] = Math.round((parseFloat(src[key]) || 0) * ratio * 100) / 100
+  }
+}
+
+const saveMatrix = async () => {
+  if (!matrixModel.value) return
+  matrixSaving.value = true
+  try {
+    // 清理矩阵：移除值为0的精确时长（per_second保留）
+    const cleanMatrix = {}
+    for (const res of klingResolutions) {
+      cleanMatrix[res] = {}
+      const pps = parseFloat(matrixData.value[res].per_second) || 0
+      if (pps > 0) cleanMatrix[res].per_second = pps
+      for (const d of klingDurations) {
+        const val = parseFloat(matrixData.value[res][String(d)]) || 0
+        if (val > 0) cleanMatrix[res][String(d)] = val
+      }
+    }
+    await updateAdminModel(matrixModel.value.id, { pricing_matrix: cleanMatrix })
+    matrixModel.value.pricing_matrix = cleanMatrix
+    closeMatrixEditor()
+    await loadModels()
+  } catch (err) {
+    alert('保存矩阵定价失败: ' + (err.response?.data?.detail || err.message))
+  } finally {
+    matrixSaving.value = false
+  }
+}
+
+// 矩阵是否有有效数据
+const hasMatrixData = (model) => {
+  if (!model.pricing_matrix) return false
+  for (const res of Object.values(model.pricing_matrix)) {
+    for (const [k, v] of Object.entries(res)) {
+      if (v > 0) return true
+    }
+  }
+  return false
+}
+
+// 获取模型当前生效的定价模式描述
+const getPricingMode = (model) => {
+  if (hasMatrixData(model)) return '矩阵定价'
+  if (model.price_per_second > 0) return '按秒计费'
+  return '固定价格'
+}
 
 // 按平台筛选后的模型列表
 const filteredModels = computed(() => {
-  if (platformFilter.value === 'all') {
-    return models.value
-  }
+  if (platformFilter.value === 'all') return models.value
   return models.value.filter(m => m.platform === platformFilter.value)
 })
 
-// 加载模型列表
 const loadModels = async () => {
   loading.value = true
   try {
@@ -34,7 +124,6 @@ const loadModels = async () => {
   }
 }
 
-// 切换启用状态
 const toggleEnabled = async (model) => {
   updating.value = model.id
   try {
@@ -47,13 +136,11 @@ const toggleEnabled = async (model) => {
   }
 }
 
-// 设置为默认模型
 const setDefault = async (model) => {
   if (model.is_default) return
   updating.value = model.id
   try {
     await updateAdminModel(model.id, { is_default: true })
-    // 更新本地状态
     models.value.forEach(m => m.is_default = m.id === model.id)
   } catch (err) {
     alert('设置默认失败: ' + (err.response?.data?.detail || err.message))
@@ -62,101 +149,46 @@ const setDefault = async (model) => {
   }
 }
 
-// 开始编辑价格
-const startEditPrice = (model) => {
-  editingPrice.value = model.id
-  tempPrice.value = model.price?.toString() || '0.99'
-}
-
-// 取消编辑价格
-const cancelEditPrice = () => {
-  editingPrice.value = null
-  tempPrice.value = ''
-}
-
-// 保存价格
+const startEditPrice = (model) => { editingPrice.value = model.id; tempPrice.value = model.price?.toString() || '0.99' }
+const cancelEditPrice = () => { editingPrice.value = null; tempPrice.value = '' }
 const savePrice = async (model) => {
-  const newPrice = parseFloat(tempPrice.value)
-  if (isNaN(newPrice) || newPrice < 0) {
-    alert('请输入有效的价格')
-    return
-  }
-
+  const v = parseFloat(tempPrice.value)
+  if (isNaN(v) || v < 0) { alert('请输入有效的价格'); return }
   updating.value = model.id
   try {
-    await updateAdminModel(model.id, { price: newPrice })
-    model.price = newPrice
-    editingPrice.value = null
-    tempPrice.value = ''
+    await updateAdminModel(model.id, { price: v })
+    model.price = v; editingPrice.value = null; tempPrice.value = ''
     await loadModels()
-  } catch (err) {
-    alert('更新价格失败: ' + (err.response?.data?.detail || err.message))
-  } finally {
-    updating.value = null
-  }
+  } catch (err) { alert('更新价格失败: ' + (err.response?.data?.detail || err.message)) }
+  finally { updating.value = null }
 }
 
-// 10s价格编辑
-const startEditPrice10s = (model) => {
-  editingPrice10s.value = model.id
-  tempPrice10s.value = model.price_10s?.toString() || '0'
-}
-const cancelEditPrice10s = () => {
-  editingPrice10s.value = null
-  tempPrice10s.value = ''
-}
+const startEditPrice10s = (model) => { editingPrice10s.value = model.id; tempPrice10s.value = model.price_10s?.toString() || '0' }
+const cancelEditPrice10s = () => { editingPrice10s.value = null; tempPrice10s.value = '' }
 const savePrice10s = async (model) => {
-  const newPrice = parseFloat(tempPrice10s.value)
-  if (isNaN(newPrice) || newPrice < 0) {
-    alert('请输入有效的价格')
-    return
-  }
+  const v = parseFloat(tempPrice10s.value)
+  if (isNaN(v) || v < 0) { alert('请输入有效的价格'); return }
   updating.value = model.id
   try {
-    await updateAdminModel(model.id, { price_10s: newPrice })
-    model.price_10s = newPrice
-    editingPrice10s.value = null
-    tempPrice10s.value = ''
+    await updateAdminModel(model.id, { price_10s: v })
+    model.price_10s = v; editingPrice10s.value = null; tempPrice10s.value = ''
     await loadModels()
-  } catch (err) {
-    alert('更新10s价格失败: ' + (err.response?.data?.detail || err.message))
-  } finally {
-    updating.value = null
-  }
+  } catch (err) { alert('更新10s价格失败: ' + (err.response?.data?.detail || err.message)) }
+  finally { updating.value = null }
 }
 
-// 开始编辑每秒单价
-const startEditPPS = (model) => {
-  editingPPS.value = model.id
-  tempPPS.value = model.price_per_second?.toString() || '0'
-}
-
-// 取消编辑每秒单价
-const cancelEditPPS = () => {
-  editingPPS.value = null
-  tempPPS.value = ''
-}
-
-// 保存每秒单价
+const startEditPPS = (model) => { editingPPS.value = model.id; tempPPS.value = model.price_per_second?.toString() || '0' }
+const cancelEditPPS = () => { editingPPS.value = null; tempPPS.value = '' }
 const savePPS = async (model) => {
-  const newPPS = parseFloat(tempPPS.value)
-  if (isNaN(newPPS) || newPPS < 0) {
-    alert('请输入有效的每秒单价')
-    return
-  }
-
+  const v = parseFloat(tempPPS.value)
+  if (isNaN(v) || v < 0) { alert('请输入有效的每秒单价'); return }
   updating.value = model.id
   try {
-    await updateAdminModel(model.id, { price_per_second: newPPS })
-    model.price_per_second = newPPS
-    editingPPS.value = null
-    tempPPS.value = ''
+    await updateAdminModel(model.id, { price_per_second: v })
+    model.price_per_second = v; editingPPS.value = null; tempPPS.value = ''
     await loadModels()
-  } catch (err) {
-    alert('更新每秒单价失败: ' + (err.response?.data?.detail || err.message))
-  } finally {
-    updating.value = null
-  }
+  } catch (err) { alert('更新每秒单价失败: ' + (err.response?.data?.detail || err.message)) }
+  finally { updating.value = null }
 }
 
 onMounted(() => {
@@ -269,89 +301,55 @@ onMounted(() => {
               </td>
               <!-- 价格编辑 -->
               <td class="px-6 py-4">
-                <!-- 固定价格 -->
+                <!-- 固定价格（所有平台通用） -->
                 <div v-if="editingPrice === model.id" class="flex items-center gap-2 mb-1">
                   <span class="text-xs text-gray-500 w-10">固定</span>
-                  <input
-                    v-model="tempPrice"
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    class="w-20 px-2 py-1 text-sm bg-gray-700 border border-gray-600 rounded text-white focus:border-blue-500 focus:outline-none"
-                    @keyup.enter="savePrice(model)"
-                    @keyup.esc="cancelEditPrice"
-                  />
-                  <button @click="savePrice(model)" class="text-green-400 hover:text-green-300" title="保存">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
-                  </button>
-                  <button @click="cancelEditPrice" class="text-red-400 hover:text-red-300" title="取消">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-                  </button>
+                  <input v-model="tempPrice" type="number" step="0.01" min="0" class="w-20 px-2 py-1 text-sm bg-gray-700 border border-gray-600 rounded text-white focus:border-blue-500 focus:outline-none" @keyup.enter="savePrice(model)" @keyup.esc="cancelEditPrice" />
+                  <button @click="savePrice(model)" class="text-green-400 hover:text-green-300"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg></button>
+                  <button @click="cancelEditPrice" class="text-red-400 hover:text-red-300"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
                 </div>
                 <div v-else class="flex items-center gap-2 mb-1">
                   <span class="text-xs text-gray-500 w-10">固定</span>
                   <span class="text-sm font-bold text-emerald-400">¥{{ model.price?.toFixed(2) || '0.99' }}</span>
-                  <button @click="startEditPrice(model)" class="text-gray-400 hover:text-white opacity-0 group-hover:opacity-100 transition-opacity" title="编辑固定价格">
-                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
-                  </button>
+                  <button @click="startEditPrice(model)" class="text-gray-400 hover:text-white opacity-0 group-hover:opacity-100 transition-opacity"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg></button>
                 </div>
-                <!-- 10s价格（海螺和可灵模型） -->
-                <template v-if="model.platform === 'hailuo' || model.platform === 'kling'">
+                <!-- 10s价格（海螺） -->
+                <template v-if="model.platform === 'hailuo'">
                   <div v-if="editingPrice10s === model.id" class="flex items-center gap-2 mb-1">
                     <span class="text-xs text-gray-500 w-10">10s</span>
-                    <input
-                      v-model="tempPrice10s"
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      class="w-20 px-2 py-1 text-sm bg-gray-700 border border-gray-600 rounded text-white focus:border-amber-500 focus:outline-none"
-                      @keyup.enter="savePrice10s(model)"
-                      @keyup.esc="cancelEditPrice10s"
-                    />
-                    <button @click="savePrice10s(model)" class="text-green-400 hover:text-green-300" title="保存">
-                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
-                    </button>
-                    <button @click="cancelEditPrice10s" class="text-red-400 hover:text-red-300" title="取消">
-                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-                    </button>
+                    <input v-model="tempPrice10s" type="number" step="0.01" min="0" class="w-20 px-2 py-1 text-sm bg-gray-700 border border-gray-600 rounded text-white focus:border-amber-500 focus:outline-none" @keyup.enter="savePrice10s(model)" @keyup.esc="cancelEditPrice10s" />
+                    <button @click="savePrice10s(model)" class="text-green-400 hover:text-green-300"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg></button>
+                    <button @click="cancelEditPrice10s" class="text-red-400 hover:text-red-300"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
                   </div>
                   <div v-else class="flex items-center gap-2 mb-1">
                     <span class="text-xs text-gray-500 w-10">10s</span>
                     <span class="text-sm font-bold text-amber-400">¥{{ model.price_10s?.toFixed(2) || '0.00' }}</span>
-                    <button @click="startEditPrice10s(model)" class="text-gray-400 hover:text-white opacity-0 group-hover:opacity-100 transition-opacity" title="编辑10s价格">
-                      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
-                    </button>
+                    <button @click="startEditPrice10s(model)" class="text-gray-400 hover:text-white opacity-0 group-hover:opacity-100 transition-opacity"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg></button>
                   </div>
-                  <div class="text-[10px] text-gray-600 mt-0.5 ml-10">10s时长价格，0则使用固定价格</div>
                 </template>
-                <!-- 每秒单价（即梦和可灵模型） -->
-                <template v-if="model.platform === 'jimeng' || model.platform === 'kling'">
+                <!-- 每秒单价（即梦） -->
+                <template v-if="model.platform === 'jimeng'">
                   <div v-if="editingPPS === model.id" class="flex items-center gap-2">
                     <span class="text-xs text-gray-500 w-10">每秒</span>
-                    <input
-                      v-model="tempPPS"
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      class="w-20 px-2 py-1 text-sm bg-gray-700 border border-gray-600 rounded text-white focus:border-violet-500 focus:outline-none"
-                      @keyup.enter="savePPS(model)"
-                      @keyup.esc="cancelEditPPS"
-                    />
-                    <button @click="savePPS(model)" class="text-green-400 hover:text-green-300" title="保存">
-                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg>
-                    </button>
-                    <button @click="cancelEditPPS" class="text-red-400 hover:text-red-300" title="取消">
-                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
-                    </button>
+                    <input v-model="tempPPS" type="number" step="0.01" min="0" class="w-20 px-2 py-1 text-sm bg-gray-700 border border-gray-600 rounded text-white focus:border-violet-500 focus:outline-none" @keyup.enter="savePPS(model)" @keyup.esc="cancelEditPPS" />
+                    <button @click="savePPS(model)" class="text-green-400 hover:text-green-300"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path></svg></button>
+                    <button @click="cancelEditPPS" class="text-red-400 hover:text-red-300"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg></button>
                   </div>
                   <div v-else class="flex items-center gap-2">
                     <span class="text-xs text-gray-500 w-10">每秒</span>
                     <span class="text-sm font-bold text-violet-400">¥{{ model.price_per_second?.toFixed(2) || '0.00' }}/s</span>
-                    <button @click="startEditPPS(model)" class="text-gray-400 hover:text-white opacity-0 group-hover:opacity-100 transition-opacity" title="编辑每秒单价">
-                      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
-                    </button>
+                    <button @click="startEditPPS(model)" class="text-gray-400 hover:text-white opacity-0 group-hover:opacity-100 transition-opacity"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg></button>
                   </div>
-                  <div class="text-[10px] text-gray-600 mt-0.5 ml-10">设置后按秒计费，优先于固定和10s价格</div>
+                </template>
+                <!-- 可灵：矩阵定价按钮 -->
+                <template v-if="model.platform === 'kling'">
+                  <div class="flex items-center gap-2 mt-1">
+                    <button @click="openMatrixEditor(model)" class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-all border" :class="hasMatrixData(model) ? 'bg-orange-500/10 text-orange-400 border-orange-500/30 hover:bg-orange-500/20' : 'bg-gray-700/50 text-gray-400 border-gray-600 hover:bg-gray-700 hover:text-white'">
+                      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"></path></svg>
+                      {{ hasMatrixData(model) ? '编辑矩阵定价' : '设置矩阵定价' }}
+                    </button>
+                    <span class="text-[10px] px-1.5 py-0.5 rounded" :class="getPricingMode(model) === '矩阵定价' ? 'bg-orange-500/20 text-orange-400' : 'bg-gray-700 text-gray-500'">{{ getPricingMode(model) }}</span>
+                  </div>
                 </template>
               </td>
               <td class="px-6 py-4">
@@ -416,9 +414,133 @@ onMounted(() => {
         <p class="font-medium text-blue-200">配置说明</p>
         <p>• 禁用模型后，用户前端将无法看到该选项。</p>
         <p>• 默认模型将在用户未手动选择时自动应用。</p>
-        <p>• <span class="text-blue-300 font-medium">价格优先级</span>：每秒单价 &gt; 10s价格 &gt; 固定价格。设置了每秒单价后，用户选择任意时长都按 单价×秒数 计费。</p>
-        <p>• 可灵模型支持3-15秒自定义时长，建议设置每秒单价实现灵活计费。</p>
+        <p>• <span class="text-blue-300 font-medium">可灵定价</span>：矩阵定价 &gt; 固定价格。矩阵定价可为每个分辨率的每个时长单独设价，未设时长用每秒单价×秒数计算。</p>
+        <p>• <span class="text-blue-300 font-medium">海螺定价</span>：固定价格(6s) + 10s价格。</p>
+        <p>• <span class="text-blue-300 font-medium">即梦定价</span>：每秒单价 &gt; 固定价格。</p>
       </div>
     </div>
+
+    <!-- 矩阵定价编辑弹窗 -->
+    <Teleport to="body">
+      <Transition name="modal">
+        <div v-if="showMatrixModal" class="fixed inset-0 z-[100] flex items-center justify-center">
+          <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" @click="closeMatrixEditor"></div>
+          <div class="relative bg-[#1a1d23] border border-gray-700/50 rounded-2xl shadow-2xl w-[900px] max-h-[85vh] overflow-hidden">
+            <!-- 弹窗头部 -->
+            <div class="flex items-center justify-between px-6 py-4 border-b border-gray-700/50 bg-gray-900/50">
+              <div>
+                <h3 class="text-lg font-bold text-white flex items-center gap-2">
+                  <span class="w-1 h-5 rounded-full bg-orange-500"></span>
+                  矩阵定价 — {{ matrixModel?.display_name }}
+                </h3>
+                <p class="text-xs text-gray-400 mt-1">为每个分辨率×时长组合设置独立价格，0表示使用每秒单价计算</p>
+              </div>
+              <button @click="closeMatrixEditor" class="p-2 text-gray-400 hover:text-white hover:bg-white/10 rounded-lg transition-all">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+              </button>
+            </div>
+
+            <!-- 弹窗内容 -->
+            <div class="p-6 overflow-y-auto max-h-[calc(85vh-140px)]">
+              <div v-for="res in klingResolutions" :key="res" class="mb-6 last:mb-0">
+                <div class="flex items-center justify-between mb-3">
+                  <div class="flex items-center gap-3">
+                    <span class="text-sm font-bold text-white px-3 py-1 rounded-lg" :class="res === '1080p' ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'">{{ res }}</span>
+                    <div class="flex items-center gap-2">
+                      <span class="text-xs text-gray-400">每秒单价</span>
+                      <input
+                        v-model.number="matrixData[res].per_second"
+                        type="number" step="0.01" min="0"
+                        class="w-20 px-2 py-1 text-sm bg-gray-800 border border-gray-600 rounded text-orange-400 font-bold focus:border-orange-500 focus:outline-none text-center"
+                        placeholder="0"
+                      />
+                      <span class="text-xs text-gray-500">元/秒</span>
+                      <button @click="fillFromPerSecond(res)" class="px-2 py-1 text-[10px] bg-orange-500/10 text-orange-400 border border-orange-500/30 rounded hover:bg-orange-500/20 transition-all" title="用每秒单价自动计算所有时长价格">
+                        一键填充
+                      </button>
+                    </div>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <template v-if="res === '1080p'">
+                      <button @click="copyResolution('720p', '1080p', 1)" class="px-2 py-1 text-[10px] bg-gray-700 text-gray-300 rounded hover:bg-gray-600 transition-all">复制720p (1x)</button>
+                      <button @click="copyResolution('720p', '1080p', 1.3)" class="px-2 py-1 text-[10px] bg-gray-700 text-gray-300 rounded hover:bg-gray-600 transition-all">复制720p (1.3x)</button>
+                      <button @click="copyResolution('720p', '1080p', 1.5)" class="px-2 py-1 text-[10px] bg-gray-700 text-gray-300 rounded hover:bg-gray-600 transition-all">复制720p (1.5x)</button>
+                    </template>
+                  </div>
+                </div>
+
+                <!-- 时长价格网格 -->
+                <div class="grid grid-cols-13 gap-1">
+                  <div v-for="d in klingDurations" :key="d" class="flex flex-col items-center">
+                    <span class="text-[10px] text-gray-500 mb-1 font-mono">{{ d }}s</span>
+                    <input
+                      v-model.number="matrixData[res][String(d)]"
+                      type="number" step="0.01" min="0"
+                      class="w-full px-1 py-1.5 text-xs bg-gray-800 border rounded text-center font-mono focus:outline-none transition-colors"
+                      :class="(matrixData[res][String(d)] || 0) > 0 ? 'border-orange-500/40 text-orange-300 bg-orange-500/5' : 'border-gray-700 text-gray-500'"
+                      placeholder="0"
+                    />
+                    <span v-if="matrixData[res].per_second > 0 && !(matrixData[res][String(d)] > 0)" class="text-[9px] text-gray-600 mt-0.5">
+                      ≈{{ (matrixData[res].per_second * d).toFixed(2) }}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 预览表格 -->
+              <div class="mt-6 p-4 bg-gray-900/50 rounded-xl border border-gray-700/30">
+                <h4 class="text-xs font-bold text-gray-300 mb-2">价格预览（用户实际看到的价格）</h4>
+                <div class="overflow-x-auto">
+                  <table class="w-full text-xs">
+                    <thead>
+                      <tr>
+                        <th class="text-left text-gray-500 py-1 px-2">分辨率</th>
+                        <th v-for="d in klingDurations" :key="d" class="text-center text-gray-500 py-1 px-1 font-mono">{{ d }}s</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="res in klingResolutions" :key="res" class="border-t border-gray-800">
+                        <td class="py-1.5 px-2 font-bold" :class="res === '1080p' ? 'text-blue-400' : 'text-emerald-400'">{{ res }}</td>
+                        <td v-for="d in klingDurations" :key="d" class="text-center py-1.5 px-1 font-mono"
+                            :class="(matrixData[res][String(d)] || 0) > 0 ? 'text-orange-400 font-bold' : matrixData[res].per_second > 0 ? 'text-gray-400' : 'text-gray-600'">
+                          ¥{{ ((matrixData[res][String(d)] || 0) > 0 ? matrixData[res][String(d)] : (matrixData[res].per_second > 0 ? (matrixData[res].per_second * d) : 0)).toFixed(2) }}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <p class="text-[10px] text-gray-600 mt-2">橙色 = 精确定价，灰色 = 由每秒单价自动计算</p>
+              </div>
+            </div>
+
+            <!-- 弹窗底部 -->
+            <div class="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-700/50 bg-gray-900/30">
+              <button @click="closeMatrixEditor" class="px-4 py-2 text-sm text-gray-400 hover:text-white bg-gray-800 hover:bg-gray-700 rounded-lg border border-gray-700 transition-all">
+                取消
+              </button>
+              <button @click="saveMatrix" :disabled="matrixSaving" class="px-6 py-2 text-sm font-medium text-white bg-gradient-to-r from-orange-500 to-amber-500 hover:brightness-110 rounded-lg shadow-lg shadow-orange-900/30 transition-all disabled:opacity-50 flex items-center gap-2">
+                <span v-if="matrixSaving" class="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></span>
+                {{ matrixSaving ? '保存中...' : '保存矩阵定价' }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
   </div>
 </template>
+
+<style scoped>
+.grid-cols-13 {
+  grid-template-columns: repeat(13, minmax(0, 1fr));
+}
+.modal-enter-active, .modal-leave-active {
+  transition: all 0.2s ease;
+}
+.modal-enter-from, .modal-leave-to {
+  opacity: 0;
+}
+.modal-enter-from .relative, .modal-leave-to .relative {
+  transform: scale(0.95);
+}
+</style>
