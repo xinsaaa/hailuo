@@ -5,9 +5,11 @@
 import asyncio
 import json
 import logging
+import os
 from datetime import datetime
 from typing import Optional
 
+import httpx
 from sqlmodel import Session, select
 
 from backend.models import VideoOrder, User, Transaction, engine
@@ -422,6 +424,30 @@ async def _submit_kling_order(order_id: int):
         _fail_order(order_id, str(e))
 
 
+VIDEOS_DIR = os.path.join(os.path.dirname(__file__), "..", "videos")
+
+
+async def _download_video_to_local(url: str, order_id: int, idx: int = 0) -> str:
+    """下载可灵视频到本地 /videos/ 目录，返回本地路径如 /videos/kling_order_123.mp4"""
+    os.makedirs(VIDEOS_DIR, exist_ok=True)
+    suffix = f"_{idx+1}" if idx > 0 else ""
+    filename = f"kling_order_{order_id}{suffix}.mp4"
+    filepath = os.path.join(VIDEOS_DIR, filename)
+    local_url = f"/videos/{filename}"
+
+    try:
+        async with httpx.AsyncClient(timeout=120, follow_redirects=True) as client:
+            r = await client.get(url)
+            r.raise_for_status()
+            with open(filepath, "wb") as f:
+                f.write(r.content)
+        logger.info(f"[worker] 可灵订单#{order_id} 视频已下载到 {filepath} ({len(r.content)} bytes)")
+        return local_url
+    except Exception as e:
+        logger.warning(f"[worker] 可灵订单#{order_id} 视频下载失败: {e}，保留原始URL")
+        return url
+
+
 async def poll_kling_order(order_id: int, cookie: Optional[str] = None):
     """轮询可灵任务直到完成或超时"""
     with Session(engine) as session:
@@ -448,19 +474,25 @@ async def poll_kling_order(order_id: int, cookie: Optional[str] = None):
         result = await kling_api.poll_task(cookie, task_id, timeout=MAX_POLL_SECONDS)
         video_url = result.get("video_url", "")
 
+        # 下载视频到本地
+        if video_url:
+            local_url = await _download_video_to_local(video_url, order_id)
+        else:
+            local_url = ""
+
         with Session(engine) as session:
             order = session.get(VideoOrder, order_id)
             if not order or order.status in ("completed", "failed"):
                 return
             order.status = "completed"
             order.progress = 100
-            order.video_url = video_url
-            order.video_urls = json.dumps([video_url]) if video_url else "[]"
+            order.video_url = local_url
+            order.video_urls = json.dumps([local_url]) if local_url else "[]"
             order.updated_at = datetime.utcnow()
             session.add(order)
             session.commit()
 
-        logger.info(f"[worker] 可灵订单#{order_id}完成，video_url={video_url}")
+        logger.info(f"[worker] 可灵订单#{order_id}完成，video_url={local_url}")
 
     except TimeoutError:
         logger.error(f"[worker] 可灵订单#{order_id}生成超时")
