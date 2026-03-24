@@ -452,6 +452,65 @@ _CAMERA_JSON = json.dumps({
 })
 
 
+def _build_task_body(
+    prompt: str,
+    image_url: str,
+    tail_image_url: str,
+    duration: int,
+    version: str,
+    mode: str,
+    negative_prompt: str,
+    aspect_ratio: str,
+) -> dict:
+    """根据版本号构建不同的 task body（type + arguments + inputs）"""
+    is_img2video = bool(image_url)
+
+    if version == "3.0":
+        # v3.0 统一用 m2v_aio2video，支持文生视频和图生视频
+        task_type = "m2v_aio2video"
+        arguments = [
+            {"name": "negative_prompt", "value": negative_prompt},
+            {"name": "duration", "value": str(duration)},
+            {"name": "imageCount", "value": "1"},
+            {"name": "kling_version", "value": version},
+            {"name": "prompt", "value": prompt},
+            {"name": "rich_prompt", "value": prompt},
+            {"name": "cfg", "value": "0.5"},
+            {"name": "camera_json", "value": _CAMERA_JSON},
+            {"name": "camera_control_enabled", "value": "false"},
+            {"name": "prefer_multi_shots", "value": "true"},
+            {"name": "biz", "value": "klingai"},
+            {"name": "enable_audio", "value": "true"},
+            {"name": "model_mode", "value": mode},
+        ]
+        if not is_img2video:
+            arguments.append({"name": "aspect_ratio", "value": aspect_ratio})
+    else:
+        # v2.6 / v2.5 等旧版本
+        task_type = "m2v_img2video_hq" if is_img2video else "m2v_txt2video_hq"
+        arguments = [
+            {"name": "duration", "value": str(duration)},
+            {"name": "imageCount", "value": "1"},
+            {"name": "kling_version", "value": version},
+            {"name": "prompt", "value": prompt},
+            {"name": "rich_prompt", "value": prompt},
+            {"name": "camera_json", "value": _CAMERA_JSON},
+            {"name": "camera_control_enabled", "value": "false"},
+            {"name": "prefer_multi_shots", "value": "true"},
+            {"name": "biz", "value": "klingai"},
+            {"name": "enable_audio", "value": "true"},
+        ]
+        if not is_img2video:
+            arguments.append({"name": "aspect_ratio", "value": aspect_ratio})
+
+    body = {"type": task_type, "arguments": arguments, "inputs": []}
+    if is_img2video:
+        body["inputs"].append({"inputType": "URL", "url": image_url, "name": "input"})
+        if tail_image_url:
+            body["inputs"].append({"inputType": "URL", "url": tail_image_url, "name": "tail_image"})
+    return body
+
+
 async def submit_task(
     cookie: str,
     prompt: str,
@@ -465,37 +524,10 @@ async def submit_task(
 ) -> str:
     """
     提交视频生成任务，返回 task_id。
-    image_url 为空时提交文生视频，否则提交图生视频。统一使用 m2v_aio2video 类型。
+    v3.0 统一用 m2v_aio2video；v2.6/v2.5 图生视频用 m2v_img2video_hq，文生视频用 m2v_txt2video_hq。
     """
-    is_img2video = bool(image_url)
-
-    arguments = [
-        {"name": "negative_prompt", "value": negative_prompt},
-        {"name": "duration", "value": str(duration)},
-        {"name": "imageCount", "value": "1"},
-        {"name": "kling_version", "value": version},
-        {"name": "prompt", "value": prompt},
-        {"name": "rich_prompt", "value": prompt},
-        {"name": "cfg", "value": "0.5"},
-        {"name": "camera_json", "value": _CAMERA_JSON},
-        {"name": "camera_control_enabled", "value": "false"},
-        {"name": "prefer_multi_shots", "value": "true"},
-        {"name": "biz", "value": "klingai"},
-        {"name": "enable_audio", "value": "true"},
-        {"name": "model_mode", "value": mode},
-    ]
-    if not is_img2video:
-        arguments.append({"name": "aspect_ratio", "value": aspect_ratio})
-
-    body = {
-        "type": "m2v_aio2video",
-        "arguments": arguments,
-        "inputs": [],
-    }
-    if is_img2video:
-        body["inputs"].append({"inputType": "URL", "url": image_url, "name": "input"})
-        if tail_image_url:
-            body["inputs"].append({"inputType": "URL", "url": tail_image_url, "name": "tail_image"})
+    body = _build_task_body(prompt, image_url, tail_image_url, duration,
+                            version, mode, negative_prompt, aspect_ratio)
 
     # 先查询价格（task/price），获取 showPrice
     price_body = {"type": body["type"], "arguments": body["arguments"], "inputs": body["inputs"]}
