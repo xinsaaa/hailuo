@@ -1161,36 +1161,12 @@ async def create_order(
     # 根据用户选择的模型获取价格
     model = session.exec(select(AIModel).where(AIModel.name == model_name)).first()
     duration_seconds = int(duration.replace("s", "")) if duration else 5
-    cost = None
-
-    # 优先级1: pricing_matrix 矩阵定价（按分辨率×时长）
-    if model and model.pricing_matrix:
-        try:
-            matrix = json.loads(model.pricing_matrix) if isinstance(model.pricing_matrix, str) else model.pricing_matrix
-            res_prices = matrix.get(resolution)
-            if res_prices:
-                # 先找精确时长价格（如 "5": 0.99）
-                exact = res_prices.get(str(duration_seconds))
-                if exact is not None and exact > 0:
-                    cost = round(float(exact), 2)
-                else:
-                    # 用该分辨率的每秒单价
-                    pps = res_prices.get("per_second")
-                    if pps is not None and pps > 0:
-                        cost = round(float(pps) * duration_seconds, 2)
-        except (json.JSONDecodeError, AttributeError):
-            pass
-
-    # 优先级2: price_per_second 统一按秒计费
-    if cost is None and model and model.price_per_second and model.price_per_second > 0:
+    if model and model.price_per_second and model.price_per_second > 0:
+        # 按秒计费（可灵/即梦）
         cost = round(model.price_per_second * duration_seconds, 2)
-
-    # 优先级3: price_10s
-    if cost is None and duration == "10s" and model and model.price_10s > 0:
+    elif duration == "10s" and model and model.price_10s > 0:
         cost = model.price_10s
-
-    # 优先级4: 固定价格
-    if cost is None:
+    else:
         cost = model.price if model and model.price else 0.99
     total_cost = round(cost * quantity, 2)
     if current_user.balance < total_cost:

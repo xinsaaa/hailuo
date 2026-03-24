@@ -153,6 +153,7 @@ def _make_headers(kwfv1: str = "") -> dict:
     h = {
         "accept": "application/json, text/plain, */*",
         "accept-language": "zh-CN",
+        "origin": "https://app.klingai.com",
         "referer": "https://app.klingai.com/",
         "time-zone": "Asia/Shanghai",
         "user-agent": DEFAULT_UA,
@@ -674,9 +675,14 @@ async def get_user_points(cookie: str) -> dict:
         "pageSize": "1", "contentType": "", "favored": "false",
         "pageDirection": "NEXT", "extra": "BASE_WORK",
     })
+    logger.info(f"[points] cookie长度={len(cookie)}, cookie前50={cookie[:50]}...")
     headers = {**_make_headers(), "Cookie": cookie}
     async with httpx.AsyncClient(timeout=15) as client:
         r = await client.get(signed_url, headers=headers)
+        logger.info(f"[points] HTTP {r.status_code}, resp_len={len(r.text)}")
+        if r.status_code == 401:
+            logger.error(f"[points] 401响应体: {r.text[:500]}")
+            raise RuntimeError("cookie已过期或无效，请重新登录该账号")
         r.raise_for_status()
         data = r.json()
     logger.debug(f"[points] user/works/personal/feeds resp keys={list(data.get('data', {}).keys())}")
