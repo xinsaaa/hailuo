@@ -629,6 +629,38 @@ async def get_user_points(cookie: str) -> dict:
     }
 
 
+async def init_remove_watermark(cookie: str):
+    """
+    首次登录后初始化去水印设置：
+    1. GET  /api/user/extra-details/user_remove_aigc_watermark  查询当前状态
+    2. POST /api/user/extra-details/user_remove_aigc_watermark  设置为 true
+    """
+    path = "/api/user/extra-details/user_remove_aigc_watermark"
+    headers = {**_make_headers(), "Cookie": cookie}
+
+    # 步骤1: 查询
+    try:
+        signed_get = await _sign_url(path)
+        async with httpx.AsyncClient(timeout=15) as client:
+            r = await client.get(signed_get, headers=headers)
+            data = r.json()
+        logger.info(f"[watermark] GET 查询去水印状态: {data}")
+    except Exception as e:
+        logger.warning(f"[watermark] GET 查询失败: {e}")
+
+    # 步骤2: 设置为 true
+    try:
+        body = {"value": "true"}
+        signed_post = await _sign_url(path, request_body=body)
+        post_headers = {**headers, "Content-Type": "application/json"}
+        async with httpx.AsyncClient(timeout=15) as client:
+            r = await client.post(signed_post, headers=post_headers, json=body)
+            data = r.json()
+        logger.info(f"[watermark] POST 设置去水印=true: {data}")
+    except Exception as e:
+        logger.warning(f"[watermark] POST 设置失败: {e}")
+
+
 # ============ 账号状态监测 ============
 
 _monitor_task: Optional[asyncio.Task] = None

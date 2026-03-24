@@ -17,7 +17,7 @@ from backend.kling_api import (
     qr_start, qr_scan_result, qr_accept_result, check_login,
     list_kling_accounts, save_kling_account, save_kling_credentials,
     delete_kling_account, update_kling_account, get_kling_credentials,
-    get_user_points,
+    get_user_points, init_remove_watermark,
 )
 
 router = APIRouter(prefix="/api/admin/kling-accounts", tags=["可灵账号管理"])
@@ -200,6 +200,11 @@ async def _poll_login(account_id: str):
             try:
                 cred = await qr_accept_result(did, risk_id, token, signature, session_cookies)
                 save_kling_credentials(account_id, cred["cookie"], did)
+                # 首次登录后自动初始化去水印设置
+                try:
+                    await init_remove_watermark(cred["cookie"])
+                except Exception as wm_err:
+                    logger.warning(f"[login] 账号{account_id}去水印初始化失败: {wm_err}")
                 _sessions[account_id]["status"] = "done"
             except Exception as e:
                 _sessions[account_id]["status"] = "error"
