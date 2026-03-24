@@ -1093,8 +1093,6 @@ async def kling_pre_upload(
     current_user: User = Depends(get_current_user),
 ):
     """用户选择图片后立即上传到可灵CDN，返回CDN URL。避免提交订单时再上传导致延迟。"""
-    app_logger.info(f"[kling-pre-upload] 收到预上传请求: user={current_user.id}, frame_type={frame_type}, filename={image.filename}")
-
     if not image.content_type.startswith('image/'):
         raise HTTPException(status_code=400, detail="文件必须是图片")
 
@@ -1103,10 +1101,8 @@ async def kling_pre_upload(
 
     result = _pick_kling_account()
     if not result:
-        app_logger.warning("[kling-pre-upload] 无可用可灵账号")
-        raise HTTPException(status_code=503, detail="无可用可灵账号，请确认后台已添加并登录可灵账号")
+        raise HTTPException(status_code=503, detail="无可用可灵账号")
     acc_id, cookie = result
-    app_logger.info(f"[kling-pre-upload] 使用可灵账号: {acc_id}")
 
     # 保存到临时文件
     import tempfile
@@ -1117,12 +1113,10 @@ async def kling_pre_upload(
         content = await image.read()
         with open(tmp_path, "wb") as f:
             f.write(content)
-        app_logger.info(f"[kling-pre-upload] 临时文件已保存: {tmp_path} ({len(content)} bytes)")
         cdn_url = await kling_api.upload_image(cookie, tmp_path)
-        app_logger.info(f"[kling-pre-upload] 上传成功, CDN URL: {cdn_url}")
         return {"success": True, "cdn_url": cdn_url, "frame_type": frame_type}
     except Exception as e:
-        app_logger.error(f"[kling-pre-upload] 上传失败: {e}")
+        app_logger.error(f"可灵预上传失败: {e}")
         raise HTTPException(status_code=502, detail=f"上传到可灵失败: {e}")
     finally:
         if os.path.exists(tmp_path):
@@ -1137,7 +1131,6 @@ async def create_order(
     resolution: str = Form("768p"),
     duration: str = Form("6s"),
     quantity: int = Form(1),
-    aspect_ratio: str = Form("16:9"),
     first_frame_image: Optional[UploadFile] = File(None),
     last_frame_image: Optional[UploadFile] = File(None),
     first_frame_cdn_url: Optional[str] = Form(None),
@@ -1149,13 +1142,13 @@ async def create_order(
     if video_type not in ("image_to_video", "text_to_video"):
         raise HTTPException(status_code=400, detail="无效的视频类型")
 
-    # 校验分辨率
-    if resolution not in ("720p", "768p", "1080p"):
-        raise HTTPException(status_code=400, detail="无效的分辨率")
-    # 校验时长：支持 3s-15s（可灵3.0滑块）和固定值 5s/6s/10s
-    dur_num = int(duration.replace("s", ""))
-    if dur_num < 3 or dur_num > 15:
-        raise HTTPException(status_code=400, detail="无效的时长，支持3-15秒")
+    # 校验分辨率和秒数
+    if resolution not in ("768p", "1080p"):
+        raise HTTPException(status_code=400, detail="无效的分辨率，仅支持768p和1080p")
+    if duration not in ("5s", "6s", "10s"):
+        raise HTTPException(status_code=400, detail="无效的时长，仅支持5s、6s和10s")
+    if resolution == "1080p" and duration == "10s":
+        raise HTTPException(status_code=400, detail="1080p分辨率仅支持6秒")
 
     # 校验批量数量
     if quantity < 1 or quantity > 5:
@@ -1229,7 +1222,6 @@ async def create_order(
         video_type=video_type,
         resolution=resolution,
         duration=duration,
-        aspect_ratio=aspect_ratio,
         first_frame_image=first_frame_path,
         last_frame_image=last_frame_path,
         quantity=quantity,

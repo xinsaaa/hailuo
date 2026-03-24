@@ -551,19 +551,24 @@ async def poll_task(cookie: str, task_id: str, timeout: int = 600, interval: int
         status = d.get("status", 0)
         works = d.get("works") or []
         logger.debug(f"[poll] task={task_id}, status={status}, works_count={len(works)}")
-        # status >= 50 means terminal state; works populated means success
+        # works 可能在 status<50 时就有占位条目（resource为空），必须检查实际URL
         if works:
             w = works[0]
             resource = w.get("resource", {})
-            return {
-                "task_id": task_id,
-                "status": status,
-                "video_url": resource.get("resource", ""),
-                "cover_url": w.get("cover", {}).get("resource", ""),
-                "width": resource.get("width", 0),
-                "height": resource.get("height", 0),
-                "duration": resource.get("duration", 0),
-            }
+            video_url = resource.get("resource", "")
+            if video_url:
+                logger.info(f"[poll] task={task_id} 完成, status={status}, video_url={video_url[:80]}...")
+                return {
+                    "task_id": task_id,
+                    "status": status,
+                    "video_url": video_url,
+                    "cover_url": w.get("cover", {}).get("resource", ""),
+                    "width": resource.get("width", 0),
+                    "height": resource.get("height", 0),
+                    "duration": resource.get("duration", 0),
+                }
+            else:
+                logger.debug(f"[poll] task={task_id} works存在但resource为空, status={status}, 继续轮询")
         if status >= 90:
             logger.error(f"[poll] task={task_id} FAILED: status={status}, data={d}")
             raise RuntimeError(f"task {task_id} failed with status {status}: {d.get('message', '')}")
