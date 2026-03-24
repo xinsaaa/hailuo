@@ -348,24 +348,27 @@ async def _sign_url(url_path: str, query: dict = None, request_body: dict = None
 
 
 async def check_login(cookie: str) -> bool:
-    """用保存的 cookie + NS 签名验证登录状态"""
+    """用实际业务接口验证 cookie 是否有效（isLogin 接口太宽松，会误判）"""
     try:
-        signed_url = await _sign_url("/api/user/isLogin")
+        signed_url = await _sign_url("/api/user/works/personal/feeds", {
+            "pageSize": "1", "contentType": "", "favored": "false",
+            "pageDirection": "NEXT", "extra": "BASE_WORK",
+        })
+        headers = {**_make_headers(), "Cookie": cookie}
         async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.get(
-                signed_url,
-                headers={
-                    **_make_headers(),
-                    "Cookie": cookie,
-                },
-            )
+            resp = await client.get(signed_url, headers=headers)
+            logger.debug(f"[check_login] feeds HTTP {resp.status_code}")
+            if resp.status_code == 401:
+                logger.warning(f"[check_login] cookie token无效 (401)")
+                return False
+            if resp.status_code != 200:
+                logger.warning(f"[check_login] 非200状态: {resp.status_code}")
+                return False
             data = resp.json()
-            logger.debug(f"[check_login] status={resp.status_code}, resp={data}")
-            d = data.get("data") or {}
-            is_ok = d.get("isLogin") is True or d.get("login") is True
-            if not is_ok:
-                logger.warning(f"[check_login] 验证失败, resp={data}")
-            return is_ok
+            if data.get("result") == -401:
+                logger.warning(f"[check_login] token value error: {data}")
+                return False
+            return data.get("status") == 200 or data.get("data") is not None
     except Exception as e:
         logger.error(f"[check_login] 异常: {e}")
         return False
