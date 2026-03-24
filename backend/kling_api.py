@@ -631,34 +631,41 @@ async def get_user_points(cookie: str) -> dict:
 
 async def init_remove_watermark(cookie: str):
     """
-    首次登录后初始化去水印设置：
-    1. GET  /api/user/extra-details/user_remove_aigc_watermark  查询当前状态
-    2. POST /api/user/extra-details/user_remove_aigc_watermark  设置为 true
+    首次登录后初始化去水印设置（两个开关都要打开）：
+    1. GET  user_remove_aigc_watermark  查询 → POST 设置为 true
+    2. POST user_watermark_switch       设置为 true
     """
-    path = "/api/user/extra-details/user_remove_aigc_watermark"
     headers = {**_make_headers(), "Cookie": cookie}
+    post_headers = {**headers, "Content-Type": "application/json"}
+    body = {"value": "true"}
 
-    # 步骤1: 查询
+    # 开关1: user_remove_aigc_watermark（去除AI水印）
+    path1 = "/api/user/extra-details/user_remove_aigc_watermark"
     try:
-        signed_get = await _sign_url(path)
+        signed_get = await _sign_url(path1)
         async with httpx.AsyncClient(timeout=15) as client:
             r = await client.get(signed_get, headers=headers)
-            data = r.json()
-        logger.info(f"[watermark] GET 查询去水印状态: {data}")
+        logger.info(f"[watermark] GET user_remove_aigc_watermark: {r.json()}")
     except Exception as e:
-        logger.warning(f"[watermark] GET 查询失败: {e}")
+        logger.warning(f"[watermark] GET user_remove_aigc_watermark 失败: {e}")
 
-    # 步骤2: 设置为 true
     try:
-        body = {"value": "true"}
-        signed_post = await _sign_url(path, request_body=body)
-        post_headers = {**headers, "Content-Type": "application/json"}
+        signed_post = await _sign_url(path1, request_body=body)
         async with httpx.AsyncClient(timeout=15) as client:
             r = await client.post(signed_post, headers=post_headers, json=body)
-            data = r.json()
-        logger.info(f"[watermark] POST 设置去水印=true: {data}")
+        logger.info(f"[watermark] POST user_remove_aigc_watermark=true: {r.json()}")
     except Exception as e:
-        logger.warning(f"[watermark] POST 设置失败: {e}")
+        logger.warning(f"[watermark] POST user_remove_aigc_watermark 失败: {e}")
+
+    # 开关2: user_watermark_switch（水印总开关）
+    path2 = "/api/user/extra-details/user_watermark_switch"
+    try:
+        signed_post2 = await _sign_url(path2, request_body=body)
+        async with httpx.AsyncClient(timeout=15) as client:
+            r = await client.post(signed_post2, headers=post_headers, json=body)
+        logger.info(f"[watermark] POST user_watermark_switch=true: {r.json()}")
+    except Exception as e:
+        logger.warning(f"[watermark] POST user_watermark_switch 失败: {e}")
 
 
 # ============ 账号状态监测 ============
