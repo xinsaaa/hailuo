@@ -270,7 +270,9 @@ const processFile = async (file, type = 'first') => {
         showNotification('图片已预上传到可灵CDN', 'success')
       }
     } catch (e) {
-      console.warn('预上传失败，提交时将重新上传', e)
+      const msg = e.response?.data?.detail || e.message || '未知错误'
+      console.warn('预上传失败:', msg, e)
+      showNotification(`预上传失败: ${msg}，提交时将重新上传`, 'warning')
     } finally {
       uploadingFirst.value = false
     }
@@ -287,7 +289,9 @@ const processFile = async (file, type = 'first') => {
         showNotification('尾帧图片已预上传', 'success')
       }
     } catch (e) {
-      console.warn('尾帧预上传失败', e)
+      const msg = e.response?.data?.detail || e.message || '未知错误'
+      console.warn('尾帧预上传失败:', msg, e)
+      showNotification(`尾帧预上传失败: ${msg}`, 'warning')
     } finally {
       uploadingLast.value = false
     }

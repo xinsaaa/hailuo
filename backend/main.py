@@ -1093,6 +1093,8 @@ async def kling_pre_upload(
     current_user: User = Depends(get_current_user),
 ):
     """用户选择图片后立即上传到可灵CDN，返回CDN URL。避免提交订单时再上传导致延迟。"""
+    app_logger.info(f"[kling-pre-upload] 收到预上传请求: user={current_user.id}, frame_type={frame_type}, filename={image.filename}")
+
     if not image.content_type.startswith('image/'):
         raise HTTPException(status_code=400, detail="文件必须是图片")
 
@@ -1101,8 +1103,10 @@ async def kling_pre_upload(
 
     result = _pick_kling_account()
     if not result:
-        raise HTTPException(status_code=503, detail="无可用可灵账号")
+        app_logger.warning("[kling-pre-upload] 无可用可灵账号")
+        raise HTTPException(status_code=503, detail="无可用可灵账号，请确认后台已添加并登录可灵账号")
     acc_id, cookie = result
+    app_logger.info(f"[kling-pre-upload] 使用可灵账号: {acc_id}")
 
     # 保存到临时文件
     import tempfile
@@ -1113,10 +1117,12 @@ async def kling_pre_upload(
         content = await image.read()
         with open(tmp_path, "wb") as f:
             f.write(content)
+        app_logger.info(f"[kling-pre-upload] 临时文件已保存: {tmp_path} ({len(content)} bytes)")
         cdn_url = await kling_api.upload_image(cookie, tmp_path)
+        app_logger.info(f"[kling-pre-upload] 上传成功, CDN URL: {cdn_url}")
         return {"success": True, "cdn_url": cdn_url, "frame_type": frame_type}
     except Exception as e:
-        app_logger.error(f"可灵预上传失败: {e}")
+        app_logger.error(f"[kling-pre-upload] 上传失败: {e}")
         raise HTTPException(status_code=502, detail=f"上传到可灵失败: {e}")
     finally:
         if os.path.exists(tmp_path):
