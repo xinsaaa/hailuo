@@ -254,12 +254,25 @@ def init_default_models():
                 app_logger.info(f"Created new model: {model_data['model_id']} with price ¥{model_data['price']}")
             else:
                 # 模型已存在，保持现有数据（特别是价格）
-                # 但同步 platform 字段（确保分类正确）
+                # 但同步 platform 和 pricing_matrix 字段
+                updated = False
                 new_platform = model_data.get("platform", "hailuo")
                 if existing_model.platform != new_platform:
                     existing_model.platform = new_platform
+                    updated = True
+                # 同步 pricing_matrix（如果数据库中为空但默认配置有值）
+                new_matrix = model_data.get("pricing_matrix")
+                if new_matrix and not existing_model.pricing_matrix:
+                    existing_model.pricing_matrix = new_matrix
+                    updated = True
+                    app_logger.info(f"Synced pricing_matrix for model {existing_model.model_id}")
+                # 同步 features
+                new_features = model_data.get("features")
+                if new_features and existing_model.features != new_features:
+                    existing_model.features = new_features
+                    updated = True
+                if updated:
                     session.add(existing_model)
-                    app_logger.info(f"Updated model {existing_model.model_id} platform: {existing_model.platform} -> {new_platform}")
         
         session.commit()
         if created_count > 0:
@@ -1137,22 +1150,22 @@ async def create_order(
     quantity: int = Form(1),
     first_frame_image: Optional[UploadFile] = File(None),
     last_frame_image: Optional[UploadFile] = File(None),
+    aspect_ratio: Optional[str] = Form(None),
     first_frame_cdn_url: Optional[str] = Form(None),
     last_frame_cdn_url: Optional[str] = Form(None),
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_session)
 ):
     # 校验video_type
-    if video_type not in ("image_to_video", "text_to_video"):
+    if video_type not in ("image_to_video", "dual_image_to_video", "text_to_video"):
         raise HTTPException(status_code=400, detail="无效的视频类型")
 
     # 校验分辨率和秒数
-    if resolution not in ("768p", "1080p"):
-        raise HTTPException(status_code=400, detail="无效的分辨率，仅支持768p和1080p")
-    if duration not in ("5s", "6s", "10s"):
-        raise HTTPException(status_code=400, detail="无效的时长，仅支持5s、6s和10s")
-    if resolution == "1080p" and duration == "10s":
-        raise HTTPException(status_code=400, detail="1080p分辨率仅支持6秒")
+    if resolution not in ("720p", "768p", "1080p"):
+        raise HTTPException(status_code=400, detail="无效的分辨率")
+    duration_seconds = int(duration.replace("s", "")) if duration else 5
+    if duration_seconds < 3 or duration_seconds > 15:
+        raise HTTPException(status_code=400, detail="无效的时长")
 
     # 校验批量数量
     if quantity < 1 or quantity > 5:
@@ -1161,17 +1174,53 @@ async def create_order(
     # 图生视频必须上传首帧图片（或已预上传CDN URL）
     if video_type == "image_to_video" and not first_frame_image and not first_frame_cdn_url:
         raise HTTPException(status_code=400, detail="图生视频模式必须上传首帧图片")
+    # 双图模式必须同时上传首帧和尾帧
+    if video_type == "dual_image_to_video":
+        if not first_frame_image and not first_frame_cdn_url:
+            raise HTTPException(status_code=400, detail="双图模式必须上传首帧图片")
+        if not last_frame_image and not last_frame_cdn_url:
+            raise HTTPException(status_code=400, detail="双图模式必须上传尾帧图片")
 
     # 根据用户选择的模型获取价格
     model = session.exec(select(AIModel).where(AIModel.name == model_name)).first()
-    duration_seconds = int(duration.replace("s", "")) if duration else 5
-    if model and model.price_per_second and model.price_per_second > 0:
-        # 按秒计费（可灵/即梦）
-        cost = round(model.price_per_second * duration_seconds, 2)
-    elif duration == "10s" and model and model.price_10s > 0:
-        cost = model.price_10s
-    else:
-        cost = model.price if model and model.price else 0.99
+
+    # 价格计算：优先使用 pricing_matrix 分档定价
+    cost = None
+    if model and model.pricing_matrix:
+        try:
+            matrix = json.loads(model.pricing_matrix) if isinstance(model.pricing_matrix, str) else model.pricing_matrix
+            # 确定价格档位：text / single_image / dual_image
+            if video_type == "text_to_video":
+                tier = matrix.get("text")
+            elif video_type == "dual_image_to_video":
+                tier = matrix.get("dual_image")
+            else:
+                tier = matrix.get("single_image")
+
+            if tier:
+                # 找分辨率对应价格（720p 可灵用，768p 海螺用）
+                res_key = resolution
+                res_prices = tier.get(res_key)
+                if not res_prices and resolution == "768p":
+                    res_prices = tier.get("720p")
+                if res_prices:
+                    exact = res_prices.get(str(duration_seconds))
+                    if exact and exact > 0:
+                        cost = round(exact, 2)
+                    elif res_prices.get("per_second"):
+                        cost = round(res_prices["per_second"] * duration_seconds, 2)
+        except Exception:
+            pass
+
+    # 回退定价逻辑
+    if cost is None:
+        if model and model.price_per_second and model.price_per_second > 0:
+            cost = round(model.price_per_second * duration_seconds, 2)
+        elif duration == "10s" and model and model.price_10s and model.price_10s > 0:
+            cost = model.price_10s
+        else:
+            cost = model.price if model and model.price else 0.99
+
     total_cost = round(cost * quantity, 2)
     if current_user.balance < total_cost:
         raise HTTPException(status_code=400, detail=f"余额不足，需要 ¥{total_cost}（单价 ¥{cost} × {quantity}）")
@@ -1232,6 +1281,7 @@ async def create_order(
         duration=duration,
         first_frame_image=first_frame_path,
         last_frame_image=last_frame_path,
+        aspect_ratio=aspect_ratio or "16:9",
         quantity=quantity,
     )
     session.add(new_order)

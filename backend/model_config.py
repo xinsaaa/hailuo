@@ -147,42 +147,84 @@ class ModelConfigManager:
                 "name": "Kling 3.0",
                 "display_name": "可灵 3.0",
                 "description": "可灵最新旗舰，电影级画质，运动流畅自然",
-                "features": json.dumps(["1080P", "5s-10s", "首尾帧"]),
+                "features": json.dumps(["1080P", "5s-10s", "单图/双图"]),
                 "badge": "NEW",
                 "supports_last_frame": True,
                 "is_default": False,
                 "is_enabled": True,
                 "sort_order": 11,
                 "price": 1.49,
-                "platform": "kling"
+                "platform": "kling",
+                "pricing_matrix": json.dumps({
+                    "single_image": {
+                        "720p": {"5": 1.29, "10": 2.49, "per_second": 0.26},
+                        "1080p": {"5": 1.49, "10": 2.89, "per_second": 0.30}
+                    },
+                    "dual_image": {
+                        "720p": {"5": 1.99, "10": 3.49, "per_second": 0.40},
+                        "1080p": {"5": 2.29, "10": 3.99, "per_second": 0.46}
+                    },
+                    "text": {
+                        "720p": {"5": 0.99, "10": 1.89, "per_second": 0.20},
+                        "1080p": {"5": 1.19, "10": 2.29, "per_second": 0.24}
+                    }
+                })
             },
             {
                 "model_id": "kling_2_6",
                 "name": "Kling 2.6",
                 "display_name": "可灵 2.6",
                 "description": "可灵高性能版本，细节丰富，动作精准",
-                "features": json.dumps(["1080P", "5s-10s", "首尾帧"]),
+                "features": json.dumps(["1080P", "5s-10s", "单图/双图"]),
                 "badge": None,
                 "supports_last_frame": True,
                 "is_default": False,
                 "is_enabled": True,
                 "sort_order": 12,
                 "price": 1.19,
-                "platform": "kling"
+                "platform": "kling",
+                "pricing_matrix": json.dumps({
+                    "single_image": {
+                        "720p": {"5": 0.99, "10": 1.89, "per_second": 0.20},
+                        "1080p": {"5": 1.19, "10": 2.29, "per_second": 0.24}
+                    },
+                    "dual_image": {
+                        "720p": {"5": 1.49, "10": 2.69, "per_second": 0.30},
+                        "1080p": {"5": 1.79, "10": 3.29, "per_second": 0.36}
+                    },
+                    "text": {
+                        "720p": {"5": 0.79, "10": 1.49, "per_second": 0.16},
+                        "1080p": {"5": 0.99, "10": 1.89, "per_second": 0.20}
+                    }
+                })
             },
             {
                 "model_id": "kling_2_5_turbo",
                 "name": "Kling 2.5 Turbo",
                 "display_name": "可灵 2.5 Turbo",
                 "description": "可灵专业版，极速生成，高性价比",
-                "features": json.dumps(["1080P", "5s-10s", "首尾帧"]),
+                "features": json.dumps(["1080P", "5s-10s", "单图/双图"]),
                 "badge": "PRO",
                 "supports_last_frame": True,
                 "is_default": False,
                 "is_enabled": True,
                 "sort_order": 13,
                 "price": 0.99,
-                "platform": "kling"
+                "platform": "kling",
+                "pricing_matrix": json.dumps({
+                    "single_image": {
+                        "720p": {"5": 0.79, "10": 1.49, "per_second": 0.16},
+                        "1080p": {"5": 0.99, "10": 1.89, "per_second": 0.20}
+                    },
+                    "dual_image": {
+                        "720p": {"5": 1.19, "10": 2.19, "per_second": 0.24},
+                        "1080p": {"5": 1.49, "10": 2.69, "per_second": 0.30}
+                    },
+                    "text": {
+                        "720p": {"5": 0.59, "10": 1.09, "per_second": 0.12},
+                        "1080p": {"5": 0.79, "10": 1.49, "per_second": 0.16}
+                    }
+                })
             }
         ]
     

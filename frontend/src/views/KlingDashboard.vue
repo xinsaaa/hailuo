@@ -20,6 +20,22 @@ const showModelSelector = ref(false)
 // 视频模式：文生视频 / 图生视频
 const videoMode = ref('image')
 
+// 图生视频子模式：单图 / 双图
+const imageMode = ref('single') // 'single' 或 'dual'
+
+// 切换到单图模式时清除尾帧
+watch(imageMode, (val) => {
+  if (val === 'single') {
+    lastFrameImage.value = null
+    lastFrameCdnUrl.value = null
+    uploadingLast.value = false
+    if (lastFramePreview.value) {
+      URL.revokeObjectURL(lastFramePreview.value)
+      lastFramePreview.value = null
+    }
+  }
+})
+
 // 时长选择
 const duration = ref('5s')
 const durationSlider = ref(5)
@@ -89,22 +105,27 @@ const handleKeydown = (e) => {
   }
 }
 
-// 单价（根据分辨率+时长）
+// 单价（根据模式+分辨率+时长）
 const unitPrice = computed(() => {
   const m = selectedModel.value
   if (!m) return 1.49
   const seconds = parseInt(duration.value) || 5
 
-  // 优先级1: pricing_matrix 矩阵定价
+  // 优先级1: pricing_matrix 矩阵定价（区分 text/single_image/dual_image）
   if (m.pricing_matrix) {
-    const resPrices = m.pricing_matrix[resolution.value]
-    if (resPrices) {
-      // 先找精确时长价格
-      const exact = resPrices[String(seconds)]
-      if (exact && exact > 0) return Math.round(exact * 100) / 100
-      // 用该分辨率的每秒单价
-      const pps = resPrices.per_second
-      if (pps && pps > 0) return Math.round(pps * seconds * 100) / 100
+    let tierKey = 'single_image'
+    if (videoMode.value === 'text') tierKey = 'text'
+    else if (imageMode.value === 'dual') tierKey = 'dual_image'
+
+    const tier = m.pricing_matrix[tierKey]
+    if (tier) {
+      const resPrices = tier[resolution.value]
+      if (resPrices) {
+        const exact = resPrices[String(seconds)]
+        if (exact && exact > 0) return Math.round(exact * 100) / 100
+        const pps = resPrices.per_second
+        if (pps && pps > 0) return Math.round(pps * seconds * 100) / 100
+      }
     }
   }
 
@@ -259,6 +280,10 @@ const handleCreateOrder = async () => {
     showNotification('图生视频模式请上传首帧图片', 'error')
     return
   }
+  if (videoMode.value === 'image' && imageMode.value === 'dual' && !lastFrameImage.value) {
+    showNotification('双图模式请上传尾帧图片', 'error')
+    return
+  }
 
   const modelPrice = currentPrice.value
   if (!user.value || user.value.balance < modelPrice) {
@@ -268,7 +293,10 @@ const handleCreateOrder = async () => {
   }
 
   loading.value = true
-  const videoType = videoMode.value === 'text' ? 'text_to_video' : 'image_to_video'
+  let videoType = 'text_to_video'
+  if (videoMode.value === 'image') {
+    videoType = imageMode.value === 'dual' ? 'dual_image_to_video' : 'image_to_video'
+  }
 
   try {
     const opts = { aspectRatio: aspectRatio.value }
@@ -691,7 +719,34 @@ const handleLogout = () => {
             </div>
 
             <!-- 图片上传（仅图生视频） -->
-            <div v-if="videoMode === 'image'" class="mt-6 grid grid-cols-2 gap-4">
+            <div v-if="videoMode === 'image'" class="mt-6">
+              <!-- 单图/双图模式切换 -->
+              <div class="flex items-center gap-3 mb-4">
+                <span class="text-xs font-medium text-gray-400">图片模式</span>
+                <div class="flex items-center gap-1 p-1 bg-black/30 rounded-xl border border-white/10">
+                  <button
+                    @click="imageMode = 'single'"
+                    class="px-4 py-1.5 text-sm font-medium rounded-lg transition-all duration-200"
+                    :class="imageMode === 'single'
+                      ? 'bg-gradient-to-r from-orange-500/80 to-amber-500/80 text-white shadow-lg shadow-orange-900/30'
+                      : 'text-gray-400 hover:text-white hover:bg-white/5'"
+                  >
+                    单图模式
+                  </button>
+                  <button
+                    @click="imageMode = 'dual'"
+                    class="px-4 py-1.5 text-sm font-medium rounded-lg transition-all duration-200"
+                    :class="imageMode === 'dual'
+                      ? 'bg-gradient-to-r from-amber-500/80 to-yellow-500/80 text-white shadow-lg shadow-amber-900/30'
+                      : 'text-gray-400 hover:text-white hover:bg-white/5'"
+                  >
+                    双图模式
+                  </button>
+                </div>
+                <span class="text-[10px] text-gray-500">{{ imageMode === 'single' ? '仅上传首帧，AI自动生成运动' : '上传首帧+尾帧，AI生成过渡动画' }}</span>
+              </div>
+
+              <div :class="imageMode === 'dual' ? 'grid grid-cols-2 gap-4' : ''">
               <!-- 首帧（必传） -->
               <div>
                 <div class="flex items-center gap-2 mb-2">
@@ -739,11 +794,11 @@ const handleLogout = () => {
                 </div>
               </div>
 
-              <!-- 尾帧（可选） -->
-              <div>
+              <!-- 尾帧（双图模式必传） -->
+              <div v-if="imageMode === 'dual'">
                 <div class="flex items-center gap-2 mb-2">
                   <span class="text-xs font-medium text-gray-300">尾帧图片</span>
-                  <span class="text-[10px] text-gray-500 bg-white/5 px-1.5 py-0.5 rounded border border-white/5">可选</span>
+                  <span class="text-[10px] text-orange-400 bg-orange-500/10 px-1.5 py-0.5 rounded border border-orange-500/20">必传</span>
                 </div>
                 <div
                   class="relative"
@@ -784,6 +839,7 @@ const handleLogout = () => {
                   >×</button>
                 </div>
               </div>
+              </div>
             </div>
 
             <!-- 底部操作栏 -->
@@ -798,7 +854,10 @@ const handleLogout = () => {
 
               <div class="flex items-center gap-6">
                 <div class="text-right">
-                  <span class="text-xs text-gray-500 block">本次消耗</span>
+                  <span class="text-xs text-gray-500 block">
+                    {{ videoMode === 'text' ? '文生视频' : (imageMode === 'dual' ? '双图模式' : '单图模式') }}
+                    · 单价 ¥{{ unitPrice.toFixed(2) }}{{ quantity > 1 ? ' × ' + quantity : '' }}
+                  </span>
                   <span class="text-lg font-bold text-white leading-none">¥{{ currentPrice.toFixed(2) }}</span>
                 </div>
                 <button
