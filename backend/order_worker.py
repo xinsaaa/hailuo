@@ -112,6 +112,17 @@ async def submit_order(order_id: int):
     account_store.inc_tasks(acc_id)
 
     try:
+        # 预检海螺账号积分
+        try:
+            credits = await client.get_credits()
+            if credits is not None and credits <= 0:
+                logger.error(f"[worker] 海螺账号{acc_id}积分为0，订单#{order_id}失败")
+                _fail_order(order_id, "海螺账号积分不足，请联系管理员充值")
+                return
+            logger.info(f"[worker] 海螺账号{acc_id}积分={credits}")
+        except Exception as e:
+            logger.warning(f"[worker] 海螺积分查询失败: {e}，继续尝试提交")
+
         with Session(engine) as session:
             order = session.get(VideoOrder, order_id)
 
