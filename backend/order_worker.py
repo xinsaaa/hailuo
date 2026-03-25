@@ -15,6 +15,7 @@ from sqlmodel import Session, select
 from backend.models import VideoOrder, User, Transaction, engine
 from backend.account_store import account_store
 from backend.hailuo_api import HailuoApiClient
+from backend import hailuo_api as hailuo_account_mgr
 from backend import kling_api
 
 logger = logging.getLogger(__name__)
@@ -57,7 +58,12 @@ def _get_api_model_id(model_name: Optional[str]) -> str:
 
 
 def _pick_account() -> Optional[tuple]:
-    """选出优先级最高且有余量的账号，返回 (account_id, client)"""
+    """选出优先级最高且有余量的海螺账号，返回 (account_id, client)"""
+    # 优先使用新的 hailuo_api 账号管理系统
+    result = hailuo_account_mgr.build_client_auto()
+    if result:
+        return result
+    # 回退到旧的 account_store
     candidates = [
         (acc_id, acc)
         for acc_id, acc in account_store.accounts.items()
@@ -222,7 +228,18 @@ async def poll_order_status(order_id: int, acc_id: Optional[str] = None):
 
 
 def _make_client(acc_id: Optional[str]) -> Optional[HailuoApiClient]:
-    """从账号store构建客户端，acc_id为None时自动选择"""
+    """构建海螺客户端，acc_id为None时自动选择"""
+    # 优先从新的 hailuo_api 账号系统查找
+    if acc_id:
+        client = hailuo_account_mgr.build_client(acc_id)
+        if client:
+            return client
+    # 自动选择
+    result = hailuo_account_mgr.build_client_auto()
+    if result:
+        _, client = result
+        return client
+    # 回退到旧的 account_store
     if acc_id and account_store.has_credentials(acc_id):
         creds = account_store.get_credentials(acc_id)
     else:
