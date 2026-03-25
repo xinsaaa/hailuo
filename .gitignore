@@ -113,6 +113,10 @@ html.html
 可灵逆向/.claude/
 可灵逆向/.idea/
 
+# 海螺逆向
+海螺逆向/.claude/
+海螺逆向/.idea/
+
 # 账号数据（敏感）
 backend/kling_accounts.json
 backend/accounts.json
