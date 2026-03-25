@@ -8,19 +8,24 @@
   raw   = quote(fullPath) + '_' + body_str + inner + 'ooui'
   yy    = md5(raw)
 """
+import asyncio
 import base64
 import hashlib
 import hmac
 import json
+import logging
 import os
 import re
 import time
 import uuid as _uuid
 from email.utils import formatdate
+from pathlib import Path
 from typing import Optional
 from urllib.parse import urlencode, quote
 
 import httpx
+
+logger = logging.getLogger(__name__)
 
 # ============ 常量 ============
 
@@ -28,8 +33,89 @@ BASE_URL = "https://hailuoai.com"
 DEFAULT_UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
     "AppleWebKit/537.36 (KHTML, like Gecko) "
-    "Chrome/136.0.0.0 Safari/537.36"
+    "Chrome/146.0.0.0 Safari/537.36"
 )
+
+DATA_DIR = Path(__file__).parent.parent / "data"
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+HAILUO_ACCOUNTS_FILE = DATA_DIR / "hailuo_accounts.json"
+
+# ============ 账号文件存储 ============
+
+def _load_accounts() -> dict:
+    if not HAILUO_ACCOUNTS_FILE.exists():
+        default = {"accounts": {}, "credentials": {}}
+        _save_accounts(default)
+        return default
+    with open(HAILUO_ACCOUNTS_FILE, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def _save_accounts(data: dict):
+    with open(HAILUO_ACCOUNTS_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+
+def list_hailuo_accounts() -> list:
+    data = _load_accounts()
+    accounts = []
+    for aid, acc in data["accounts"].items():
+        creds = data["credentials"].get(aid)
+        is_logged = acc.get("is_logged_in", False) if creds else False
+        accounts.append({**acc, "is_logged_in": is_logged})
+    return accounts
+
+
+def get_hailuo_account(account_id: str) -> Optional[dict]:
+    data = _load_accounts()
+    return data["accounts"].get(account_id)
+
+
+def get_hailuo_credentials(account_id: str) -> Optional[dict]:
+    data = _load_accounts()
+    return data["credentials"].get(account_id)
+
+
+def save_hailuo_account(account_id: str, display_name: str, priority: int = 5,
+                        max_concurrent: int = 3) -> dict:
+    data = _load_accounts()
+    acc = {
+        "account_id": account_id,
+        "display_name": display_name,
+        "priority": priority,
+        "is_active": True,
+        "max_concurrent": max_concurrent,
+        "current_tasks": 0,
+    }
+    data["accounts"][account_id] = acc
+    _save_accounts(data)
+    return acc
+
+
+def save_hailuo_credentials(account_id: str, cookie: str, uuid: str, device_id: str):
+    data = _load_accounts()
+    data["credentials"][account_id] = {
+        "cookie": cookie,
+        "uuid": uuid,
+        "device_id": device_id,
+    }
+    _save_accounts(data)
+
+
+def update_hailuo_account(account_id: str, **kwargs):
+    data = _load_accounts()
+    if account_id not in data["accounts"]:
+        return None
+    data["accounts"][account_id].update(kwargs)
+    _save_accounts(data)
+    return data["accounts"][account_id]
+
+
+def delete_hailuo_account(account_id: str):
+    data = _load_accounts()
+    data["accounts"].pop(account_id, None)
+    data["credentials"].pop(account_id, None)
+    _save_accounts(data)
 
 # ============ 签名工具 ============
 
@@ -165,7 +251,8 @@ class HailuoApiClient:
 
     async def _get(self, url_path: str) -> dict:
         unix_ms = int(time.time() * 1000)
-        yy, full_path = _generate_yy(url_path, "", unix_ms, self.uuid, self.device_id)
+        # GET 请求的 bodyString 固定为 '{}'
+        yy, full_path = _generate_yy(url_path, "{}", unix_ms, self.uuid, self.device_id)
         headers = self._common_headers()
         headers["yy"] = yy
         resp = await self._client.get(full_path, headers=headers)
@@ -174,15 +261,27 @@ class HailuoApiClient:
 
     # ---------- 公开接口 ----------
 
+    async def check_login(self) -> bool:
+        """验证 cookie/token 是否有效"""
+        try:
+            resp = await self._get("/v1/api/billing/credit")
+            code = (resp.get("statusInfo") or {}).get("code", -1)
+            if code == 0:
+                return True
+            logger.warning(f"[hailuo] check_login 失败: code={code}, resp={resp}")
+            return False
+        except Exception as e:
+            logger.error(f"[hailuo] check_login 异常: {e}")
+            return False
+
     async def get_credits(self) -> Optional[int]:
         """查询贝壳积分余额，返回积分数值，失败返回 None"""
         try:
             resp = await self._get("/v1/api/billing/credit")
-            # 响应格式: {"code":0,"data":{"amount":12345,...}}
             data = resp.get("data") or {}
             return data.get("amount")
         except Exception as e:
-            print(f"[HailuoAPI] get_credits 失败: {e}")
+            logger.error(f"[hailuo] get_credits 失败: {e}")
             return None
 
     async def generate_video(
@@ -223,10 +322,87 @@ class HailuoApiClient:
         """查询生成中的任务列表"""
         return await self._post("/api/feed/creation/my/processing", {})
 
-    async def get_tasks_by_ids(self, task_ids: list) -> dict:
-        """按 taskID 批量查询视频状态"""
-        body = {"ids": task_ids}
+    async def get_batch_feeds(self, cursor: str = "", limit: int = 30) -> dict:
+        """查询历史生成批次列表（含视频URL）"""
+        body = {
+            "cursor": cursor,
+            "limit": limit,
+            "type": "next",
+            "scene": "create",
+            "projectID": "0",
+        }
         return await self._post("/api/feed/creation/my/batch", body)
+
+    async def poll_task(self, timeout: int = 600, interval: int = 8) -> dict:
+        """
+        轮询生成中的任务列表，直到任务完成或超时。
+        返回第一个完成的 feed 数据（含视频URL）。
+        
+        返回 dict keys:
+            status: 2=成功
+            video_url: 无水印下载链接
+            cover_url: 封面URL
+            feed_id: feed ID
+        """
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            await asyncio.sleep(interval)
+            try:
+                resp = await self.get_processing_tasks()
+                data = resp.get("data") or {}
+                feeds = data.get("feeds") or []
+                
+                if not feeds:
+                    # 没有处理中的任务了，去历史列表查最新完成的
+                    batch_resp = await self.get_batch_feeds(limit=1)
+                    batch_data = batch_resp.get("data") or {}
+                    batches = batch_data.get("batchFeeds") or []
+                    if batches:
+                        batch_feeds = batches[0].get("feeds") or []
+                        if batch_feeds:
+                            feed = batch_feeds[0]
+                            return self._parse_feed(feed)
+                    logger.info("[hailuo] poll: 无处理中任务且历史为空")
+                    continue
+                
+                for feed in feeds:
+                    ci = feed.get("commonInfo") or {}
+                    status = ci.get("status", 0)
+                    logger.debug(f"[hailuo] poll: feedID={ci.get('id')}, status={status}")
+                    if status == 2:  # 成功
+                        return self._parse_feed(feed)
+                    if status >= 90:  # 失败
+                        msg = (feed.get("feedMessage") or {}).get("message", "")
+                        raise RuntimeError(f"海螺任务失败: status={status}, msg={msg}")
+            except RuntimeError:
+                raise
+            except Exception as e:
+                logger.warning(f"[hailuo] poll 异常: {e}")
+        
+        raise TimeoutError(f"海螺任务超时 ({timeout}s)")
+
+    def _parse_feed(self, feed: dict) -> dict:
+        """从 feed 数据中提取视频信息"""
+        ci = feed.get("commonInfo") or {}
+        vm = (feed.get("metaInfo") or {}).get("videoMetaInfo") or {}
+        media = vm.get("mediaInfo") or {}
+        dl = media.get("downloadURL") or vm.get("downloadURL") or {}
+        cover = (feed.get("feedCoverInfo") or {}).get("coverURL", "")
+        
+        # 优先无水印链接
+        video_url = dl.get("withoutWatermarkURL") or dl.get("watermarkURL") or media.get("url", "")
+        
+        return {
+            "status": ci.get("status", 0),
+            "feed_id": ci.get("id", ""),
+            "batch_id": ci.get("batchID", ""),
+            "video_url": video_url,
+            "play_url": media.get("url", ""),
+            "cover_url": cover,
+            "width": media.get("width", 0),
+            "height": media.get("height", 0),
+            "duration": media.get("duration", 0),
+        }
 
     async def upload_image(self, image_path: str) -> Optional[dict]:
         """
@@ -373,16 +549,53 @@ async def login_with_sms(phone: str, code: str, uuid: str, device_id: str) -> di
 
 # ============ 快捷函数（供 worker 用）============
 
-def load_account_client(account_cfg: dict) -> HailuoApiClient:
-    """
-    从账号配置 dict 构建客户端
-    配置字段: cookie, uuid, device_id
-    """
+def _pick_hailuo_account() -> Optional[tuple]:
+    """选择一个可用的海螺账号，返回 (account_id, credentials_dict) 或 None"""
+    data = _load_accounts()
+    candidates = []
+    for aid, acc in data["accounts"].items():
+        if not acc.get("is_active", True):
+            continue
+        creds = data["credentials"].get(aid)
+        if not creds or not creds.get("cookie"):
+            continue
+        if not acc.get("is_logged_in", False):
+            continue
+        candidates.append((aid, acc, creds))
+    
+    if not candidates:
+        return None
+    
+    # 按优先级降序，当前任务数升序
+    candidates.sort(key=lambda x: (-x[1].get("priority", 5), x[1].get("current_tasks", 0)))
+    aid, acc, creds = candidates[0]
+    return aid, creds
+
+
+def build_client(account_id: str) -> Optional[HailuoApiClient]:
+    """根据账号ID构建客户端"""
+    creds = get_hailuo_credentials(account_id)
+    if not creds:
+        return None
     return HailuoApiClient(
-        cookie=account_cfg["cookie"],
-        uuid=account_cfg["uuid"],
-        device_id=account_cfg["device_id"],
+        cookie=creds["cookie"],
+        uuid=creds["uuid"],
+        device_id=creds["device_id"],
     )
+
+
+def build_client_auto() -> Optional[tuple]:
+    """自动选择账号并构建客户端，返回 (account_id, client) 或 None"""
+    result = _pick_hailuo_account()
+    if not result:
+        return None
+    aid, creds = result
+    client = HailuoApiClient(
+        cookie=creds["cookie"],
+        uuid=creds["uuid"],
+        device_id=creds["device_id"],
+    )
+    return aid, client
 
 
 if __name__ == "__main__":

@@ -126,6 +126,11 @@ const routes = [
                 component: () => import('../views/admin/AdminKlingAccounts.vue')
             },
             {
+                path: 'hailuo-accounts',
+                name: '海螺账号管理',
+                component: () => import('../views/admin/AdminHailuoAccounts.vue')
+            },
+            {
                 path: 'settings',
                 name: '系统设置',
                 component: () => import('../views/admin/AdminSettings.vue')
