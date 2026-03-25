@@ -102,9 +102,11 @@ def list_kling_accounts() -> list:
     accounts = []
     for aid, acc in data["accounts"].items():
         creds = data["credentials"].get(aid)
+        # 优先使用 check_login 更新的 is_logged_in 状态，没有凭据则一定未登录
+        is_logged = acc.get("is_logged_in", False) if creds else False
         accounts.append({
             **acc,
-            "is_logged_in": creds is not None,
+            "is_logged_in": is_logged,
         })
     return accounts
 

@@ -202,6 +202,7 @@ async def _poll_login(account_id: str):
             try:
                 cred = await qr_accept_result(did, risk_id, token, signature, session_cookies)
                 save_kling_credentials(account_id, cred["cookie"], did)
+                update_kling_account(account_id, is_logged_in=True)
                 # 首次登录后自动初始化去水印设置
                 try:
                     await init_remove_watermark(cred["cookie"])
