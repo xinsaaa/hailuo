@@ -22,6 +22,7 @@ build/
 .env.*.local
 .env.production
 .env.development
+.env.server
 config.ini
 
 # 登录状态文件
@@ -93,6 +94,9 @@ reset_*.py
 verify_*.py
 reset_*.bat
 reset_*.sh
+scripts/*_test.py
+scripts/*_login.py
+scripts/run_*.py
 
 # 浏览器数据/调试
 browser_data/
@@ -104,6 +108,18 @@ capture_kling.py
 capture_kling_playwright.py
 html.html
 可灵*.txt
+generate_changelog.py
+jimeng_playwright_stable_guide.md
+
+# backend 调试/测试文件
+backend/test_*.py
+backend/sniff_*.py
+backend/test_qr.png
+backend/*.mp4
+backend/jimeng_debug/
+backend/jimeng_cookie.txt
+backend/database.db
+backend/accounts.json
 
 # Claude 配置
 .claude/
@@ -116,6 +132,9 @@ html.html
 # 海螺逆向
 海螺逆向/.claude/
 海螺逆向/.idea/
+海螺逆向/js_chunks/
+海螺逆向/batch_result.json
+海螺逆向/example.js
 
 # 账号数据（敏感）
 backend/kling_accounts.json

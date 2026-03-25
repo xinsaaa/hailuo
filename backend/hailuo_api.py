@@ -278,7 +278,6 @@ class HailuoApiClient:
         """查询贝壳积分余额，返回积分数值，失败返回 None"""
         try:
             resp = await self._get("/v1/api/billing/credit")
-            logger.info(f"[hailuo] get_credits 原始返回: {resp}")
             data = resp.get("data") or {}
             return data.get("total_credit", 0)
         except Exception as e:

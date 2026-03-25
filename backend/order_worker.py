@@ -310,51 +310,6 @@ def _make_client(acc_id: Optional[str]) -> Optional[HailuoApiClient]:
     )
 
 
-def _update_order_from_tasks(order_id: int, tasks: list):
-    """根据API返回的tasks列表更新订单状态
-    API task status: 50=生成中, 60=完成, 70/80=失败
-    """
-    all_done = True
-    any_failed = False
-    video_urls = []
-
-    for task in tasks:
-        task_status = task.get("status", 0)
-        video = task.get("video") or {}
-        url = video.get("url") or video.get("videoURL") or ""
-
-        if task_status == 60:
-            if url:
-                video_urls.append(url)
-        elif task_status in (70, 80, -1):
-            any_failed = True
-        else:
-            all_done = False
-
-    with Session(engine) as session:
-        order = session.get(VideoOrder, order_id)
-        if not order or order.status in ("completed", "failed"):
-            return
-
-        if not all_done and not any_failed:
-            done_count = len(video_urls)
-            total = order.quantity or 1
-            order.progress = int(done_count / total * 80)
-            order.updated_at = datetime.utcnow()
-        elif video_urls:
-            order.status = "completed"
-            order.progress = 100
-            order.video_url = video_urls[0]
-            order.video_urls = json.dumps(video_urls)
-            order.updated_at = datetime.utcnow()
-            logger.info(f"[worker] 订单#{order_id}完成，视频数={len(video_urls)}")
-        elif any_failed and all_done:
-            _fail_order_in_session(session, order)
-
-        session.add(order)
-        session.commit()
-
-
 def _fail_order(order_id: int, reason: str = ""):
     with Session(engine) as session:
         order = session.get(VideoOrder, order_id)
