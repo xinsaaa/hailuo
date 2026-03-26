@@ -67,9 +67,6 @@ app.include_router(jimeng_router)
 # 注册可灵账号管理路由
 app.include_router(kling_account_router)
 
-# 注册海螺账号管理路由
-from backend.admin_hailuo_account import router as hailuo_account_router
-app.include_router(hailuo_account_router)
 
 # 注册即梦订单路由
 from backend.jimeng_api import router as jimeng_api_router
