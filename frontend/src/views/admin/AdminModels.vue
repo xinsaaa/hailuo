@@ -21,21 +21,30 @@ const matrixSaving = ref(false)
 
 // 可灵模型的分辨率和时长配置
 const klingResolutions = ['720p', '1080p']
-const klingDurations = [3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+const klingDurations = [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+const matrixTiers = [
+  { key: 'text', label: '文生视频', color: 'blue' },
+  { key: 'single_image', label: '单图模式', color: 'orange' },
+  { key: 'dual_image', label: '双图模式', color: 'purple' },
+]
+const activeTier = ref('text')
 
 const openMatrixEditor = (model) => {
   matrixModel.value = model
-  // 深拷贝现有矩阵或初始化空矩阵
   const existing = model.pricing_matrix || {}
   const data = {}
-  for (const res of klingResolutions) {
-    data[res] = { per_second: 0, ...(existing[res] || {}) }
-    // 确保所有时长的key都存在
-    for (const d of klingDurations) {
-      if (data[res][String(d)] === undefined) data[res][String(d)] = 0
+  for (const tier of matrixTiers) {
+    const tierExisting = existing[tier.key] || {}
+    data[tier.key] = {}
+    for (const res of klingResolutions) {
+      data[tier.key][res] = { per_second: 0, ...(tierExisting[res] || {}) }
+      for (const d of klingDurations) {
+        if (data[tier.key][res][String(d)] === undefined) data[tier.key][res][String(d)] = 0
+      }
     }
   }
   matrixData.value = data
+  activeTier.value = 'text'
   showMatrixModal.value = true
 }
 
@@ -44,21 +53,34 @@ const closeMatrixEditor = () => {
   matrixModel.value = null
 }
 
-// 从per_second批量填充：用每秒单价自动填所有时长
+// 从per_second批量填充：用每秒单价自动填当前tier+res所有时长
 const fillFromPerSecond = (res) => {
-  const pps = parseFloat(matrixData.value[res].per_second) || 0
+  const tierData = matrixData.value[activeTier.value]
+  const pps = parseFloat(tierData[res].per_second) || 0
   if (pps <= 0) return
   for (const d of klingDurations) {
-    matrixData.value[res][String(d)] = Math.round(pps * d * 100) / 100
+    tierData[res][String(d)] = Math.round(pps * d * 100) / 100
   }
 }
 
 // 复制720p到1080p（按比例）
 const copyResolution = (fromRes, toRes, ratio = 1) => {
-  const src = matrixData.value[fromRes]
+  const tierData = matrixData.value[activeTier.value]
+  const src = tierData[fromRes]
   if (!src) return
   for (const key of Object.keys(src)) {
-    matrixData.value[toRes][key] = Math.round((parseFloat(src[key]) || 0) * ratio * 100) / 100
+    tierData[toRes][key] = Math.round((parseFloat(src[key]) || 0) * ratio * 100) / 100
+  }
+}
+
+// 复制当前tier到其他tier（按比例）
+const copyTierTo = (toTierKey, ratio = 1) => {
+  const src = matrixData.value[activeTier.value]
+  if (!src) return
+  for (const res of klingResolutions) {
+    for (const key of Object.keys(src[res])) {
+      matrixData.value[toTierKey][res][key] = Math.round((parseFloat(src[res][key]) || 0) * ratio * 100) / 100
+    }
   }
 }
 
@@ -66,15 +88,17 @@ const saveMatrix = async () => {
   if (!matrixModel.value) return
   matrixSaving.value = true
   try {
-    // 清理矩阵：移除值为0的精确时长（per_second保留）
     const cleanMatrix = {}
-    for (const res of klingResolutions) {
-      cleanMatrix[res] = {}
-      const pps = parseFloat(matrixData.value[res].per_second) || 0
-      if (pps > 0) cleanMatrix[res].per_second = pps
-      for (const d of klingDurations) {
-        const val = parseFloat(matrixData.value[res][String(d)]) || 0
-        if (val > 0) cleanMatrix[res][String(d)] = val
+    for (const tier of matrixTiers) {
+      cleanMatrix[tier.key] = {}
+      for (const res of klingResolutions) {
+        cleanMatrix[tier.key][res] = {}
+        const pps = parseFloat(matrixData.value[tier.key][res].per_second) || 0
+        if (pps > 0) cleanMatrix[tier.key][res].per_second = pps
+        for (const d of klingDurations) {
+          const val = parseFloat(matrixData.value[tier.key][res][String(d)]) || 0
+          if (val > 0) cleanMatrix[tier.key][res][String(d)] = val
+        }
       }
     }
     await updateAdminModel(matrixModel.value.id, { pricing_matrix: cleanMatrix })
@@ -88,12 +112,18 @@ const saveMatrix = async () => {
   }
 }
 
-// 矩阵是否有有效数据
+// 矩阵是否有有效数据（支持新的三层结构）
 const hasMatrixData = (model) => {
   if (!model.pricing_matrix) return false
-  for (const res of Object.values(model.pricing_matrix)) {
-    for (const [k, v] of Object.entries(res)) {
-      if (v > 0) return true
+  const pm = model.pricing_matrix
+  for (const tierKey of ['text', 'single_image', 'dual_image']) {
+    const tier = pm[tierKey]
+    if (!tier) continue
+    for (const res of Object.values(tier)) {
+      if (typeof res !== 'object') continue
+      for (const [k, v] of Object.entries(res)) {
+        if (v > 0) return true
+      }
     }
   }
   return false
@@ -414,7 +444,7 @@ onMounted(() => {
         <p class="font-medium text-blue-200">配置说明</p>
         <p>• 禁用模型后，用户前端将无法看到该选项。</p>
         <p>• 默认模型将在用户未手动选择时自动应用。</p>
-        <p>• <span class="text-blue-300 font-medium">可灵定价</span>：矩阵定价 &gt; 固定价格。矩阵定价可为每个分辨率的每个时长单独设价，未设时长用每秒单价×秒数计算。</p>
+        <p>• <span class="text-blue-300 font-medium">可灵定价</span>：矩阵定价 &gt; 固定价格。矩阵定价分三档（文生视频/单图/双图），每档可为每个分辨率×时长组合单独设价。</p>
         <p>• <span class="text-blue-300 font-medium">海螺定价</span>：固定价格(6s) + 10s价格。</p>
         <p>• <span class="text-blue-300 font-medium">即梦定价</span>：每秒单价 &gt; 固定价格。</p>
       </div>
@@ -442,6 +472,33 @@ onMounted(() => {
 
             <!-- 弹窗内容 -->
             <div class="p-6 overflow-y-auto max-h-[calc(85vh-140px)]">
+              <!-- Tier Tab 切换 -->
+              <div class="flex items-center gap-2 mb-5">
+                <button
+                  v-for="tier in matrixTiers" :key="tier.key"
+                  @click="activeTier = tier.key"
+                  class="px-4 py-2 text-sm font-medium rounded-lg transition-all border"
+                  :class="activeTier === tier.key
+                    ? (tier.color === 'blue' ? 'bg-blue-500/20 text-blue-400 border-blue-500/40' : tier.color === 'orange' ? 'bg-orange-500/20 text-orange-400 border-orange-500/40' : 'bg-purple-500/20 text-purple-400 border-purple-500/40')
+                    : 'bg-gray-800 text-gray-400 border-gray-700 hover:text-white hover:bg-gray-700'"
+                >{{ tier.label }}</button>
+                <div class="flex-1"></div>
+                <!-- 复制当前tab到其他tab -->
+                <template v-for="tier in matrixTiers" :key="'copy-'+tier.key">
+                  <button
+                    v-if="tier.key !== activeTier"
+                    @click="copyTierTo(tier.key, 1)"
+                    class="px-2 py-1 text-[10px] bg-gray-700 text-gray-400 rounded hover:bg-gray-600 hover:text-white transition-all"
+                  >复制到{{ tier.label }}</button>
+                  <button
+                    v-if="tier.key !== activeTier"
+                    @click="copyTierTo(tier.key, 1.5)"
+                    class="px-2 py-1 text-[10px] bg-gray-700 text-gray-400 rounded hover:bg-gray-600 hover:text-white transition-all"
+                  >→{{ tier.label }}(1.5x)</button>
+                </template>
+              </div>
+
+              <!-- 当前Tier的分辨率定价 -->
               <div v-for="res in klingResolutions" :key="res" class="mb-6 last:mb-0">
                 <div class="flex items-center justify-between mb-3">
                   <div class="flex items-center gap-3">
@@ -449,13 +506,13 @@ onMounted(() => {
                     <div class="flex items-center gap-2">
                       <span class="text-xs text-gray-400">每秒单价</span>
                       <input
-                        v-model.number="matrixData[res].per_second"
+                        v-model.number="matrixData[activeTier][res].per_second"
                         type="number" step="0.01" min="0"
                         class="w-20 px-2 py-1 text-sm bg-gray-800 border border-gray-600 rounded text-orange-400 font-bold focus:border-orange-500 focus:outline-none text-center"
                         placeholder="0"
                       />
                       <span class="text-xs text-gray-500">元/秒</span>
-                      <button @click="fillFromPerSecond(res)" class="px-2 py-1 text-[10px] bg-orange-500/10 text-orange-400 border border-orange-500/30 rounded hover:bg-orange-500/20 transition-all" title="用每秒单价自动计算所有时长价格">
+                      <button @click="fillFromPerSecond(res)" class="px-2 py-1 text-[10px] bg-orange-500/10 text-orange-400 border border-orange-500/30 rounded hover:bg-orange-500/20 transition-all">
                         一键填充
                       </button>
                     </div>
@@ -464,24 +521,23 @@ onMounted(() => {
                     <template v-if="res === '1080p'">
                       <button @click="copyResolution('720p', '1080p', 1)" class="px-2 py-1 text-[10px] bg-gray-700 text-gray-300 rounded hover:bg-gray-600 transition-all">复制720p (1x)</button>
                       <button @click="copyResolution('720p', '1080p', 1.3)" class="px-2 py-1 text-[10px] bg-gray-700 text-gray-300 rounded hover:bg-gray-600 transition-all">复制720p (1.3x)</button>
-                      <button @click="copyResolution('720p', '1080p', 1.5)" class="px-2 py-1 text-[10px] bg-gray-700 text-gray-300 rounded hover:bg-gray-600 transition-all">复制720p (1.5x)</button>
                     </template>
                   </div>
                 </div>
 
                 <!-- 时长价格网格 -->
-                <div class="grid grid-cols-13 gap-1">
+                <div class="grid grid-cols-11 gap-1">
                   <div v-for="d in klingDurations" :key="d" class="flex flex-col items-center">
                     <span class="text-[10px] text-gray-500 mb-1 font-mono">{{ d }}s</span>
                     <input
-                      v-model.number="matrixData[res][String(d)]"
+                      v-model.number="matrixData[activeTier][res][String(d)]"
                       type="number" step="0.01" min="0"
                       class="w-full px-1 py-1.5 text-xs bg-gray-800 border rounded text-center font-mono focus:outline-none transition-colors"
-                      :class="(matrixData[res][String(d)] || 0) > 0 ? 'border-orange-500/40 text-orange-300 bg-orange-500/5' : 'border-gray-700 text-gray-500'"
+                      :class="(matrixData[activeTier][res][String(d)] || 0) > 0 ? 'border-orange-500/40 text-orange-300 bg-orange-500/5' : 'border-gray-700 text-gray-500'"
                       placeholder="0"
                     />
-                    <span v-if="matrixData[res].per_second > 0 && !(matrixData[res][String(d)] > 0)" class="text-[9px] text-gray-600 mt-0.5">
-                      ≈{{ (matrixData[res].per_second * d).toFixed(2) }}
+                    <span v-if="matrixData[activeTier][res].per_second > 0 && !(matrixData[activeTier][res][String(d)] > 0)" class="text-[9px] text-gray-600 mt-0.5">
+                      ≈{{ (matrixData[activeTier][res].per_second * d).toFixed(2) }}
                     </span>
                   </div>
                 </div>
@@ -489,7 +545,7 @@ onMounted(() => {
 
               <!-- 预览表格 -->
               <div class="mt-6 p-4 bg-gray-900/50 rounded-xl border border-gray-700/30">
-                <h4 class="text-xs font-bold text-gray-300 mb-2">价格预览（用户实际看到的价格）</h4>
+                <h4 class="text-xs font-bold text-gray-300 mb-2">当前「{{ matrixTiers.find(t => t.key === activeTier)?.label }}」价格预览</h4>
                 <div class="overflow-x-auto">
                   <table class="w-full text-xs">
                     <thead>
@@ -502,8 +558,8 @@ onMounted(() => {
                       <tr v-for="res in klingResolutions" :key="res" class="border-t border-gray-800">
                         <td class="py-1.5 px-2 font-bold" :class="res === '1080p' ? 'text-blue-400' : 'text-emerald-400'">{{ res }}</td>
                         <td v-for="d in klingDurations" :key="d" class="text-center py-1.5 px-1 font-mono"
-                            :class="(matrixData[res][String(d)] || 0) > 0 ? 'text-orange-400 font-bold' : matrixData[res].per_second > 0 ? 'text-gray-400' : 'text-gray-600'">
-                          ¥{{ ((matrixData[res][String(d)] || 0) > 0 ? matrixData[res][String(d)] : (matrixData[res].per_second > 0 ? (matrixData[res].per_second * d) : 0)).toFixed(2) }}
+                            :class="(matrixData[activeTier][res][String(d)] || 0) > 0 ? 'text-orange-400 font-bold' : matrixData[activeTier][res].per_second > 0 ? 'text-gray-400' : 'text-gray-600'">
+                          ¥{{ ((matrixData[activeTier][res][String(d)] || 0) > 0 ? matrixData[activeTier][res][String(d)] : (matrixData[activeTier][res].per_second > 0 ? (matrixData[activeTier][res].per_second * d) : 0)).toFixed(2) }}
                         </td>
                       </tr>
                     </tbody>
@@ -531,8 +587,8 @@ onMounted(() => {
 </template>
 
 <style scoped>
-.grid-cols-13 {
-  grid-template-columns: repeat(13, minmax(0, 1fr));
+.grid-cols-11 {
+  grid-template-columns: repeat(11, minmax(0, 1fr));
 }
 .modal-enter-active, .modal-leave-active {
   transition: all 0.2s ease;
