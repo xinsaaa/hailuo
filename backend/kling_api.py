@@ -572,7 +572,7 @@ async def submit_task(
     return task_id
 
 
-async def poll_task(cookie: str, task_id: str, timeout: int = 600, interval: int = 5) -> dict:
+async def poll_task(cookie: str, task_id: str, timeout: int = 600, interval: int = 10) -> dict:
     """
     轮询任务状态，返回 {task_id, status, video_url, cover_url}。
     status 50 = 成功，status 9x = 失败。
@@ -814,7 +814,7 @@ async def refresh_token(cookie_str: str) -> Optional[str]:
 _monitor_task: Optional[asyncio.Task] = None
 
 
-async def _monitor_loop(interval: int = 300):
+async def _monitor_loop(interval: int = 600):
     """
     后台循环，每隔 interval 秒检查所有可灵账号的登录状态。
     如果 cookie 失效，自动尝试用 passToken 刷新。
@@ -852,12 +852,14 @@ async def _monitor_loop(interval: int = 300):
                     _data["accounts"][aid]["is_logged_in"] = ok
                 _save_accounts(_data)
                 logger.info(f"[kling_monitor] {aid} isLogin={ok}")
+                # 账号间间隔，避免短时间内大量请求触发风控
+                await asyncio.sleep(5)
         except Exception as e:
             logger.warning(f"[kling_monitor] 检查异常: {e}")
         await asyncio.sleep(interval)
 
 
-def start_monitor(interval: int = 300):
+def start_monitor(interval: int = 600):
     """在当前 event loop 中启动监测后台任务（只启动一次）"""
     global _monitor_task
     if _monitor_task is None or _monitor_task.done():
