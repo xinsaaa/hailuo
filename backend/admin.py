@@ -957,13 +957,24 @@ def update_model(
         model.price_per_second = data.price_per_second
 
     if data.pricing_matrix is not None:
-        # 验证矩阵格式: {"720p": {"5": 0.99, "per_second": 0.15}, ...}
-        for res_key, res_prices in data.pricing_matrix.items():
+        # 支持三层结构: {tier: {res: {duration: price}}} 和旧两层: {res: {duration: price}}
+        def _validate_res_prices(res_key, res_prices, prefix=""):
             if not isinstance(res_prices, dict):
-                raise HTTPException(status_code=400, detail=f"pricing_matrix.{res_key} 必须是对象")
+                raise HTTPException(status_code=400, detail=f"pricing_matrix.{prefix}{res_key} 必须是对象")
             for k, v in res_prices.items():
                 if not isinstance(v, (int, float)) or v < 0:
-                    raise HTTPException(status_code=400, detail=f"pricing_matrix.{res_key}.{k} 必须为非负数")
+                    raise HTTPException(status_code=400, detail=f"pricing_matrix.{prefix}{res_key}.{k} 必须为非负数")
+
+        for top_key, top_val in data.pricing_matrix.items():
+            if not isinstance(top_val, dict):
+                raise HTTPException(status_code=400, detail=f"pricing_matrix.{top_key} 必须是对象")
+            # 三层结构：top_key 是 tier (text/single_image/dual_image)
+            if top_key in ("text", "single_image", "dual_image"):
+                for res_key, res_prices in top_val.items():
+                    _validate_res_prices(res_key, res_prices, prefix=f"{top_key}.")
+            else:
+                # 旧两层结构：top_key 是分辨率 (720p/1080p)
+                _validate_res_prices(top_key, top_val)
         model.pricing_matrix = json.dumps(data.pricing_matrix, ensure_ascii=False)
     
     model.updated_at = datetime.utcnow()
