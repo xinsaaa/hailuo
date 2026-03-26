@@ -74,7 +74,7 @@ const aspectRatioOptions = [
 // 根据模型名获取模型配置
 const modelConfig = computed(() => {
   const name = selectedModel.value?.name || ''
-  if (name.includes('3.0')) return { resolutions: ['720p', '1080p'], durationMode: 'slider', durationMin: 3, durationMax: 15, quantities: [1, 2, 3, 4] }
+  if (name.includes('3.0')) return { resolutions: ['720p', '1080p'], durationMode: 'slider', durationMin: 5, durationMax: 15, quantities: [1, 2, 3, 4] }
   if (name.includes('2.6')) return { resolutions: ['720p', '1080p'], durationMode: 'buttons', durationOptions: ['5s', '10s'], quantities: [1, 2, 3, 4] }
   if (name.includes('2.5')) return { resolutions: ['720p', '1080p'], durationMode: 'buttons', durationOptions: ['5s', '10s'], quantities: [1, 2, 3, 4] }
   return { resolutions: ['720p', '1080p'], durationMode: 'buttons', durationOptions: ['5s', '10s'], quantities: [1, 2, 3, 4] }
