@@ -75,6 +75,7 @@
             <td class="px-4 py-3">
               <div class="flex items-center gap-2 flex-wrap">
                 <button @click="openQrLogin(account)" class="bg-orange-600 hover:bg-orange-700 text-white px-3 py-1 rounded text-xs transition-colors">{{ account.is_logged_in ? '重新登录' : '扫码登录' }}</button>
+                <button @click="refreshToken(account)" :disabled="refreshing[account.account_id]" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-xs transition-colors disabled:opacity-50">{{ refreshing[account.account_id] ? '刷新中...' : '刷新Token' }}</button>
                 <button @click="checkLogin(account)" class="bg-gray-600 hover:bg-gray-500 text-white px-3 py-1 rounded text-xs transition-colors">验证</button>
                 <button @click="toggleActive(account)" :class="account.is_active ? 'bg-yellow-600 hover:bg-yellow-700' : 'bg-green-600 hover:bg-green-700'" class="text-white px-3 py-1 rounded text-xs transition-colors">{{ account.is_active ? '禁用' : '启用' }}</button>
                 <button @click="deleteAccount(account.account_id)" class="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-xs transition-colors">删除</button>
@@ -173,6 +174,7 @@ let countdownTimer = null
 
 const accountPoints = ref({})
 const pointsLoading = ref({})
+const refreshing = ref({})
 
 const sortedAccounts = computed(() => {
   return [...accounts.value].sort((a, b) => {
@@ -250,6 +252,20 @@ const checkLogin = async (account) => {
     loadAccounts()
   } catch (e) {
     showToastMessage(e.response?.data?.detail || '验证失败', 'error')
+  }
+}
+
+const refreshToken = async (account) => {
+  refreshing.value[account.account_id] = true
+  try {
+    const res = await api.post(`/admin/kling-accounts/${account.account_id}/refresh-token`)
+    showToastMessage(res.data.message || 'Token刷新成功')
+    loadAccounts()
+  } catch (e) {
+    showToastMessage(e.response?.data?.detail || 'Token刷新失败', 'error')
+    loadAccounts()
+  } finally {
+    refreshing.value[account.account_id] = false
   }
 }
 

@@ -136,6 +136,9 @@ backend/accounts.json
 海螺逆向/batch_result.json
 海螺逆向/example.js
 
+# JWT密钥文件（敏感）
+backend/.secret_key
+
 # 账号数据（敏感）
 backend/kling_accounts.json
 backend/accounts.json

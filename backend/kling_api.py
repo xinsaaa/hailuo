@@ -738,6 +738,77 @@ async def init_remove_watermark(cookie: str):
         logger.warning(f"[watermark] POST user_watermark_switch 失败: {e}")
 
 
+# ============ Token 刷新 ============
+
+def _parse_cookie_str(cookie_str: str) -> dict:
+    """将 'k1=v1; k2=v2' 格式的 cookie 字符串解析为 dict"""
+    result = {}
+    for part in cookie_str.split(";"):
+        part = part.strip()
+        if "=" in part:
+            k, v = part.split("=", 1)
+            result[k.strip()] = v.strip()
+    return result
+
+
+def _dict_to_cookie_str(d: dict) -> str:
+    return "; ".join(f"{k}={v}" for k, v in d.items())
+
+
+async def refresh_token(cookie_str: str) -> Optional[str]:
+    """
+    用 passToken 刷新 portal_st，返回新的 cookie 字符串。
+    快手体系：POST /pass/kuaishou/login/passToken 携带旧 cookie，
+    响应返回新的 st/at，Set-Cookie 返回新 passToken。
+    失败返回 None。
+    """
+    cookies = _parse_cookie_str(cookie_str)
+    pass_token = cookies.get("passToken", "")
+    if not pass_token:
+        logger.warning("[refresh_token] 无 passToken，无法刷新")
+        return None
+
+    try:
+        kwfv1 = cookies.get("kwfv1", "")
+        async with httpx.AsyncClient(timeout=15, follow_redirects=False) as client:
+            resp = await client.post(
+                f"{ID_BASE}/pass/kuaishou/login/passToken",
+                headers=_make_headers(kwfv1),
+                cookies=cookies,
+                data={
+                    "sid": "kuaishou.ai.portal",
+                    "channelType": "UNKNOWN",
+                },
+            )
+            resp.raise_for_status()
+            body = resp.json()
+
+            # 从 Set-Cookie 更新 passToken 等
+            for c in resp.cookies.jar:
+                cookies[c.name] = c.value
+
+            # 从 body 提取新的 portal 字段
+            for field in ("kuaishou.ai.portal_st", "passToken",
+                          "kuaishou.ai.portal.at", "userId", "ssecurity"):
+                val = body.get(field, "")
+                if val:
+                    cookies[field] = val
+
+            new_cookie = _dict_to_cookie_str(cookies)
+
+            # 验证新 cookie 是否有效
+            ok = await check_login(new_cookie)
+            if ok:
+                logger.info("[refresh_token] 刷新成功")
+                return new_cookie
+            else:
+                logger.warning(f"[refresh_token] 刷新后验证失败, body={body}")
+                return None
+    except Exception as e:
+        logger.error(f"[refresh_token] 刷新异常: {e}")
+        return None
+
+
 # ============ 账号状态监测 ============
 
 _monitor_task: Optional[asyncio.Task] = None
@@ -745,8 +816,8 @@ _monitor_task: Optional[asyncio.Task] = None
 
 async def _monitor_loop(interval: int = 300):
     """
-    后台循环，每隔 interval 秒检查所有可灵账号的登录状态，
-    并将结果写入 kling_credentials.json 的 is_logged_in 字段。
+    后台循环，每隔 interval 秒检查所有可灵账号的登录状态。
+    如果 cookie 失效，自动尝试用 passToken 刷新。
     """
     import logging
     logger = logging.getLogger("kling_monitor")
@@ -762,6 +833,19 @@ async def _monitor_loop(interval: int = 300):
                 if not cookie:
                     continue
                 ok = await check_login(cookie)
+
+                # 登录失效时尝试自动刷新
+                if not ok:
+                    logger.info(f"[kling_monitor] {aid} cookie失效，尝试自动刷新...")
+                    new_cookie = await refresh_token(cookie)
+                    if new_cookie:
+                        # 保存新 cookie
+                        save_kling_credentials(aid, new_cookie, creds.get("did", ""))
+                        ok = True
+                        logger.info(f"[kling_monitor] {aid} token刷新成功，已续期")
+                    else:
+                        logger.warning(f"[kling_monitor] {aid} token刷新失败，需重新扫码登录")
+
                 # 更新 is_logged_in 标记
                 _data = _load_accounts()
                 if aid in _data["accounts"]:

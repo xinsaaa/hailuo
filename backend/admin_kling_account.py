@@ -154,6 +154,23 @@ async def check_account_login(account_id: str, admin=Depends(get_admin_user)):
     return {"is_logged_in": ok}
 
 
+@router.post("/{account_id}/refresh-token")
+async def refresh_account_token(account_id: str, admin=Depends(get_admin_user)):
+    """手动刷新可灵账号的 token（用 passToken 换新 portal_st）"""
+    creds = get_kling_credentials(account_id)
+    if not creds:
+        raise HTTPException(status_code=404, detail="账号未登录，无法刷新")
+    from backend.kling_api import refresh_token
+    new_cookie = await refresh_token(creds["cookie"])
+    if new_cookie:
+        save_kling_credentials(account_id, new_cookie, creds.get("did", ""))
+        update_kling_account(account_id, is_logged_in=True)
+        return {"success": True, "message": "Token刷新成功"}
+    else:
+        update_kling_account(account_id, is_logged_in=False)
+        raise HTTPException(status_code=502, detail="Token刷新失败，passToken可能已过期，需重新扫码登录")
+
+
 @router.post("/{account_id}/remove-watermark")
 async def remove_watermark(account_id: str, admin=Depends(get_admin_user)):
     """手动触发去水印设置（关闭品牌水印+片尾水印）"""
