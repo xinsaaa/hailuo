@@ -702,26 +702,6 @@ const handleLogout = () => {
                 </div>
               </div>
 
-              <!-- 水印选项 -->
-              <div class="flex items-center gap-2">
-                <span class="text-gray-400 text-sm">水印</span>
-                <div class="flex items-center gap-1 p-1 bg-black/30 rounded-xl border border-white/10">
-                  <button
-                    @click="removeWatermark = true"
-                    class="px-3 py-1.5 text-sm font-medium rounded-lg transition-all duration-200"
-                    :class="removeWatermark
-                      ? 'bg-gradient-to-r from-orange-500/80 to-amber-500/80 text-white shadow-lg shadow-orange-900/30'
-                      : 'text-gray-400 hover:text-white hover:bg-white/5'"
-                  >去水印</button>
-                  <button
-                    @click="removeWatermark = false"
-                    class="px-3 py-1.5 text-sm font-medium rounded-lg transition-all duration-200"
-                    :class="!removeWatermark
-                      ? 'bg-gradient-to-r from-gray-500/80 to-gray-600/80 text-white shadow-lg shadow-gray-900/30'
-                      : 'text-gray-400 hover:text-white hover:bg-white/5'"
-                  >保留水印</button>
-                </div>
-              </div>
             </div>
 
             <!-- Prompt 输入 -->
@@ -841,7 +821,7 @@ const handleLogout = () => {
                           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                         </svg>
                       </div>
-                      <span class="text-xs text-gray-500 font-medium group-hover:text-gray-400">点击上传尾帧（可选）</span>
+                      <span class="text-xs text-gray-500 font-medium group-hover:text-gray-400">点击上传尾帧（必传）</span>
                     </div>
                     <div v-else class="relative h-28 rounded-2xl overflow-hidden group shadow-lg border border-white/10">
                       <img :src="lastFramePreview" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
@@ -868,12 +848,30 @@ const handleLogout = () => {
 
             <!-- 底部操作栏 -->
             <div class="flex justify-between items-center mt-8 pt-6 border-t border-white/10">
-              <div class="flex items-center gap-2 text-sm text-gray-400">
-                <span class="relative flex h-2.5 w-2.5">
-                  <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
-                  <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-orange-500"></span>
-                </span>
-                <span class="font-medium">可灵AI · 预计耗时 3-8 分钟</span>
+              <div class="flex items-center gap-4">
+                <div class="flex items-center gap-2 text-sm text-gray-400">
+                  <span class="relative flex h-2.5 w-2.5">
+                    <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
+                    <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-orange-500"></span>
+                  </span>
+                  <span class="font-medium">可灵AI</span>
+                </div>
+                <div class="flex items-center gap-1 p-0.5 bg-black/30 rounded-lg border border-white/10">
+                  <button
+                    @click="removeWatermark = true"
+                    class="px-2 py-1 text-xs font-medium rounded-md transition-all duration-200"
+                    :class="removeWatermark
+                      ? 'bg-orange-500/80 text-white'
+                      : 'text-gray-500 hover:text-gray-300'"
+                  >去水印</button>
+                  <button
+                    @click="removeWatermark = false"
+                    class="px-2 py-1 text-xs font-medium rounded-md transition-all duration-200"
+                    :class="!removeWatermark
+                      ? 'bg-gray-500/80 text-white'
+                      : 'text-gray-500 hover:text-gray-300'"
+                  >保留水印</button>
+                </div>
               </div>
 
               <div class="flex items-center gap-6">
