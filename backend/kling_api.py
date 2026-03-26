@@ -505,6 +505,7 @@ def _build_task_body(
             {"name": "prefer_multi_shots", "value": "true"},
             {"name": "biz", "value": "klingai"},
             {"name": "enable_audio", "value": "true"},
+            {"name": "model_mode", "value": mode},
         ]
         if not is_img2video:
             arguments.append({"name": "aspect_ratio", "value": aspect_ratio})

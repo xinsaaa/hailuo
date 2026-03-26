@@ -21,11 +21,11 @@ from backend import kling_api
 logger = logging.getLogger(__name__)
 
 # ---- model_name -> API modelID 映射 ----
-# 可灵模型名 → (kling_version, mode)
+# 可灵模型名 → kling_version（mode 由用户选择的分辨率决定：std=720p, pro=1080p）
 KLING_MODEL_MAP: dict = {
-    "Kling 3.0":       ("3.0", "std"),
-    "Kling 2.6":       ("2.6", "std"),
-    "Kling 2.5 Turbo": ("2.5", "pro"),
+    "Kling 3.0":       "3.0",
+    "Kling 2.6":       "2.6",
+    "Kling 2.5 Turbo": "2.5",
 }
 
 
@@ -414,7 +414,7 @@ async def _submit_kling_order(order_id: int):
             order = session.get(VideoOrder, order_id)
             if not order:
                 return
-            version, mode = KLING_MODEL_MAP[order.model_name]
+            version = KLING_MODEL_MAP[order.model_name]
             duration_int = int((order.duration or "5s").replace("s", ""))
             prompt = order.prompt or ""
             first_frame = order.first_frame_image
@@ -422,6 +422,8 @@ async def _submit_kling_order(order_id: int):
             video_type = order.video_type or "image_to_video"
             order_resolution = order.resolution or "1080p"
             aspect_ratio = order.aspect_ratio or "16:9"
+            # mode 由分辨率决定：std=720p, pro=1080p
+            mode = "pro" if order_resolution == "1080p" else "std"
 
         image_url = ""
         if first_frame:

@@ -75,7 +75,7 @@ const aspectRatioOptions = [
 const modelConfig = computed(() => {
   const name = selectedModel.value?.name || ''
   if (name.includes('3.0')) return { resolutions: ['720p', '1080p'], durationMode: 'slider', durationMin: 3, durationMax: 15, quantities: [1, 2, 3, 4] }
-  if (name.includes('2.6')) return { resolutions: ['1080p'], durationMode: 'buttons', durationOptions: ['5s', '10s'], quantities: [1, 2, 3, 4] }
+  if (name.includes('2.6')) return { resolutions: ['720p', '1080p'], durationMode: 'buttons', durationOptions: ['5s', '10s'], quantities: [1, 2, 3, 4] }
   if (name.includes('2.5')) return { resolutions: ['720p', '1080p'], durationMode: 'buttons', durationOptions: ['5s', '10s'], quantities: [1, 2, 3, 4] }
   return { resolutions: ['720p', '1080p'], durationMode: 'buttons', durationOptions: ['5s', '10s'], quantities: [1, 2, 3, 4] }
 })
@@ -279,11 +279,11 @@ const handleCreateOrder = async () => {
     showNotification('请选择生成模型', 'error')
     return
   }
-  if (videoMode.value === 'image' && !firstFrameImage.value) {
+  if (videoMode.value === 'image' && !firstFrameImage.value && !firstFrameCdnUrl.value) {
     showNotification('图生视频模式请上传首帧图片', 'error')
     return
   }
-  if (videoMode.value === 'image' && imageMode.value === 'dual' && !lastFrameImage.value) {
+  if (videoMode.value === 'image' && imageMode.value === 'dual' && !lastFrameImage.value && !lastFrameCdnUrl.value) {
     showNotification('双图模式请上传尾帧图片', 'error')
     return
   }
