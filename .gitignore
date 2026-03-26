@@ -141,6 +141,7 @@ backend/.secret_key
 
 # 账号数据（敏感）
 backend/kling_accounts.json
+data/kling_accounts.json
 backend/accounts.json
 backend/jimeng_cookie.txt
 data/hailuo_accounts.json
