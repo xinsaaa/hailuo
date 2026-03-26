@@ -504,6 +504,7 @@ async def poll_kling_order(order_id: int, cookie: Optional[str] = None):
             return
         task_id = order.task_id
         model_name = order.model_name
+        want_no_watermark = getattr(order, 'remove_watermark', True)
 
     if not task_id:
         logger.warning(f"[worker] 可灵订单#{order_id}没有task_id，停止轮询")
@@ -523,8 +524,8 @@ async def poll_kling_order(order_id: int, cookie: Optional[str] = None):
         video_url = result.get("video_url", "")
         creative_id = result.get("creative_id", "")
 
-        # 优先通过无水印下载接口获取视频链接
-        if creative_id:
+        # 根据用户选择决定是否去水印
+        if want_no_watermark and creative_id:
             try:
                 nowm_url = await kling_api.download_creative(cookie, creative_id)
                 if nowm_url:
@@ -534,6 +535,8 @@ async def poll_kling_order(order_id: int, cookie: Optional[str] = None):
                     logger.warning(f"[worker] 可灵订单#{order_id} 无水印接口返回空，使用原始链接")
             except Exception as e:
                 logger.warning(f"[worker] 可灵订单#{order_id} 无水印下载接口失败: {e}，使用原始链接")
+        elif not want_no_watermark:
+            logger.info(f"[worker] 可灵订单#{order_id} 用户选择保留水印，跳过无水印下载")
 
         # 下载视频到本地
         if video_url:

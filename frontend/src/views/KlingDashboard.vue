@@ -60,6 +60,9 @@ const lastFrameCdnUrl = ref(null)
 const uploadingFirst = ref(false)
 const uploadingLast = ref(false)
 
+// 水印选项（默认去水印）
+const removeWatermark = ref(true)
+
 // 宽高比
 const aspectRatio = ref('16:9')
 const aspectRatioOptions = [
@@ -299,7 +302,7 @@ const handleCreateOrder = async () => {
   }
 
   try {
-    const opts = { aspectRatio: aspectRatio.value }
+    const opts = { aspectRatio: aspectRatio.value, removeWatermark: removeWatermark.value }
     if (firstFrameCdnUrl.value) opts.firstFrameCdnUrl = firstFrameCdnUrl.value
     if (lastFrameCdnUrl.value) opts.lastFrameCdnUrl = lastFrameCdnUrl.value
 
@@ -696,6 +699,27 @@ const handleLogout = () => {
                       ? 'bg-gradient-to-r from-orange-500/80 to-amber-500/80 text-white shadow-lg shadow-orange-900/30'
                       : 'text-gray-400 hover:text-white hover:bg-white/5'"
                   >{{ q }}</button>
+                </div>
+              </div>
+
+              <!-- 水印选项 -->
+              <div class="flex items-center gap-2">
+                <span class="text-gray-400 text-sm">水印</span>
+                <div class="flex items-center gap-1 p-1 bg-black/30 rounded-xl border border-white/10">
+                  <button
+                    @click="removeWatermark = true"
+                    class="px-3 py-1.5 text-sm font-medium rounded-lg transition-all duration-200"
+                    :class="removeWatermark
+                      ? 'bg-gradient-to-r from-orange-500/80 to-amber-500/80 text-white shadow-lg shadow-orange-900/30'
+                      : 'text-gray-400 hover:text-white hover:bg-white/5'"
+                  >去水印</button>
+                  <button
+                    @click="removeWatermark = false"
+                    class="px-3 py-1.5 text-sm font-medium rounded-lg transition-all duration-200"
+                    :class="!removeWatermark
+                      ? 'bg-gradient-to-r from-gray-500/80 to-gray-600/80 text-white shadow-lg shadow-gray-900/30'
+                      : 'text-gray-400 hover:text-white hover:bg-white/5'"
+                  >保留水印</button>
                 </div>
               </div>
             </div>

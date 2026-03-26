@@ -154,6 +154,19 @@ async def check_account_login(account_id: str, admin=Depends(get_admin_user)):
     return {"is_logged_in": ok}
 
 
+@router.post("/{account_id}/remove-watermark")
+async def remove_watermark(account_id: str, admin=Depends(get_admin_user)):
+    """手动触发去水印设置（关闭品牌水印+片尾水印）"""
+    creds = get_kling_credentials(account_id)
+    if not creds:
+        raise HTTPException(status_code=404, detail="账号未登录")
+    try:
+        await init_remove_watermark(creds["cookie"])
+        return {"success": True, "message": "去水印设置已更新"}
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"去水印设置失败: {e}")
+
+
 @router.get("/{account_id}/points")
 async def get_account_points(account_id: str, admin=Depends(get_admin_user)):
     """查询可灵账号积分"""

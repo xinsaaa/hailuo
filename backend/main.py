@@ -1151,6 +1151,7 @@ async def create_order(
     first_frame_image: Optional[UploadFile] = File(None),
     last_frame_image: Optional[UploadFile] = File(None),
     aspect_ratio: Optional[str] = Form(None),
+    remove_watermark: Optional[str] = Form("true"),
     first_frame_cdn_url: Optional[str] = Form(None),
     last_frame_cdn_url: Optional[str] = Form(None),
     current_user: User = Depends(get_current_user),
@@ -1283,6 +1284,7 @@ async def create_order(
         last_frame_image=last_frame_path,
         aspect_ratio=aspect_ratio or "16:9",
         quantity=quantity,
+        remove_watermark=(remove_watermark or "true").lower() in ("true", "1", "yes"),
     )
     session.add(new_order)
     session.flush()

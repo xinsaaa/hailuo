@@ -42,6 +42,7 @@ class VideoOrder(SQLModel, table=True):
     batch_index: Optional[int] = Field(default=None)  # 已废弃，保留兼容
     quantity: int = Field(default=1)  # 批量数量 1-4
     video_urls: Optional[str] = None  # 批量视频URL列表（JSON数组）
+    remove_watermark: bool = Field(default=True)  # 是否去水印（可灵专用，需会员账号）
 
 class Transaction(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)

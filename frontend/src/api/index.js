@@ -209,6 +209,9 @@ export const createOrder = async (prompt, model_name, firstFrameImage, lastFrame
     if (options.aspectRatio) {
         formData.append('aspect_ratio', options.aspectRatio);
     }
+    if (options.removeWatermark !== undefined) {
+        formData.append('remove_watermark', options.removeWatermark ? 'true' : 'false');
+    }
 
     if (options.firstFrameCdnUrl) {
         formData.append('first_frame_cdn_url', options.firstFrameCdnUrl);
