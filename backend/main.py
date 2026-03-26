@@ -263,6 +263,17 @@ def init_default_models():
                     existing_model.pricing_matrix = new_matrix
                     updated = True
                     app_logger.info(f"Synced pricing_matrix for model {existing_model.model_id}")
+                # 自动迁移旧的两层pricing_matrix到三层结构
+                if existing_model.pricing_matrix and existing_model.platform == "kling":
+                    try:
+                        old_pm = json.loads(existing_model.pricing_matrix) if isinstance(existing_model.pricing_matrix, str) else existing_model.pricing_matrix
+                        if old_pm and ("720p" in old_pm or "1080p" in old_pm) and "text" not in old_pm and "single_image" not in old_pm:
+                            migrated = {"text": old_pm, "single_image": old_pm, "dual_image": old_pm}
+                            existing_model.pricing_matrix = json.dumps(migrated)
+                            updated = True
+                            app_logger.info(f"Migrated old pricing_matrix to 3-tier format for {existing_model.model_id}")
+                    except Exception:
+                        pass
                 # 同步 features
                 new_features = model_data.get("features")
                 if new_features and existing_model.features != new_features:
@@ -1194,6 +1205,10 @@ async def create_order(
                 tier = matrix.get("dual_image")
             else:
                 tier = matrix.get("single_image")
+
+            # 兼容旧格式：如果没有 tier 层，直接用 matrix 作为分辨率层
+            if not tier and ("720p" in matrix or "1080p" in matrix):
+                tier = matrix
 
             if tier:
                 # 找分辨率对应价格（720p 可灵用，768p 海螺用）

@@ -32,9 +32,14 @@ const activeTier = ref('text')
 const openMatrixEditor = (model) => {
   matrixModel.value = model
   const existing = model.pricing_matrix || {}
+
+  // 检测旧格式：顶层直接是 720p/1080p 而非 text/single_image/dual_image
+  const isOldFormat = !existing.text && !existing.single_image && !existing.dual_image && (existing['720p'] || existing['1080p'])
+
   const data = {}
   for (const tier of matrixTiers) {
-    const tierExisting = existing[tier.key] || {}
+    // 旧格式：所有tier共用同一份旧数据；新格式：各tier独立
+    const tierExisting = isOldFormat ? existing : (existing[tier.key] || {})
     data[tier.key] = {}
     for (const res of klingResolutions) {
       data[tier.key][res] = { per_second: 0, ...(tierExisting[res] || {}) }
@@ -112,10 +117,11 @@ const saveMatrix = async () => {
   }
 }
 
-// 矩阵是否有有效数据（支持新的三层结构）
+// 矩阵是否有有效数据（兼容旧两层和新三层结构）
 const hasMatrixData = (model) => {
   if (!model.pricing_matrix) return false
   const pm = model.pricing_matrix
+  // 新三层结构
   for (const tierKey of ['text', 'single_image', 'dual_image']) {
     const tier = pm[tierKey]
     if (!tier) continue
@@ -124,6 +130,14 @@ const hasMatrixData = (model) => {
       for (const [k, v] of Object.entries(res)) {
         if (v > 0) return true
       }
+    }
+  }
+  // 旧两层结构（720p/1080p直接在顶层）
+  for (const resKey of ['720p', '1080p']) {
+    const res = pm[resKey]
+    if (!res || typeof res !== 'object') continue
+    for (const [k, v] of Object.entries(res)) {
+      if (v > 0) return true
     }
   }
   return false
