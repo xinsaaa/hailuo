@@ -150,15 +150,26 @@ async def sms_login(data: SmsCreateRequest, admin=Depends(get_admin_user)):
     if not session:
         raise HTTPException(status_code=400, detail="请先发送验证码")
 
-    resp = await login_with_sms(data.phone_number, data.code, session["uuid"], session["device_id"])
-    code = resp.get("statusInfo", {}).get("code", -1)
+    result = await login_with_sms(data.phone_number, data.code, session["uuid"], session["device_id"])
+    resp_json = result["json"]
+    code = (resp_json.get("statusInfo") or {}).get("code", -1)
     if code != 0:
-        msg = resp.get("statusInfo", {}).get("message", "未知错误")
+        msg = (resp_json.get("statusInfo") or {}).get("message", "未知错误")
         raise HTTPException(status_code=400, detail=f"登录失败: {msg}")
 
-    token = (resp.get("data") or {}).get("token", "")
+    resp_data = resp_json.get("data") or {}
+    token = resp_data.get("token", "")
     if not token:
         raise HTTPException(status_code=400, detail="登录成功但未获取到token")
+
+    new_device_id = resp_data.get("deviceID", session["device_id"])
+
+    # 构建完整 cookie
+    set_cookies = result.get("cookies", "")
+    if set_cookies:
+        cookie = f"{set_cookies}; _token={token}"
+    else:
+        cookie = f"_token={token}"
 
     cfg = AccountConfig(
         account_id=data.account_id,
@@ -171,9 +182,9 @@ async def sms_login(data: SmsCreateRequest, admin=Depends(get_admin_user)):
     )
     account_store.add_account(cfg)
     account_store.set_credentials(data.account_id, {
-        "cookie": f"_token={token}",
+        "cookie": cookie,
         "uuid": session["uuid"],
-        "device_id": session["device_id"],
+        "device_id": new_device_id,
     })
     _pending_sms.pop(data.phone_number, None)
     return {"ok": True, "account_id": data.account_id}
