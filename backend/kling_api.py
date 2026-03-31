@@ -179,6 +179,18 @@ def _build_initial_cookies(did: str, risk_id: str) -> dict:
     }
 
 
+def _cookie_value(cookie_str: str, key: str, default: str = "") -> str:
+    """Get one value from a raw `k1=v1; k2=v2` cookie string."""
+    for part in cookie_str.split(";"):
+        part = part.strip()
+        if "=" not in part:
+            continue
+        k, v = part.split("=", 1)
+        if k.strip() == key:
+            return v.strip()
+    return default
+
+
 # ============ QR 登录流程 ============
 
 async def qr_start(did: str, risk_id: str) -> dict:
@@ -614,6 +626,284 @@ async def poll_task(cookie: str, task_id: str, timeout: int = 600, interval: int
             logger.error(f"[poll] task={task_id} FAILED: status={status}, data={d}")
             raise RuntimeError(f"task {task_id} failed with status {status}: {d.get('message', '')}")
     raise TimeoutError(f"task {task_id} timed out after {timeout}s")
+
+
+def _build_lip_sync_task_body(
+    video_url: str,
+    audio_url: str,
+    face_id_key: str,
+    face_image_url: str,
+    face_id: str = "0",
+    from_work_id: Optional[int] = None,
+    face_start_time: int = 0,
+    face_end_time: int = 3000,
+    audio_start_time_in_video: int = 0,
+    audio_start_time: int = 0,
+    audio_end_time: int = 3000,
+    include_original_audio: bool = False,
+    speech_volume: float = 1.0,
+    original_audio_volume: float = 1.0,
+    tts_text: str = "",
+    tts_speed: str = "1",
+    tts_timbre: str = "",
+    tts_emotion: str = "",
+    did: str = "",
+) -> dict:
+    face_id_list = {
+        "face_id_key": face_id_key,
+        "face_id_list": [face_id],
+        "face_data": {
+            face_id: {
+                "id": face_id,
+                "start_time": int(face_start_time),
+                "end_time": int(face_end_time),
+                "face_image": face_image_url,
+            }
+        },
+    }
+    face_id_choose = {
+        "id": face_id,
+        "audio_start_time_in_video": int(audio_start_time_in_video),
+        "audio_start_time": int(audio_start_time),
+        "audio_end_time": int(audio_end_time),
+        "include_original_audio": bool(include_original_audio),
+        "speech_volume": float(speech_volume),
+        "original_audio_volume": float(original_audio_volume),
+    }
+
+    duration_seconds = max(1, int((int(audio_end_time) - int(audio_start_time) + 999) / 1000))
+    arguments = [
+        {"name": "biz", "value": "klingai"},
+        {"name": "faceIdKey", "value": face_id_key},
+        {"name": "faceIdList", "value": json.dumps(face_id_list, ensure_ascii=False, separators=(",", ":"))},
+        {"name": "faceIdChoose", "value": json.dumps(face_id_choose, ensure_ascii=False, separators=(",", ":"))},
+        {"name": "__ttsText", "value": tts_text or ""},
+        {"name": "__ttsSpeed", "value": str(tts_speed)},
+        {"name": "__ttsTimbre", "value": tts_timbre or ""},
+        {"name": "__ttsEmotion", "value": tts_emotion or ""},
+        {"name": "prefer_multi_shots", "value": "false"},
+        {"name": "duration", "value": str(duration_seconds)},
+        {"name": "__deviceType", "value": DEFAULT_UA},
+        {"name": "__effect", "value": "m2v_video_lip_sync_v2"},
+        {"name": "__locale", "value": "zh_CN"},
+        {"name": "__platform", "value": "WEB"},
+    ]
+    if did:
+        arguments.append({"name": "__did", "value": did})
+
+    video_input = {"name": "video", "inputType": "URL", "url": video_url}
+    if from_work_id is not None:
+        video_input["fromWorkId"] = int(from_work_id)
+
+    return {
+        "type": "m2v_video_lip_sync",
+        "arguments": arguments,
+        "inputs": [
+            video_input,
+            {"name": "audio", "inputType": "URL", "url": audio_url},
+        ],
+        "callbackPayloads": [],
+    }
+
+
+async def lip_sync_tts(
+    cookie: str,
+    text: str,
+    speaker_id: str,
+    speed: str = "1",
+    emotion: str = "",
+) -> dict:
+    """Call Kling lip-sync TTS endpoint and return audio url + duration(ms)."""
+    body = {
+        "text": text,
+        "speakerId": speaker_id,
+        "speed": str(speed),
+        "emotion": emotion or "",
+    }
+    signed_url = await _sign_url("/api/lip/sync/tts", request_body=body)
+    headers = {
+        **_make_headers(),
+        "Cookie": cookie,
+        "Content-Type": "application/json",
+        "origin": "https://app.klingai.com",
+        "referer": "https://app.klingai.com/",
+    }
+    async with httpx.AsyncClient(timeout=30) as client:
+        resp = await client.post(signed_url, headers=headers, json=body)
+        resp.raise_for_status()
+        data = resp.json()
+
+    if data.get("result") != 1 or not data.get("data"):
+        raise RuntimeError(f"lip sync tts failed: {data}")
+
+    tts_data = data["data"]
+    return {
+        "audio_url": tts_data.get("resource", ""),
+        "duration_ms": int(tts_data.get("duration", 0) or 0),
+        "status": int(tts_data.get("status", 0) or 0),
+        "raw": data,
+    }
+
+
+async def submit_lip_sync_task(
+    cookie: str,
+    video_url: str,
+    audio_url: str,
+    face_id_key: str,
+    face_image_url: str,
+    face_id: str = "0",
+    from_work_id: Optional[int] = None,
+    face_start_time: int = 0,
+    face_end_time: int = 3000,
+    audio_start_time_in_video: int = 0,
+    audio_start_time: int = 0,
+    audio_end_time: int = 3000,
+    include_original_audio: bool = False,
+    speech_volume: float = 1.0,
+    original_audio_volume: float = 1.0,
+    tts_text: str = "",
+    tts_speed: str = "1",
+    tts_timbre: str = "",
+    tts_emotion: str = "",
+) -> dict:
+    """Submit Kling lip-sync task."""
+    did = _cookie_value(cookie, "did", "")
+    body = _build_lip_sync_task_body(
+        video_url=video_url,
+        audio_url=audio_url,
+        face_id_key=face_id_key,
+        face_image_url=face_image_url,
+        face_id=face_id,
+        from_work_id=from_work_id,
+        face_start_time=face_start_time,
+        face_end_time=face_end_time,
+        audio_start_time_in_video=audio_start_time_in_video,
+        audio_start_time=audio_start_time,
+        audio_end_time=audio_end_time,
+        include_original_audio=include_original_audio,
+        speech_volume=speech_volume,
+        original_audio_volume=original_audio_volume,
+        tts_text=tts_text,
+        tts_speed=tts_speed,
+        tts_timbre=tts_timbre,
+        tts_emotion=tts_emotion,
+        did=did,
+    )
+
+    headers = {
+        **_make_headers(),
+        "Cookie": cookie,
+        "Content-Type": "application/json",
+        "origin": "https://klingai.com",
+        "referer": "https://klingai.com/",
+    }
+
+    show_price = 0
+    signed_price_url = await _sign_url("/api/task/price", request_body=body)
+    async with httpx.AsyncClient(timeout=20) as client:
+        try:
+            price_resp = await client.post(signed_price_url, headers=headers, json=body)
+            price_resp.raise_for_status()
+            price_data = price_resp.json()
+            show_price = int(price_data.get("data", {}).get("price", {}).get("payAmount", 0) or 0)
+        except Exception as e:
+            logger.warning(f"[lip_sync] task/price failed: {e}")
+
+    if show_price:
+        body["arguments"].append({"name": "showPrice", "value": show_price})
+
+    signed_submit_url = await _sign_url("/api/task/submit", request_body=body)
+    async with httpx.AsyncClient(timeout=30) as client:
+        submit_resp = await client.post(signed_submit_url, headers=headers, json=body)
+        submit_resp.raise_for_status()
+        submit_data = submit_resp.json()
+
+    if submit_data.get("result") != 1 or not submit_data.get("data"):
+        err = submit_data.get("error", {})
+        msg = err.get("detail") or submit_data.get("message") or str(submit_data)
+        raise RuntimeError(f"lip sync submit failed: {msg}")
+
+    task = submit_data["data"].get("task", {})
+    return {
+        "task_id": str(task.get("id", "")),
+        "status": int(submit_data["data"].get("status", 0) or 0),
+        "raw": submit_data,
+    }
+
+
+async def get_lip_sync_status(cookie: str, task_id: str) -> dict:
+    """Get Kling lip-sync task status via personal feeds endpoint."""
+    query = {
+        "pageSize": "1",
+        "contentType": "",
+        "favored": "false",
+        "taskId": str(task_id),
+        "extra": "BASE_WORK",
+    }
+    signed_url = await _sign_url("/api/user/works/personal/feeds", query=query)
+    headers = {
+        **_make_headers(),
+        "Cookie": cookie,
+        "origin": "https://klingai.com",
+        "referer": f"https://klingai.com/app/ai-human/video/{task_id}",
+    }
+
+    async with httpx.AsyncClient(timeout=20) as client:
+        resp = await client.get(signed_url, headers=headers)
+        resp.raise_for_status()
+        data = resp.json()
+
+    if data.get("result") != 1 or not data.get("data"):
+        raise RuntimeError(f"lip sync status failed: {data}")
+
+    history = data.get("data", {}).get("history") or []
+    if not history:
+        return {
+            "task_id": str(task_id),
+            "task_status": 0,
+            "lip_sync_status": 0,
+            "video_url": "",
+            "cover_url": "",
+            "done": False,
+            "raw": data,
+        }
+
+    item = history[0]
+    task = item.get("task") or {}
+    works = item.get("works") or []
+    work = works[0] if works else {}
+    resource = work.get("resource") or {}
+    cover = work.get("cover") or {}
+
+    video_url = resource.get("resource", "") or ""
+    task_status = int(task.get("status", 0) or 0)
+    lip_sync_status = int(work.get("lipSyncStatus", 0) or 0)
+    done = bool(video_url)
+    failed = (task_status >= 90) and (not done)
+
+    return {
+        "task_id": str(task_id),
+        "task_status": task_status,
+        "lip_sync_status": lip_sync_status,
+        "video_url": video_url,
+        "cover_url": cover.get("resource", "") or "",
+        "done": done,
+        "failed": failed,
+        "raw": data,
+    }
+
+
+async def poll_lip_sync_task(cookie: str, task_id: str, timeout: int = 600, interval: int = 5) -> dict:
+    """Poll lip-sync task until completed (video_url exists), failed, or timeout."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        status = await get_lip_sync_status(cookie, task_id)
+        if status.get("done"):
+            return status
+        if status.get("failed"):
+            raise RuntimeError(f"lip sync task {task_id} failed: {status}")
+        await asyncio.sleep(interval)
+    raise TimeoutError(f"lip sync task {task_id} timed out after {timeout}s")
 
 
 async def download_creative(cookie: str, creative_id: str) -> str:

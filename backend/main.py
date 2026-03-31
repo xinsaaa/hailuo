@@ -901,6 +901,42 @@ class CreatePaymentRequest(BaseModel):
     amount: float  # 充值金额
 
 
+class KlingLipSyncTTSRequest(BaseModel):
+    text: str
+    speaker_id: str
+    speed: str = "1"
+    emotion: str = ""
+
+
+class KlingLipSyncSubmitRequest(BaseModel):
+    model_name: str = "Kling Lip Sync"
+    video_url: str
+    face_id_key: str
+    face_image_url: str
+    from_work_id: Optional[int] = None
+
+    # If audio_url is empty, backend can generate TTS audio first.
+    audio_url: Optional[str] = None
+    tts_text: Optional[str] = None
+    tts_speaker_id: Optional[str] = None
+    tts_speed: str = "1"
+    tts_emotion: str = ""
+    tts_timbre: str = ""
+
+    face_id: str = "0"
+    face_start_time: int = 0
+    face_end_time: int = 3000
+    audio_start_time_in_video: int = 0
+    audio_start_time: int = 0
+    audio_end_time: int = 3000
+    include_original_audio: bool = False
+    speech_volume: float = 1.0
+    original_audio_volume: float = 1.0
+
+    wait: bool = False
+    timeout: int = 600
+
+
 @app.post("/api/pay/create")
 def create_payment(
     request: CreatePaymentRequest,
@@ -1148,6 +1184,204 @@ async def kling_pre_upload(
             os.remove(tmp_path)
 
 
+def _pick_kling_cookie_for_lipsync(account_id: Optional[str] = None) -> tuple[str, str]:
+    """Pick a logged-in Kling account cookie. Return (account_id, cookie)."""
+    from backend import kling_api
+    from backend.order_worker import _pick_kling_account
+
+    if account_id:
+        creds = kling_api.get_kling_credentials(account_id)
+        if creds and creds.get("cookie"):
+            return account_id, creds["cookie"]
+
+    result = _pick_kling_account()
+    if not result:
+        raise HTTPException(status_code=503, detail="无可用可灵账号")
+    return result
+
+
+def _calc_lipsync_cost(model: AIModel, charge_seconds: int) -> float:
+    """Lip-sync pricing priority: per-second > 10s fixed > fixed price."""
+    secs = max(1, int(charge_seconds))
+    if model.price_per_second and model.price_per_second > 0:
+        return round(model.price_per_second * secs, 2)
+    if secs == 10 and model.price_10s and model.price_10s > 0:
+        return round(model.price_10s, 2)
+    return round(model.price if model.price and model.price > 0 else 0.99, 2)
+
+
+def _get_lipsync_model(session: Session, model_name: str) -> AIModel:
+    model = session.exec(
+        select(AIModel).where(
+            (AIModel.name == model_name) | (AIModel.model_id == model_name),
+            AIModel.is_enabled == True
+        )
+    ).first()
+    if not model:
+        raise HTTPException(status_code=400, detail=f"对口型模型不可用: {model_name}")
+    if model.model_type != "lip_sync":
+        raise HTTPException(status_code=400, detail=f"模型不是对口型类型: {model_name}")
+    return model
+
+
+@app.post("/api/kling/lip-sync/tts")
+async def kling_lip_sync_tts(
+    req: KlingLipSyncTTSRequest,
+    current_user: User = Depends(get_current_user),
+):
+    from backend import kling_api
+
+    account_id, cookie = _pick_kling_cookie_for_lipsync()
+    try:
+        tts = await kling_api.lip_sync_tts(
+            cookie=cookie,
+            text=req.text,
+            speaker_id=req.speaker_id,
+            speed=req.speed,
+            emotion=req.emotion,
+        )
+        return {
+            "success": True,
+            "account_id": account_id,
+            "audio_url": tts["audio_url"],
+            "duration_ms": tts["duration_ms"],
+            "status": tts["status"],
+        }
+    except Exception as e:
+        app_logger.error(f"可灵对口型TTS失败: {e}")
+        raise HTTPException(status_code=502, detail=f"可灵TTS失败: {e}")
+
+
+@app.post("/api/kling/lip-sync/submit")
+async def kling_lip_sync_submit(
+    req: KlingLipSyncSubmitRequest,
+    account_id: Optional[str] = None,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    from backend import kling_api
+
+    selected_account_id, cookie = _pick_kling_cookie_for_lipsync(account_id)
+
+    audio_url = (req.audio_url or "").strip()
+    tts_duration_ms = 0
+    if not audio_url:
+        if not req.tts_text or not req.tts_speaker_id:
+            raise HTTPException(status_code=400, detail="audio_url 为空时，必须提供 tts_text 和 tts_speaker_id")
+        try:
+            tts = await kling_api.lip_sync_tts(
+                cookie=cookie,
+                text=req.tts_text,
+                speaker_id=req.tts_speaker_id,
+                speed=req.tts_speed,
+                emotion=req.tts_emotion,
+            )
+            audio_url = tts.get("audio_url", "")
+            tts_duration_ms = int(tts.get("duration_ms", 0) or 0)
+            if not audio_url:
+                raise RuntimeError("tts 返回空音频链接")
+        except Exception as e:
+            app_logger.error(f"可灵对口型自动TTS失败: {e}")
+            raise HTTPException(status_code=502, detail=f"自动TTS失败: {e}")
+
+    model = _get_lipsync_model(session, req.model_name)
+    audio_window_ms = max(0, int(req.audio_end_time) - int(req.audio_start_time))
+    if audio_window_ms <= 0 and tts_duration_ms > 0:
+        audio_window_ms = tts_duration_ms
+    charge_seconds = max(1, int((audio_window_ms + 999) / 1000))
+    total_cost = _calc_lipsync_cost(model, charge_seconds)
+
+    # Refresh latest balance before charging.
+    session.refresh(current_user)
+    if current_user.balance < total_cost:
+        raise HTTPException(status_code=400, detail=f"余额不足，需 {total_cost:.2f} 元")
+
+    try:
+        submit = await kling_api.submit_lip_sync_task(
+            cookie=cookie,
+            video_url=req.video_url,
+            audio_url=audio_url,
+            face_id_key=req.face_id_key,
+            face_image_url=req.face_image_url,
+            face_id=req.face_id,
+            from_work_id=req.from_work_id,
+            face_start_time=req.face_start_time,
+            face_end_time=req.face_end_time,
+            audio_start_time_in_video=req.audio_start_time_in_video,
+            audio_start_time=req.audio_start_time,
+            audio_end_time=req.audio_end_time,
+            include_original_audio=req.include_original_audio,
+            speech_volume=req.speech_volume,
+            original_audio_volume=req.original_audio_volume,
+            tts_text=req.tts_text or "",
+            tts_speed=req.tts_speed,
+            tts_timbre=req.tts_timbre,
+            tts_emotion=req.tts_emotion,
+        )
+
+        result = {
+            "success": True,
+            "account_id": selected_account_id,
+            "task_id": submit["task_id"],
+            "status": submit["status"],
+            "audio_url": audio_url,
+            "model_name": model.name,
+            "charged_seconds": charge_seconds,
+            "cost": total_cost,
+        }
+
+        # Charge only after successful task submission.
+        current_user.balance = round(current_user.balance - total_cost, 2)
+        session.add(current_user)
+        session.add(Transaction(
+            user_id=current_user.id,
+            amount=total_cost,
+            bonus=0,
+            type="expense",
+        ))
+        session.commit()
+        result["balance"] = current_user.balance
+
+        if req.wait:
+            final_status = await kling_api.poll_lip_sync_task(
+                cookie=cookie,
+                task_id=submit["task_id"],
+                timeout=max(30, int(req.timeout)),
+                interval=5,
+            )
+            result["final"] = final_status
+
+        return result
+    except HTTPException:
+        raise
+    except TimeoutError as e:
+        raise HTTPException(status_code=504, detail=str(e))
+    except Exception as e:
+        app_logger.error(f"可灵对口型提交失败: {e}")
+        raise HTTPException(status_code=502, detail=f"可灵对口型提交失败: {e}")
+
+
+@app.get("/api/kling/lip-sync/status/{task_id}")
+async def kling_lip_sync_status(
+    task_id: str,
+    account_id: Optional[str] = None,
+    current_user: User = Depends(get_current_user),
+):
+    from backend import kling_api
+
+    selected_account_id, cookie = _pick_kling_cookie_for_lipsync(account_id)
+    try:
+        status_data = await kling_api.get_lip_sync_status(cookie=cookie, task_id=task_id)
+        return {
+            "success": True,
+            "account_id": selected_account_id,
+            **status_data,
+        }
+    except Exception as e:
+        app_logger.error(f"可灵对口型状态查询失败: {e}")
+        raise HTTPException(status_code=502, detail=f"可灵对口型状态查询失败: {e}")
+
+
 @app.post("/api/orders/create")
 async def create_order(
     prompt: str = Form(...),
@@ -1192,6 +1426,8 @@ async def create_order(
 
     # 根据用户选择的模型获取价格
     model = session.exec(select(AIModel).where(AIModel.name == model_name)).first()
+    if model and model.model_type == "lip_sync":
+        raise HTTPException(status_code=400, detail="对口型模型请使用对口型专用接口")
 
     # 价格计算：优先使用 pricing_matrix 分档定价
     cost = None

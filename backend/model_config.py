@@ -225,6 +225,22 @@ class ModelConfigManager:
                         "1080p": {"5": 0.79, "10": 1.49, "per_second": 0.16}
                     }
                 })
+            },
+            {
+                "model_id": "kling_lip_sync",
+                "name": "Kling Lip Sync",
+                "display_name": "可灵对口型",
+                "description": "可灵数字人/视频对口型，支持文本转语音驱动",
+                "features": json.dumps(["对口型", "文本配音", "音频驱动"]),
+                "badge": "NEW",
+                "supports_last_frame": False,
+                "is_default": False,
+                "is_enabled": True,
+                "sort_order": 14,
+                "price": 2.99,
+                "price_per_second": 0.30,
+                "platform": "kling",
+                "model_type": "lip_sync"
             }
         ]
     
@@ -234,7 +250,7 @@ class ModelConfigManager:
         series_mapping = {
             "2.3": ["hailuo_2_3", "hailuo_2_3_fast", "hailuo_2_0", "hailuo_1_0", "hailuo_1_0_director", "hailuo_1_0_live"],
             "3.1": ["hailuo_3_1", "hailuo_3_1_pro", "beta_3_1", "beta_3_1_fast"],
-            "kling": ["kling_3_0", "kling_2_6", "kling_2_5_turbo"],
+            "kling": ["kling_3_0", "kling_2_6", "kling_2_5_turbo", "kling_lip_sync"],
             "all": [model["model_id"] for model in ModelConfigManager.get_default_models()]
         }
         return series_mapping.get(series, series_mapping["all"])

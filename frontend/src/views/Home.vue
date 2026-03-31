@@ -15,7 +15,7 @@ const modelsList = ref([])
 const jimengEnabled = ref(true)
 const jimengModels = ref([])
 const klingPrice = ref(0.99)
-const hasKling = computed(() => modelsList.value.some(m => m.id?.includes('kling')))
+const hasKling = computed(() => modelsList.value.some(m => m.id?.includes('kling') && m.type !== 'lip_sync'))
 
 const has23Series = computed(() => modelsList.value.some(m => m.id.includes('2_0') || m.id.includes('2_3') || m.id.includes('hailuo_1_0')))
 const has31Series = computed(() => modelsList.value.some(m => m.id.includes('3_1') || m.id.includes('beta_3')))
@@ -55,7 +55,7 @@ const loadConfig = async () => {
                 if (models31.length > 0) {
                     videoPrice31.value = Math.min(...models31.map(m => m.price || 0.99))
                 }
-                const modelsKling = modelsData.models.filter(m => m.id?.includes('kling'))
+                const modelsKling = modelsData.models.filter(m => m.id?.includes('kling') && m.type !== 'lip_sync')
                 if (modelsKling.length > 0) {
                     klingPrice.value = Math.min(...modelsKling.map(m => m.price || 0.99))
                 }

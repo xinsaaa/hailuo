@@ -198,6 +198,25 @@ export const klingPreUpload = async (imageFile, frameType = 'first') => {
     return data;
 };
 
+export const klingLipSyncTts = async (payload) => {
+    const { data } = await api.post('/kling/lip-sync/tts', payload, { timeout: 120000 })
+    return data
+}
+
+export const klingLipSyncSubmit = async (payload, accountId = null) => {
+    const params = {}
+    if (accountId) params.account_id = accountId
+    const { data } = await api.post('/kling/lip-sync/submit', payload, { params, timeout: 120000 })
+    return data
+}
+
+export const klingLipSyncStatus = async (taskId, accountId = null) => {
+    const params = {}
+    if (accountId) params.account_id = accountId
+    const { data } = await api.get(`/kling/lip-sync/status/${taskId}`, { params, timeout: 120000 })
+    return data
+}
+
 export const createOrder = async (prompt, model_name, firstFrameImage, lastFrameImage, videoType = 'image_to_video', resolution = '768p', duration = '6s', quantity = 1, options = {}) => {
     const formData = new FormData();
     formData.append('prompt', prompt);
@@ -405,4 +424,3 @@ export const updateConfig = async (key, value) => {
 }
 
 export default api
-

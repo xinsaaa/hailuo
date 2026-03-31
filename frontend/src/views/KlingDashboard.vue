@@ -218,6 +218,16 @@ const getVideoUrls = (order) => {
   return order.video_url ? [order.video_url] : []
 }
 
+const canLipSync = (order) => {
+  const urls = getVideoUrls(order)
+  return order?.status === 'completed' && urls.length > 0
+}
+
+const openLipSync = (order) => {
+  // Lip-sync UI will be hooked here next. For now we only expose entry on completed videos.
+  showNotification('请先选择一个已完成视频进行对口型配置', 'info')
+}
+
 const getVideoUrl = (url) => {
   const token = localStorage.getItem('token')
   if (!token || !url) return url
@@ -256,7 +266,8 @@ const loadData = async () => {
     if (modelsData && modelsData.models) {
       // 只保留可灵系列模型（优先按platform，兼容id匹配）
       const klingModels = modelsData.models.filter(model =>
-        model.platform === 'kling' || model.id?.includes('kling') || model.name?.startsWith('Kling')
+        (model.platform === 'kling' || model.id?.includes('kling') || model.name?.startsWith('Kling')) &&
+        model.type !== 'lip_sync'
       )
       availableModels.value = klingModels
       if (klingModels.length > 0 && !selectedModel.value) {
@@ -934,6 +945,16 @@ const handleLogout = () => {
                     </div>
                     <!-- 视频操作按钮 -->
                     <template v-if="order.status === 'completed' && order.video_url">
+                      <button
+                        v-if="canLipSync(order)"
+                        @click="openLipSync(order)"
+                        class="px-3 py-1 bg-violet-500/10 hover:bg-violet-500/20 text-violet-400 text-xs rounded-full border border-violet-500/20 hover:border-violet-500/40 transition-all flex items-center gap-1.5"
+                      >
+                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 9l10.5-3-3 10.5-2.5-4-4 2.5L9 9z" />
+                        </svg>
+                        <span class="font-bold">对口型</span>
+                      </button>
                       <template v-for="(url, idx) in getVideoUrls(order)" :key="idx">
                         <button v-if="url.startsWith('/videos/')"
                           @click="playVideo(getVideoUrl(url))"
