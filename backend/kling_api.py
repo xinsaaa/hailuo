@@ -13,6 +13,7 @@ import base64
 import io
 import json
 import logging
+import os
 import random
 import string
 import time
@@ -20,6 +21,7 @@ from pathlib import Path
 from typing import Optional
 
 import httpx
+from backend.email_service import send_email
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +44,7 @@ DEFAULT_MONITOR_INTERVAL = 1800  # 30 minutes
 REFRESH_MAX_FAILS = 3
 REFRESH_BACKOFF_BASE = 900       # 15 minutes
 REFRESH_BACKOFF_MAX = 21600      # 6 hours
+KLING_ALERT_EMAIL = os.getenv("KLING_ALERT_EMAIL", "758045020@qq.com")
 
 # 自动迁移：如果旧路径有数据但新路径没有，复制过来
 _OLD_ACCOUNTS_FILE = Path(__file__).parent / "kling_accounts.json"
@@ -118,6 +121,7 @@ def list_kling_accounts() -> list:
             "needs_relogin": bool(acc.get("needs_relogin", False)),
             "next_refresh_retry_at": int(acc.get("next_refresh_retry_at", 0) or 0),
             "monitor_message": acc.get("monitor_message", ""),
+            "offline_alert_sent": bool(acc.get("offline_alert_sent", False)),
         })
     return accounts
 
@@ -137,6 +141,7 @@ def save_kling_account(account_id: str, display_name: str, priority: int = 5,
         "needs_relogin": False,
         "next_refresh_retry_at": 0,
         "monitor_message": "",
+        "offline_alert_sent": False,
     }
     data["accounts"][account_id] = acc
     _save_accounts(data)
@@ -1127,6 +1132,27 @@ def _next_refresh_retry_at(fail_count: int) -> int:
     return int(time.time()) + delay
 
 
+async def _send_offline_alert_email(account_id: str, display_name: str, fail_count: int) -> None:
+    if not KLING_ALERT_EMAIL:
+        return
+    subject = f"[Kling Monitor] 账号需重登: {display_name or account_id}"
+    body = f"""
+    <h3>可灵账号掉线告警</h3>
+    <p><b>账号ID:</b> {account_id}</p>
+    <p><b>显示名称:</b> {display_name or account_id}</p>
+    <p><b>状态:</b> 连续刷新失败 {fail_count} 次，已自动暂停刷新，需扫码重登</p>
+    <p><b>时间:</b> {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())}</p>
+    """
+    try:
+        ok = await asyncio.to_thread(send_email, KLING_ALERT_EMAIL, subject, body)
+        if ok:
+            logger.info(f"[kling_monitor] offline alert email sent: account={account_id}, to={KLING_ALERT_EMAIL}")
+        else:
+            logger.warning(f"[kling_monitor] offline alert email failed: account={account_id}, to={KLING_ALERT_EMAIL}")
+    except Exception as e:
+        logger.warning(f"[kling_monitor] offline alert email exception: account={account_id}, err={e}")
+
+
 async def _monitor_loop(interval: int = DEFAULT_MONITOR_INTERVAL):
     import logging
     logger = logging.getLogger("kling_monitor")
@@ -1153,6 +1179,7 @@ async def _monitor_loop(interval: int = DEFAULT_MONITOR_INTERVAL):
                         needs_relogin=False,
                         next_refresh_retry_at=0,
                         monitor_message="",
+                        offline_alert_sent=False,
                     )
                     logger.info(f"[kling_monitor] {aid} isLogin=True")
                     await asyncio.sleep(5)
@@ -1161,6 +1188,7 @@ async def _monitor_loop(interval: int = DEFAULT_MONITOR_INTERVAL):
                 refresh_paused = bool(acc.get("refresh_paused", False))
                 refresh_fail_count = int(acc.get("refresh_fail_count", 0) or 0)
                 next_retry_at = int(acc.get("next_refresh_retry_at", 0) or 0)
+                offline_alert_sent = bool(acc.get("offline_alert_sent", False))
 
                 # Paused mode: keep only low-frequency check_login and do not refresh token.
                 if refresh_paused:
@@ -1198,6 +1226,7 @@ async def _monitor_loop(interval: int = DEFAULT_MONITOR_INTERVAL):
                         needs_relogin=False,
                         next_refresh_retry_at=0,
                         monitor_message="",
+                        offline_alert_sent=False,
                     )
                     logger.info(f"[kling_monitor] {aid} token refresh success")
                 else:
@@ -1214,10 +1243,17 @@ async def _monitor_loop(interval: int = DEFAULT_MONITOR_INTERVAL):
                                 f"Refresh failed {fail_count} times; auto refresh paused. "
                                 "Please scan QR to re-login"
                             ),
+                            offline_alert_sent=True,
                         )
                         logger.warning(
                             f"[kling_monitor] {aid} refresh failed {fail_count} times, pause auto refresh"
                         )
+                        if not offline_alert_sent:
+                            await _send_offline_alert_email(
+                                account_id=aid,
+                                display_name=str(acc.get("display_name", "") or aid),
+                                fail_count=fail_count,
+                            )
                     else:
                         retry_at = _next_refresh_retry_at(fail_count)
                         wait_sec = max(retry_at - int(time.time()), 0)
@@ -1232,6 +1268,7 @@ async def _monitor_loop(interval: int = DEFAULT_MONITOR_INTERVAL):
                                 f"token refresh failed ({fail_count}/{REFRESH_MAX_FAILS}), "
                                 f"auto retry in {wait_sec}s"
                             ),
+                            offline_alert_sent=False,
                         )
                         logger.warning(
                             f"[kling_monitor] {aid} refresh failed ({fail_count}/{REFRESH_MAX_FAILS}), "

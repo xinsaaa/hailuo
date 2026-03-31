@@ -163,6 +163,7 @@ async def check_account_login(account_id: str, admin=Depends(get_admin_user)):
             needs_relogin=False,
             next_refresh_retry_at=0,
             monitor_message="",
+            offline_alert_sent=False,
         )
     else:
         update_kling_account(
@@ -191,6 +192,7 @@ async def refresh_account_token(account_id: str, admin=Depends(get_admin_user)):
             needs_relogin=False,
             next_refresh_retry_at=0,
             monitor_message="",
+            offline_alert_sent=False,
         )
         return {"success": True, "message": "Token刷新成功"}
     else:
@@ -271,6 +273,7 @@ async def _poll_login(account_id: str):
                     needs_relogin=False,
                     next_refresh_retry_at=0,
                     monitor_message="",
+                    offline_alert_sent=False,
                 )
                 # 首次登录后自动初始化去水印设置
                 try:

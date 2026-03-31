@@ -1,9 +1,13 @@
-<template>
+﻿<template>
   <div class="space-y-6">
-    <div v-if="showToast" class="fixed top-4 right-4 z-50 px-4 py-3 rounded-xl shadow-lg text-sm font-medium"
-      :class="toastType === 'success' ? 'bg-green-500/90 text-white' : toastType === 'error' ? 'bg-red-500/90 text-white' : 'bg-blue-500/90 text-white'">
+    <div
+      v-if="showToast"
+      class="fixed top-4 right-4 z-50 px-4 py-3 rounded-xl shadow-lg text-sm font-medium"
+      :class="toastType === 'success' ? 'bg-green-500/90 text-white' : toastType === 'error' ? 'bg-red-500/90 text-white' : 'bg-blue-500/90 text-white'"
+    >
       {{ toastMessage }}
     </div>
+
     <div class="flex items-center justify-between">
       <div class="flex items-center gap-3">
         <div class="w-2 h-2 rounded-full bg-orange-400 shadow-[0_0_8px_rgba(251,146,60,0.8)]"></div>
@@ -16,23 +20,32 @@
         <span class="text-blue-400 font-bold">{{ stats.loggedIn }}</span> 个已登录
       </div>
     </div>
+
     <div class="flex items-center gap-4">
-      <button @click="showAddModal = true" class="flex items-center gap-2 px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg text-sm font-medium transition-colors">
+      <button
+        @click="showAddModal = true"
+        class="flex items-center gap-2 px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg text-sm font-medium transition-colors"
+      >
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" /></svg>
         添加账号
       </button>
-      <button @click="loadAccounts" class="flex items-center gap-2 px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm font-medium transition-colors">
+      <button
+        @click="loadAccounts"
+        class="flex items-center gap-2 px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm font-medium transition-colors"
+      >
         <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
         刷新
       </button>
     </div>
+
     <div class="bg-gray-800/50 border border-gray-700/50 rounded-xl overflow-hidden">
       <div v-if="accounts.length === 0" class="text-center py-16 text-gray-500">
         <svg class="w-12 h-12 mx-auto mb-3 opacity-30" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0" />
         </svg>
-        <p>暂无账号，点击「添加账号」创建</p>
+        <p>暂无账号，点击“添加账号”创建</p>
       </div>
+
       <table v-else class="w-full text-sm">
         <thead class="bg-gray-900/50 border-b border-gray-700/50">
           <tr>
@@ -54,11 +67,11 @@
             <td class="px-4 py-3 text-gray-300">{{ account.max_concurrent }}</td>
             <td class="px-4 py-3">
               <div class="flex flex-col gap-1">
-                <span v-if="account.needs_relogin" class="px-2 py-0.5 bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 rounded text-xs w-fit">Re-login required</span>
-                <span v-else-if="account.is_logged_in" class="px-2 py-0.5 bg-green-500/20 text-green-400 border border-green-500/30 rounded text-xs w-fit">Logged in</span>
-                <span v-else class="px-2 py-0.5 bg-red-500/20 text-red-400 border border-red-500/30 rounded text-xs w-fit">Logged out</span>
-                <span v-if="account.refresh_paused" class="text-[11px] text-yellow-300">Auto refresh paused, please re-login via QR</span>
-                <span v-else-if="account.next_refresh_retry_at && account.next_refresh_retry_at * 1000 > Date.now()" class="text-[11px] text-gray-400">Next auto retry: {{ formatRetryEta(account.next_refresh_retry_at) }}</span>
+                <span v-if="account.needs_relogin" class="px-2 py-0.5 bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 rounded text-xs w-fit">需重登</span>
+                <span v-else-if="account.is_logged_in" class="px-2 py-0.5 bg-green-500/20 text-green-400 border border-green-500/30 rounded text-xs w-fit">已登录</span>
+                <span v-else class="px-2 py-0.5 bg-red-500/20 text-red-400 border border-red-500/30 rounded text-xs w-fit">未登录</span>
+                <span v-if="account.refresh_paused" class="text-[11px] text-yellow-300">自动刷新已暂停，请扫码重登</span>
+                <span v-else-if="account.next_refresh_retry_at && account.next_refresh_retry_at * 1000 > Date.now()" class="text-[11px] text-gray-400">下次自动重试：{{ formatRetryEta(account.next_refresh_retry_at) }}</span>
                 <span v-if="account.monitor_message" class="text-[11px] text-gray-400">{{ account.monitor_message }}</span>
               </div>
             </td>
@@ -70,7 +83,7 @@
                 </span>
                 <span v-else class="text-gray-500 text-xs">--</span>
                 <button v-if="account.is_logged_in" @click="fetchPoints(account.account_id)" :disabled="pointsLoading[account.account_id]" class="text-gray-500 hover:text-orange-400 transition-colors disabled:opacity-30">
-                  <svg class="w-3.5 h-3.5" :class="{'animate-spin': pointsLoading[account.account_id]}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
+                  <svg class="w-3.5 h-3.5" :class="{ 'animate-spin': pointsLoading[account.account_id] }" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
                 </button>
               </div>
             </td>
@@ -81,7 +94,13 @@
             <td class="px-4 py-3">
               <div class="flex items-center gap-2 flex-wrap">
                 <button @click="openQrLogin(account)" class="bg-orange-600 hover:bg-orange-700 text-white px-3 py-1 rounded text-xs transition-colors">{{ account.is_logged_in ? '重新登录' : '扫码登录' }}</button>
-                <button @click="refreshToken(account)" :disabled="refreshing[account.account_id] || account.refresh_paused" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-xs transition-colors disabled:opacity-50">{{ account.refresh_paused ? "Auto refresh paused" : (refreshing[account.account_id] ? "Refreshing..." : "Refresh Token") }}</button>
+                <button
+                  @click="refreshToken(account)"
+                  :disabled="refreshing[account.account_id] || account.refresh_paused"
+                  class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-xs transition-colors disabled:opacity-50"
+                >
+                  {{ account.refresh_paused ? '已暂停自动刷新' : (refreshing[account.account_id] ? '刷新中...' : '刷新Token') }}
+                </button>
                 <button @click="checkLogin(account)" class="bg-gray-600 hover:bg-gray-500 text-white px-3 py-1 rounded text-xs transition-colors">验证</button>
                 <button @click="toggleActive(account)" :class="account.is_active ? 'bg-yellow-600 hover:bg-yellow-700' : 'bg-green-600 hover:bg-green-700'" class="text-white px-3 py-1 rounded text-xs transition-colors">{{ account.is_active ? '禁用' : '启用' }}</button>
                 <button @click="deleteAccount(account.account_id)" class="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-xs transition-colors">删除</button>
@@ -146,7 +165,7 @@
           <div class="w-12 h-12 bg-green-500/20 rounded-full flex items-center justify-center mx-auto mb-3">
             <svg class="w-6 h-6 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" /></svg>
           </div>
-          <p class="text-green-400 font-medium">登录成功！</p>
+          <p class="text-green-400 font-medium">登录成功</p>
         </div>
         <div v-else-if="qrModal.status === 'timeout'" class="py-8">
           <p class="text-yellow-400 mb-4">二维码已过期</p>
@@ -200,20 +219,22 @@ const showToastMessage = (msg, type = 'success') => {
   toastType.value = type
   showToast.value = true
   clearTimeout(toastTimer)
-  toastTimer = setTimeout(() => { showToast.value = false }, 3000)
+  toastTimer = setTimeout(() => {
+    showToast.value = false
+  }, 3000)
 }
 
 const formatRetryEta = (ts) => {
   const sec = Number(ts || 0)
-  if (!sec) return "--"
+  if (!sec) return '--'
   const targetMs = sec * 1000
   const deltaMs = targetMs - Date.now()
-  if (deltaMs <= 0) return "soon"
+  if (deltaMs <= 0) return '即将重试'
   const mins = Math.ceil(deltaMs / 60000)
-  if (mins < 60) return `${mins} min`
+  if (mins < 60) return `${mins}分钟后`
   const hours = Math.floor(mins / 60)
   const leftMins = mins % 60
-  return leftMins > 0 ? `${hours}h ${leftMins}m` : `${hours}h`
+  return leftMins > 0 ? `${hours}小时${leftMins}分钟后` : `${hours}小时后`
 }
 
 const loadAccounts = async () => {
@@ -241,10 +262,10 @@ const addAccount = async () => {
 }
 
 const deleteAccount = async (accountId) => {
-  if (!confirm("Are you sure to delete this account?")) return
+  if (!confirm('确定删除该账号吗？')) return
   try {
     await api.delete(`/admin/kling-accounts/${accountId}`)
-    showToastMessage("Account deleted")
+    showToastMessage('账号已删除')
     loadAccounts()
   } catch (e) {
     showToastMessage(e.response?.data?.detail || '删除失败', 'error')
@@ -254,7 +275,7 @@ const deleteAccount = async (accountId) => {
 const toggleActive = async (account) => {
   try {
     await api.patch(`/admin/kling-accounts/${account.account_id}`, { is_active: !account.is_active })
-    showToastMessage(account.is_active ? "Account disabled" : "Account enabled")
+    showToastMessage(account.is_active ? '账号已禁用' : '账号已启用')
     loadAccounts()
   } catch (e) {
     showToastMessage(e.response?.data?.detail || '操作失败', 'error')
@@ -265,12 +286,12 @@ const checkLogin = async (account) => {
   try {
     const res = await api.post(`/admin/kling-accounts/${account.account_id}/check-login`)
     showToastMessage(
-      res.data.is_logged_in ? "Cookie valid, logged in" : "Cookie invalid, please scan QR again",
+      res.data.is_logged_in ? 'Cookie 有效，已登录' : 'Cookie 已失效，请重新扫码',
       res.data.is_logged_in ? 'success' : 'error'
     )
     loadAccounts()
   } catch (e) {
-    showToastMessage(e.response?.data?.detail || '楠岃瘉澶辫触', 'error')
+    showToastMessage(e.response?.data?.detail || '验证失败', 'error')
   }
 }
 
@@ -312,8 +333,19 @@ const fetchAllPoints = () => {
   })
 }
 
-const stopPolling = () => { if (pollTimer) { clearInterval(pollTimer); pollTimer = null } }
-const stopCountdown = () => { if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null } }
+const stopPolling = () => {
+  if (pollTimer) {
+    clearInterval(pollTimer)
+    pollTimer = null
+  }
+}
+
+const stopCountdown = () => {
+  if (countdownTimer) {
+    clearInterval(countdownTimer)
+    countdownTimer = null
+  }
+}
 
 const startCountdown = (seconds) => {
   stopCountdown()
@@ -342,7 +374,7 @@ const startPolling = (accountId) => {
         qrModal.value.status = 'done'
         stopPolling()
         stopCountdown()
-        showToastMessage("Login successful")
+        showToastMessage('登录成功')
         loadAccounts()
       } else if (st === 'error') {
         qrModal.value.status = 'error'
@@ -353,7 +385,9 @@ const startPolling = (accountId) => {
         stopPolling()
         stopCountdown()
       }
-    } catch (e) { /* ignore */ }
+    } catch (e) {
+      // ignore
+    }
   }, 2000)
 }
 
@@ -377,7 +411,7 @@ const openQrLogin = async (account) => {
   } catch (e) {
     qrModal.value.status = 'error'
     qrModal.value.loading = false
-    showToastMessage(e.response?.data?.detail || "Failed to fetch QR code", "error")
+    showToastMessage(e.response?.data?.detail || '获取二维码失败', 'error')
   }
 }
 
@@ -400,5 +434,9 @@ onMounted(async () => {
   await loadAccounts()
   fetchAllPoints()
 })
-onUnmounted(() => { stopPolling(); stopCountdown() })
+
+onUnmounted(() => {
+  stopPolling()
+  stopCountdown()
+})
 </script>
