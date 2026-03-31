@@ -203,6 +203,11 @@ export const klingLipSyncTts = async (payload) => {
     return data
 }
 
+export const klingLipSyncSpeakers = async () => {
+    const { data } = await api.get('/kling/lip-sync/speakers', { timeout: 30000 })
+    return data
+}
+
 export const klingLipSyncSubmit = async (payload, accountId = null) => {
     const params = {}
     if (accountId) params.account_id = accountId

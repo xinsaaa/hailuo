@@ -937,6 +937,26 @@ class KlingLipSyncSubmitRequest(BaseModel):
     timeout: int = 600
 
 
+# 可灵对口型TTS音色映射（speakerId -> 展示名）
+KLING_LIP_SYNC_SPEAKERS = {
+    "chat1_female_new-3": "温柔姐姐",
+    "ai_shatang": "青春少女",
+    "genshin_vindi2": "阳光少年",
+    "chuanmeizi_speech02": "四川妹子",
+    "tianjinjiejie_speech02": "天津姐姐",
+    "mengwa-v1": "可爱正太",
+    "chaoshandashu_speech02": "潮汕大叔",
+    "diyinnansang_DB_CN_M_04-v2": "新闻播报男",
+    "yizhipiannan-v1": "译制片男",
+    "zhinen_xuesheng": "懂事小弟",
+    "tiyuxi_xuedi": "运动少年",
+    "tianmeinvsheng-v1": "活泼辣妹",
+    "guanxiaofang-v2": "元气少女",
+    "tianmeixuemei-v1": "撒娇小妹",
+    "ai_kaiya": "阳光男友",
+}
+
+
 @app.post("/api/pay/create")
 def create_payment(
     request: CreatePaymentRequest,
@@ -1232,6 +1252,8 @@ async def kling_lip_sync_tts(
     from backend import kling_api
 
     account_id, cookie = _pick_kling_cookie_for_lipsync()
+    if req.speaker_id not in KLING_LIP_SYNC_SPEAKERS:
+        raise HTTPException(status_code=400, detail=f"???? speaker_id: {req.speaker_id}")
     try:
         tts = await kling_api.lip_sync_tts(
             cookie=cookie,
@@ -1250,6 +1272,14 @@ async def kling_lip_sync_tts(
     except Exception as e:
         app_logger.error(f"可灵对口型TTS失败: {e}")
         raise HTTPException(status_code=502, detail=f"可灵TTS失败: {e}")
+
+
+@app.get("/api/kling/lip-sync/speakers")
+async def kling_lip_sync_speakers(current_user: User = Depends(get_current_user)):
+    return {
+        "success": True,
+        "speakers": [{"speaker_id": sid, "name": name} for sid, name in KLING_LIP_SYNC_SPEAKERS.items()]
+    }
 
 
 @app.post("/api/kling/lip-sync/submit")

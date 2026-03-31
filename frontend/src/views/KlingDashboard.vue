@@ -1,4 +1,4 @@
-<script setup>
+﻿<script setup>
 import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { getCurrentUser, createOrder, getOrders, getPublicConfig, getAvailableModels, klingPreUpload } from '../api'
@@ -12,18 +12,18 @@ const orders = ref([])
 const prompt = ref('')
 const loading = ref(false)
 
-// 模型选择
+// Model selection
 const availableModels = ref([])
 const selectedModel = ref(null)
 const showModelSelector = ref(false)
 
-// 视频模式：文生视频 / 图生视频
+// Video mode: text-to-video / image-to-video
 const videoMode = ref('image')
 
-// 图生视频子模式：单图 / 双图
-const imageMode = ref('single') // 'single' 或 'dual'
+// Image mode: single / dual
+const imageMode = ref('single') // 'single' or 'dual'
 
-// 切换到单图模式时清除尾帧
+// Clear last frame when switching back to single-image mode
 watch(imageMode, (val) => {
   if (val === 'single') {
     lastFrameImage.value = null
@@ -36,42 +36,42 @@ watch(imageMode, (val) => {
   }
 })
 
-// 时长选择
+// Duration
 const duration = ref('5s')
 const durationSlider = ref(5)
 
-// 分辨率
+// Resolution
 const resolution = ref('1080p')
 
-// 生成数量
+// Quantity
 const quantity = ref(1)
 
-// 首帧图片
+// First frame
 const firstFrameImage = ref(null)
 const firstFramePreview = ref(null)
 
-// 尾帧图片
+// Last frame
 const lastFrameImage = ref(null)
 const lastFramePreview = ref(null)
 
-// 可灵CDN预上传状态
+// Kling CDN pre-upload state
 const firstFrameCdnUrl = ref(null)
 const lastFrameCdnUrl = ref(null)
 const uploadingFirst = ref(false)
 const uploadingLast = ref(false)
 
-// 水印选项（默认去水印）
+// Watermark option
 const removeWatermark = ref(true)
 
-// 宽高比
+// Aspect ratio
 const aspectRatio = ref('16:9')
 const aspectRatioOptions = [
-  { label: '16:9', icon: '▬', desc: '横屏' },
-  { label: '9:16', icon: '▮', desc: '竖屏' },
-  { label: '1:1', icon: '◻', desc: '方形' },
+  { label: '16:9', icon: '▭', desc: '横屏' },
+  { label: '9:16', icon: '▯', desc: '竖屏' },
+  { label: '1:1', icon: '□', desc: '方形' },
 ]
 
-// 根据模型名获取模型配置
+// Resolve model-specific UI options
 const modelConfig = computed(() => {
   const name = selectedModel.value?.name || ''
   if (name.includes('3.0')) return { resolutions: ['720p', '1080p'], durationMode: 'slider', durationMin: 5, durationMax: 15, quantities: [1, 2, 3, 4] }
@@ -80,7 +80,7 @@ const modelConfig = computed(() => {
   return { resolutions: ['720p', '1080p'], durationMode: 'buttons', durationOptions: ['5s', '10s'], quantities: [1, 2, 3, 4] }
 })
 
-// 切换模型时重置参数到合法值
+// Keep values within the selected model's supported range
 watch(() => selectedModel.value, () => {
   const cfg = modelConfig.value
   if (!cfg.resolutions.includes(resolution.value)) resolution.value = cfg.resolutions[0]
@@ -93,14 +93,14 @@ watch(() => selectedModel.value, () => {
   if (!cfg.quantities.includes(quantity.value)) quantity.value = 1
 })
 
-// 滑块变化时同步duration
+// Sync slider to duration text
 watch(durationSlider, (val) => { duration.value = val + 's' })
 
 // prompt字数限制
 const maxPromptLength = 500
 const promptLength = computed(() => prompt.value.length)
 
-// Ctrl+Enter 快捷提交
+// Ctrl+Enter submit shortcut
 const handleKeydown = (e) => {
   if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
     e.preventDefault()
@@ -108,13 +108,13 @@ const handleKeydown = (e) => {
   }
 }
 
-// 单价（根据模式+分辨率+时长）
+// Unit price depends on mode / resolution / duration
 const unitPrice = computed(() => {
   const m = selectedModel.value
   if (!m) return 1.49
   const seconds = parseInt(duration.value) || 5
 
-  // 优先级1: pricing_matrix 矩阵定价（区分 text/single_image/dual_image）
+  // Priority 1: pricing_matrix
   if (m.pricing_matrix) {
     let tierKey = 'single_image'
     if (videoMode.value === 'text') tierKey = 'text'
@@ -132,21 +132,21 @@ const unitPrice = computed(() => {
     }
   }
 
-  // 优先级2: price_per_second 统一按秒
+  // Priority 2: price_per_second
   if (m.price_per_second) {
     return Math.round(m.price_per_second * seconds * 100) / 100
   }
 
-  // 优先级3: price_10s
+  // Priority 3: price_10s
   if (duration.value === '10s' && m.price_10s) return m.price_10s
 
-  // 优先级4: 固定价格
+  // Fallback: fixed price
   return m.price || 1.49
 })
-// 总价 = 单价 * 数量
+// Total price
 const currentPrice = computed(() => unitPrice.value * quantity.value)
 
-// 订单自动刷新
+// Auto polling
 let ordersInterval = null
 let pollCount = 0
 
@@ -168,7 +168,7 @@ const startOrdersPolling = () => {
   ordersInterval = setTimeout(poll, 2000)
 }
 
-// 点击外部关闭模型选择器
+// Close model selector when clicking outside
 const handleClickOutside = (event) => {
   if (showModelSelector.value && !event.target.closest('.model-selector')) {
     showModelSelector.value = false
@@ -191,7 +191,7 @@ const showToast = ref(false)
 const toastMessage = ref('')
 const toastType = ref('info')
 
-// 视频播放弹窗
+// Video player dialog
 const showVideoPlayer = ref(false)
 const currentVideoUrl = ref('')
 
@@ -224,10 +224,13 @@ const canLipSync = (order) => {
 }
 
 const openLipSync = (order) => {
-  // Lip-sync UI will be hooked here next. For now we only expose entry on completed videos.
-  showNotification('请先选择一个已完成视频进行对口型配置', 'info')
+  // Temporary placeholder until lip-sync form is wired.
+  if (!canLipSync(order)) {
+    showNotification('请先选择一个已完成的视频', 'error')
+    return
+  }
+  showNotification('已选中该视频，对口型配置界面开发中', 'info')
 }
-
 const getVideoUrl = (url) => {
   const token = localStorage.getItem('token')
   if (!token || !url) return url
@@ -259,12 +262,12 @@ const loadData = async () => {
       getAvailableModels().catch(() => null)
     ])
     user.value = userData
-    // 只显示可灵相关的订单
+    // Only keep Kling-related orders
     orders.value = ordersData.filter(o =>
       o.model_name && (o.model_name.startsWith('Kling') || o.model_name.startsWith('可灵'))
     )
     if (modelsData && modelsData.models) {
-      // 只保留可灵系列模型（优先按platform，兼容id匹配）
+      // Only keep Kling models
       const klingModels = modelsData.models.filter(model =>
         (model.platform === 'kling' || model.id?.includes('kling') || model.name?.startsWith('Kling')) &&
         model.type !== 'lip_sync'
@@ -328,7 +331,7 @@ const handleCreateOrder = async () => {
       quantity.value,
       opts
     )
-    showNotification('订单提交成功！可灵AI正在为您生成...', 'success')
+    showNotification('订单提交成功，可灵 AI 正在为您生成...', 'success')
     prompt.value = ''
     firstFrameCdnUrl.value = null
     lastFrameCdnUrl.value = null
@@ -346,7 +349,7 @@ const selectModel = (model) => {
   showModelSelector.value = false
 }
 
-// 图片上传
+// Image upload
 const processFile = async (file, type = 'first') => {
   if (!file) return
   if (!file.type.startsWith('image/')) {
@@ -354,7 +357,7 @@ const processFile = async (file, type = 'first') => {
     return
   }
   if (file.size > 5 * 1024 * 1024) {
-    showNotification('图片大小不能超过5MB', 'error')
+    showNotification('图片大小不能超过 5MB', 'error')
     return
   }
 
@@ -368,12 +371,12 @@ const processFile = async (file, type = 'first') => {
       const res = await klingPreUpload(file, 'first')
       if (res.cdn_url) {
         firstFrameCdnUrl.value = res.cdn_url
-        showNotification('图片已预上传到可灵CDN', 'success')
+        showNotification('图片已预上传到可灵 CDN', 'success')
       }
     } catch (e) {
       const msg = e.response?.data?.detail || e.message || '未知错误'
-      console.warn('预上传失败:', msg, e)
-      showNotification(`预上传失败: ${msg}，提交时将重新上传`, 'warning')
+      console.warn('预上传失败', msg, e)
+      showNotification(`预上传失败：${msg}，提交时将重新上传`, 'warning')
     } finally {
       uploadingFirst.value = false
     }
@@ -391,8 +394,8 @@ const processFile = async (file, type = 'first') => {
       }
     } catch (e) {
       const msg = e.response?.data?.detail || e.message || '未知错误'
-      console.warn('尾帧预上传失败:', msg, e)
-      showNotification(`尾帧预上传失败: ${msg}`, 'warning')
+      console.warn('尾帧预上传失败', msg, e)
+      showNotification(`尾帧预上传失败：${msg}`, 'warning')
     } finally {
       uploadingLast.value = false
     }
@@ -446,17 +449,17 @@ const statusMap = {
   failed: { text: '失败', class: 'bg-red-500/20 text-red-400 border-red-500/30' },
 }
 
-// 余额不足弹窗
+// Insufficient balance dialog
 const showInsufficientModal = ref(false)
 const insufficientPrice = ref(0)
 
-// 失败重试
+// Retry
 const retryOrder = (order) => {
   prompt.value = order.prompt
   showNotification('已填入原始描述，请点击生成', 'info')
 }
 
-// 格式化时间
+// Format UTC time
 const formatUTCTime = (utcTimeStr) => {
   if (!utcTimeStr) return ''
   const date = new Date(utcTimeStr + 'Z')
@@ -541,7 +544,8 @@ const handleLogout = () => {
                   <span class="w-1 h-6 rounded-full bg-orange-500"></span>
                   可灵 AI 视频生成
                 </h2>
-                <p class="text-xs text-gray-400 mt-1 ml-5">快手旗下AI视频生成，电影级画质，运动自然流畅
+                <p class="text-xs text-gray-400 mt-1 ml-5">
+                  快手旗下 AI 视频生成，电影级画质，运动自然流畅
                   <a href="https://docs.qingque.cn/d/home/eZQCqDGoymg61UKgMckSB2oMh?identityId=1oEGKOVUffX" target="_blank" class="ml-2 text-orange-400 hover:text-orange-300 transition-colors inline-flex items-center gap-1">
                     <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>
                     使用教程
@@ -549,7 +553,7 @@ const handleLogout = () => {
                 </p>
               </div>
 
-              <!-- 模型选择器 -->
+              <!-- Model selector -->
               <div class="relative model-selector">
                 <button
                   @click="showModelSelector = !showModelSelector"
@@ -616,7 +620,7 @@ const handleLogout = () => {
               </div>
             </div>
 
-            <!-- 文生视频 / 图生视频 切换 -->
+            <!-- Video mode switch -->
             <div class="flex items-center gap-4 mb-4">
               <div class="flex items-center gap-1 p-1 bg-black/30 rounded-xl border border-white/10 w-fit">
                 <button
@@ -639,10 +643,10 @@ const handleLogout = () => {
                 </button>
               </div>
 
-              <!-- 时长选择 -->
+              <!-- Duration -->
               <div class="flex items-center gap-2">
                 <span class="text-gray-400 text-sm">时长</span>
-                <!-- 滑块模式（视频3.0） -->
+                <!-- Slider mode -->
                 <div v-if="modelConfig.durationMode === 'slider'" class="flex items-center gap-2 flex-1">
                   <input
                     type="range"
@@ -653,7 +657,7 @@ const handleLogout = () => {
                   />
                   <span class="text-white text-sm font-bold min-w-[36px] text-center bg-black/30 px-2 py-1 rounded-lg border border-white/10">{{ durationSlider }}s</span>
                 </div>
-                <!-- 按钮模式（视频2.6/2.5 Turbo） -->
+                <!-- Button mode -->
                 <div v-else class="flex items-center gap-1 p-1 bg-black/30 rounded-xl border border-white/10">
                   <button
                     v-for="d in modelConfig.durationOptions"
@@ -667,7 +671,7 @@ const handleLogout = () => {
                 </div>
               </div>
 
-              <!-- 分辨率选择 -->
+              <!-- Resolution -->
               <div class="flex items-center gap-2">
                 <span class="text-gray-400 text-sm">画质</span>
                 <div class="flex items-center gap-1 p-1 bg-black/30 rounded-xl border border-white/10">
@@ -683,7 +687,7 @@ const handleLogout = () => {
                 </div>
               </div>
 
-              <!-- 宽高比选择 -->
+              <!-- Aspect ratio -->
               <div class="flex items-center gap-2">
                 <span class="text-gray-400 text-sm">比例</span>
                 <div class="flex items-center gap-1 p-1 bg-black/30 rounded-xl border border-white/10">
@@ -702,7 +706,7 @@ const handleLogout = () => {
                 </div>
               </div>
 
-              <!-- 生成数量选择 -->
+              <!-- Quantity -->
               <div class="flex items-center gap-2">
                 <span class="text-gray-400 text-sm">数量</span>
                 <div class="flex items-center gap-1 p-1 bg-black/30 rounded-xl border border-white/10">
@@ -720,14 +724,14 @@ const handleLogout = () => {
 
             </div>
 
-            <!-- Prompt 输入 -->
+            <!-- Prompt -->
             <div class="relative group">
               <div class="absolute -inset-0.5 bg-gradient-to-r from-orange-500/20 to-amber-500/20 rounded-2xl blur opacity-0 group-hover:opacity-100 transition duration-500"></div>
               <textarea
                 v-model="prompt"
                 :maxlength="maxPromptLength"
                 @keydown="handleKeydown"
-                placeholder="请输入详细的画面描述... (例如: 一只猫咪在阳光下打瞌睡，毛发随风轻拂)"
+                placeholder="请输入详细的画面描述...（例如：一只猫在阳光下打盹睡觉，毛发随风轻摆）"
                 class="relative w-full h-36 p-6 rounded-2xl bg-black/20 border border-white/10 text-white placeholder-gray-500 outline-none focus:border-orange-500/50 focus:ring-1 focus:ring-orange-500/20 transition-all resize-none text-lg shadow-inner backdrop-blur-sm"
               ></textarea>
               <div class="absolute bottom-4 right-4 flex items-center gap-3 pointer-events-none">
@@ -738,9 +742,9 @@ const handleLogout = () => {
               </div>
             </div>
 
-            <!-- 图片上传（仅图生视频） -->
+            <!-- Image upload -->
             <div v-if="videoMode === 'image'" class="mt-6">
-              <!-- 单图/双图模式切换 -->
+              <!-- Single / dual image mode -->
               <div class="flex items-center gap-3 mb-4">
                 <span class="text-xs font-medium text-gray-400">图片模式</span>
                 <div class="flex items-center gap-1 p-1 bg-black/30 rounded-xl border border-white/10">
@@ -763,11 +767,11 @@ const handleLogout = () => {
                     双图模式
                   </button>
                 </div>
-                <span class="text-[10px] text-gray-500">{{ imageMode === 'single' ? '仅上传首帧，AI自动生成运动' : '上传首帧+尾帧，AI生成过渡动画' }}</span>
+                <span class="text-[10px] text-gray-500">{{ imageMode === 'single' ? '仅上传首帧，AI 自动生成运动' : '上传首帧和尾帧，AI 生成过渡动画' }}</span>
               </div>
 
               <div :class="imageMode === 'dual' ? 'grid grid-cols-2 gap-4' : ''">
-              <!-- 首帧（必传） -->
+              <!-- First frame -->
               <div>
                 <div class="flex items-center gap-2 mb-2">
                   <span class="text-xs font-medium text-gray-300">首帧图片</span>
@@ -791,7 +795,7 @@ const handleLogout = () => {
                           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                         </svg>
                       </div>
-                      <span class="text-xs text-gray-400 font-medium group-hover:text-gray-300">拖拽/粘贴/点击上传</span>
+                      <span class="text-xs text-gray-400 font-medium group-hover:text-gray-300">拖拽 / 粘贴 / 点击上传</span>
                     </div>
                     <div v-else class="relative h-28 rounded-2xl overflow-hidden group shadow-lg border border-white/10">
                       <img :src="firstFramePreview" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" />
@@ -801,7 +805,7 @@ const handleLogout = () => {
                       <div v-if="uploadingFirst" class="absolute bottom-1 right-1 w-5 h-5 bg-black/70 rounded-full flex items-center justify-center">
                         <svg class="w-3 h-3 text-orange-400 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
                       </div>
-                      <div v-else-if="firstFrameCdnUrl" class="absolute bottom-1 right-1 w-5 h-5 bg-green-500/80 rounded-full flex items-center justify-center" title="已预上传到可灵CDN">
+                      <div v-else-if="firstFrameCdnUrl" class="absolute bottom-1 right-1 w-5 h-5 bg-green-500/80 rounded-full flex items-center justify-center" title="已预上传到可灵 CDN">
                         <svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>
                       </div>
                     </div>
@@ -814,7 +818,7 @@ const handleLogout = () => {
                 </div>
               </div>
 
-              <!-- 尾帧（双图模式必传） -->
+              <!-- Last frame -->
               <div v-if="imageMode === 'dual'">
                 <div class="flex items-center gap-2 mb-2">
                   <span class="text-xs font-medium text-gray-300">尾帧图片</span>
@@ -847,7 +851,7 @@ const handleLogout = () => {
                       <div v-if="uploadingLast" class="absolute bottom-1 right-1 w-5 h-5 bg-black/70 rounded-full flex items-center justify-center">
                         <svg class="w-3 h-3 text-orange-400 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
                       </div>
-                      <div v-else-if="lastFrameCdnUrl" class="absolute bottom-1 right-1 w-5 h-5 bg-green-500/80 rounded-full flex items-center justify-center" title="已预上传到可灵CDN">
+                      <div v-else-if="lastFrameCdnUrl" class="absolute bottom-1 right-1 w-5 h-5 bg-green-500/80 rounded-full flex items-center justify-center" title="已预上传到可灵 CDN">
                         <svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>
                       </div>
                     </div>
@@ -862,7 +866,7 @@ const handleLogout = () => {
               </div>
             </div>
 
-            <!-- 底部操作栏 -->
+            <!-- Footer action bar -->
             <div class="flex justify-between items-center mt-8 pt-6 border-t border-white/10">
               <div class="flex items-center gap-4">
                 <div class="flex items-center gap-2 text-sm text-gray-400">
@@ -908,12 +912,12 @@ const handleLogout = () => {
                   {{ loading ? '正在提交...' : '立即生成' }}
                 </button>
               </div>
-              <p class="text-center text-xs text-gray-500 mt-3">皆为官网正品算力，品质保障</p>
+              <p class="text-center text-xs text-gray-500 mt-3">全部为官网正版算力，品质保障</p>
             </div>
           </div>
         </div>
 
-        <!-- 历史记录 -->
+        <!-- History -->
         <div>
           <h3 class="text-lg font-bold text-white mb-4 px-2 flex items-center gap-2">
             <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
@@ -943,7 +947,7 @@ const handleLogout = () => {
                       <div class="w-1.5 h-1.5 bg-orange-400 rounded-full shadow-[0_0_5px_rgba(251,146,60,0.8)]"></div>
                       <span class="text-xs text-orange-300">{{ order.model_name }}</span>
                     </div>
-                    <!-- 视频操作按钮 -->
+                    <!-- Video actions -->
                     <template v-if="order.status === 'completed' && order.video_url">
                       <button
                         v-if="canLipSync(order)"
@@ -1001,7 +1005,7 @@ const handleLogout = () => {
                   </span>
                 </div>
               </div>
-              <!-- 生成中提示 -->
+              <!-- Generating hint -->
               <div v-if="order.status === 'processing' || order.status === 'generating'" class="mt-4 bg-white/5 rounded-lg p-3 border border-white/5">
                 <div class="flex items-center gap-2">
                   <svg class="w-4 h-4 text-orange-400 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -1026,7 +1030,7 @@ const handleLogout = () => {
       </div>
     </div>
 
-    <!-- 余额不足弹窗 -->
+    <!-- Insufficient balance dialog -->
     <Transition name="toast">
       <div v-if="showInsufficientModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50" @click.self="showInsufficientModal = false">
         <div class="bg-[#0f1115]/95 border border-white/10 rounded-2xl p-8 max-w-sm w-full mx-4 shadow-2xl">
@@ -1048,7 +1052,7 @@ const handleLogout = () => {
       </div>
     </Transition>
 
-    <!-- 视频播放弹窗 -->
+    <!-- Video player dialog -->
     <Transition name="modal">
       <div v-if="showVideoPlayer" class="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm" @click.self="closeVideoPlayer">
         <div class="relative w-full max-w-3xl mx-4">
