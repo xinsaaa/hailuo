@@ -605,6 +605,35 @@ async def submit_task(
     return task_id
 
 
+async def get_task_status(cookie: str, task_id: str) -> dict:
+    """Fetch Kling task status once and normalize the first work payload."""
+    signed_url = await _sign_url("/api/task/status", {"taskId": task_id})
+    headers = {**_make_headers(), "Cookie": cookie}
+    async with httpx.AsyncClient(timeout=15) as client:
+        r = await client.get(signed_url, headers=headers)
+        r.raise_for_status()
+        data = r.json()
+
+    d = data.get("data") or {}
+    status = d.get("status", 0)
+    works = d.get("works") or []
+    work = works[0] if works else {}
+    resource = work.get("resource", {}) if work else {}
+    normalized = {
+        "task_id": str(task_id),
+        "status": status,
+        "video_url": resource.get("resource", "") or "",
+        "creative_id": str(work.get("creativeId", "") or ""),
+        "cover_url": (work.get("cover") or {}).get("resource", "") or "",
+        "width": int(resource.get("width", 0) or 0),
+        "height": int(resource.get("height", 0) or 0),
+        "duration": int(resource.get("duration", 0) or 0),
+        "raw": data,
+    }
+    logger.debug(f"[task-status] task={task_id}, status={status}, works_count={len(works)}")
+    return normalized
+
+
 async def poll_task(cookie: str, task_id: str, timeout: int = 600, interval: int = 10) -> dict:
     """
     轮询任务状态，返回 {task_id, status, video_url, cover_url}。
@@ -613,39 +642,18 @@ async def poll_task(cookie: str, task_id: str, timeout: int = 600, interval: int
     deadline = time.time() + timeout
     while time.time() < deadline:
         await asyncio.sleep(interval)
-        signed_url = await _sign_url("/api/task/status", {"taskId": task_id})
-        headers = {**_make_headers(), "Cookie": cookie}
-        async with httpx.AsyncClient(timeout=15) as client:
-            r = await client.get(signed_url, headers=headers)
-            r.raise_for_status()
-            data = r.json()
-        d = data.get("data") or {}
-        status = d.get("status", 0)
-        works = d.get("works") or []
-        logger.debug(f"[poll] task={task_id}, status={status}, works_count={len(works)}")
-        # works 可能在 status<50 时就有占位条目（resource为空），必须检查实际URL
-        if works:
-            w = works[0]
-            resource = w.get("resource", {})
-            video_url = resource.get("resource", "")
-            if video_url:
-                creative_id = str(w.get("creativeId", ""))
-                logger.info(f"[poll] task={task_id} 完成, status={status}, creativeId={creative_id}, video_url={video_url[:80]}...")
-                return {
-                    "task_id": task_id,
-                    "status": status,
-                    "video_url": video_url,
-                    "creative_id": creative_id,
-                    "cover_url": w.get("cover", {}).get("resource", ""),
-                    "width": resource.get("width", 0),
-                    "height": resource.get("height", 0),
-                    "duration": resource.get("duration", 0),
-                }
-            else:
-                logger.debug(f"[poll] task={task_id} works存在但resource为空, status={status}, 继续轮询")
+        result = await get_task_status(cookie, task_id)
+        status = result.get("status", 0)
+        video_url = result.get("video_url", "")
+        if video_url:
+            creative_id = result.get("creative_id", "")
+            logger.info(f"[poll] task={task_id} 完成, status={status}, creativeId={creative_id}, video_url={video_url[:80]}...")
+            return result
+        logger.debug(f"[poll] task={task_id} works存在但resource为空, status={status}, 继续轮询")
         if status >= 90:
-            logger.error(f"[poll] task={task_id} FAILED: status={status}, data={d}")
-            raise RuntimeError(f"task {task_id} failed with status {status}: {d.get('message', '')}")
+            data = (result.get("raw") or {}).get("data") or {}
+            logger.error(f"[poll] task={task_id} FAILED: status={status}, data={data}")
+            raise RuntimeError(f"task {task_id} failed with status {status}: {data.get('message', '')}")
     raise TimeoutError(f"task {task_id} timed out after {timeout}s")
 
 

@@ -16,6 +16,7 @@ from sqlmodel import Session, select
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
+import uuid
 from backend.models import User, VideoOrder, Transaction, VerificationCode, AIModel, Ticket, engine
 from backend.db_utils import db_manager
 from backend.error_handler import security_logger, error_handler, RateLimitError, SecurityError
@@ -910,9 +911,10 @@ class KlingLipSyncTTSRequest(BaseModel):
 
 class KlingLipSyncSubmitRequest(BaseModel):
     model_name: str = "Kling Lip Sync"
-    video_url: str
-    face_id_key: str
-    face_image_url: str
+    order_id: Optional[int] = None
+    video_url: Optional[str] = None
+    face_id_key: Optional[str] = None
+    face_image_url: Optional[str] = None
     from_work_id: Optional[int] = None
 
     # If audio_url is empty, backend can generate TTS audio first.
@@ -1244,6 +1246,63 @@ def _get_lipsync_model(session: Session, model_name: str) -> AIModel:
     return model
 
 
+async def _resolve_lipsync_source(
+    req: KlingLipSyncSubmitRequest,
+    current_user: User,
+    session: Session,
+    cookie: str,
+) -> dict:
+    from backend import kling_api
+
+    if req.video_url and req.face_image_url and req.face_id_key:
+        return {
+            "video_url": req.video_url.strip(),
+            "face_image_url": req.face_image_url.strip(),
+            "face_id_key": req.face_id_key.strip(),
+            "from_work_id": req.from_work_id,
+            "source_duration_ms": 0,
+        }
+
+    if not req.order_id:
+        raise HTTPException(status_code=400, detail="缺少对口型源视频信息")
+
+    order = session.get(VideoOrder, req.order_id)
+    if not order:
+        raise HTTPException(status_code=404, detail="源视频订单不存在")
+    if order.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="无权使用该视频进行对口型")
+    if order.status != "completed":
+        raise HTTPException(status_code=400, detail="请先选择一个已完成的视频")
+    if not order.model_name or not (order.model_name.startswith("Kling") or order.model_name.startswith("可灵")):
+        raise HTTPException(status_code=400, detail="只有可灵生成成功的视频才能对口型")
+    if not order.task_id:
+        raise HTTPException(status_code=400, detail="该视频缺少可灵任务信息，暂时无法对口型")
+
+    try:
+        task_status = await kling_api.get_task_status(cookie, str(order.task_id))
+    except Exception as e:
+        app_logger.error(f"解析对口型源视频失败 order_id={order.id}, task_id={order.task_id}: {e}")
+        raise HTTPException(status_code=502, detail=f"获取可灵源视频信息失败: {e}")
+
+    video_url = (task_status.get("video_url") or "").strip()
+    face_image_url = (task_status.get("cover_url") or "").strip()
+    creative_id = str(task_status.get("creative_id") or "").strip()
+    from_work_id = int(creative_id) if creative_id.isdigit() else None
+
+    if not video_url:
+        raise HTTPException(status_code=400, detail="未找到可灵源视频地址，请稍后重试")
+    if not face_image_url:
+        raise HTTPException(status_code=400, detail="未找到可灵源视频封面，请稍后重试")
+
+    return {
+        "video_url": video_url,
+        "face_image_url": face_image_url,
+        "face_id_key": str(uuid.uuid4()),
+        "from_work_id": from_work_id,
+        "source_duration_ms": int(task_status.get("duration", 0) or 0),
+    }
+
+
 @app.post("/api/kling/lip-sync/tts")
 async def kling_lip_sync_tts(
     req: KlingLipSyncTTSRequest,
@@ -1253,7 +1312,7 @@ async def kling_lip_sync_tts(
 
     account_id, cookie = _pick_kling_cookie_for_lipsync()
     if req.speaker_id not in KLING_LIP_SYNC_SPEAKERS:
-        raise HTTPException(status_code=400, detail=f"???? speaker_id: {req.speaker_id}")
+        raise HTTPException(status_code=400, detail=f"不支持的 speaker_id: {req.speaker_id}")
     try:
         tts = await kling_api.lip_sync_tts(
             cookie=cookie,
@@ -1292,6 +1351,7 @@ async def kling_lip_sync_submit(
     from backend import kling_api
 
     selected_account_id, cookie = _pick_kling_cookie_for_lipsync(account_id)
+    source = await _resolve_lipsync_source(req, current_user, session, cookie)
 
     audio_url = (req.audio_url or "").strip()
     tts_duration_ms = 0
@@ -1315,7 +1375,20 @@ async def kling_lip_sync_submit(
             raise HTTPException(status_code=502, detail=f"自动TTS失败: {e}")
 
     model = _get_lipsync_model(session, req.model_name)
-    audio_window_ms = max(0, int(req.audio_end_time) - int(req.audio_start_time))
+    effective_audio_start_time = int(req.audio_start_time or 0)
+    effective_audio_end_time = int(req.audio_end_time or 0)
+    if effective_audio_end_time <= effective_audio_start_time and tts_duration_ms > 0:
+        effective_audio_end_time = effective_audio_start_time + tts_duration_ms
+    elif effective_audio_end_time <= effective_audio_start_time:
+        effective_audio_end_time = effective_audio_start_time + 3000
+
+    effective_face_start_time = int(req.face_start_time or 0)
+    effective_face_end_time = int(req.face_end_time or 0)
+    source_duration_ms = int(source.get("source_duration_ms", 0) or 0)
+    if effective_face_end_time <= effective_face_start_time:
+        effective_face_end_time = max(source_duration_ms, effective_audio_end_time, 3000)
+
+    audio_window_ms = max(0, effective_audio_end_time - effective_audio_start_time)
     if audio_window_ms <= 0 and tts_duration_ms > 0:
         audio_window_ms = tts_duration_ms
     charge_seconds = max(1, int((audio_window_ms + 999) / 1000))
@@ -1329,17 +1402,17 @@ async def kling_lip_sync_submit(
     try:
         submit = await kling_api.submit_lip_sync_task(
             cookie=cookie,
-            video_url=req.video_url,
+            video_url=source["video_url"],
             audio_url=audio_url,
-            face_id_key=req.face_id_key,
-            face_image_url=req.face_image_url,
+            face_id_key=source["face_id_key"],
+            face_image_url=source["face_image_url"],
             face_id=req.face_id,
-            from_work_id=req.from_work_id,
-            face_start_time=req.face_start_time,
-            face_end_time=req.face_end_time,
+            from_work_id=source["from_work_id"],
+            face_start_time=effective_face_start_time,
+            face_end_time=effective_face_end_time,
             audio_start_time_in_video=req.audio_start_time_in_video,
-            audio_start_time=req.audio_start_time,
-            audio_end_time=req.audio_end_time,
+            audio_start_time=effective_audio_start_time,
+            audio_end_time=effective_audio_end_time,
             include_original_audio=req.include_original_audio,
             speech_volume=req.speech_volume,
             original_audio_volume=req.original_audio_volume,

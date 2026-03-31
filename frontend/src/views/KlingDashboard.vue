@@ -1,7 +1,17 @@
 ﻿<script setup>
 import { ref, onMounted, onUnmounted, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { getCurrentUser, createOrder, getOrders, getPublicConfig, getAvailableModels, klingPreUpload } from '../api'
+import {
+  getCurrentUser,
+  createOrder,
+  getOrders,
+  getPublicConfig,
+  getAvailableModels,
+  klingPreUpload,
+  klingLipSyncSpeakers,
+  klingLipSyncSubmit,
+  klingLipSyncStatus,
+} from '../api'
 
 const router = useRouter()
 const siteName = ref(localStorage.getItem('site_name') || '大帝AI')
@@ -14,6 +24,7 @@ const loading = ref(false)
 
 // Model selection
 const availableModels = ref([])
+const lipSyncModels = ref([])
 const selectedModel = ref(null)
 const showModelSelector = ref(false)
 
@@ -184,6 +195,7 @@ onMounted(() => {
 onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside)
   if (ordersInterval) clearTimeout(ordersInterval)
+  if (lipSyncStatusTimer) clearTimeout(lipSyncStatusTimer)
 })
 
 // Toast
@@ -194,6 +206,15 @@ const toastType = ref('info')
 // Video player dialog
 const showVideoPlayer = ref(false)
 const currentVideoUrl = ref('')
+const showLipSyncModal = ref(false)
+const lipSyncOrder = ref(null)
+const lipSyncText = ref('')
+const lipSyncSpeakerId = ref('chat1_female_new-3')
+const lipSyncSpeakers = ref([])
+const lipSyncSubmitting = ref(false)
+const lipSyncPolling = ref(false)
+const lipSyncTaskId = ref('')
+let lipSyncStatusTimer = null
 
 const playVideo = (url) => {
   currentVideoUrl.value = url
@@ -220,16 +241,111 @@ const getVideoUrls = (order) => {
 
 const canLipSync = (order) => {
   const urls = getVideoUrls(order)
-  return order?.status === 'completed' && urls.length > 0
+  const isKling = !!order?.model_name && (order.model_name.startsWith('Kling') || order.model_name.startsWith('可灵'))
+  return order?.status === 'completed' && urls.length > 0 && isKling && !!order?.task_id
 }
 
 const openLipSync = (order) => {
-  // Temporary placeholder until lip-sync form is wired.
   if (!canLipSync(order)) {
     showNotification('请先选择一个已完成的视频', 'error')
     return
   }
-  showNotification('已选中该视频，对口型配置界面开发中', 'info')
+  lipSyncOrder.value = order
+  lipSyncText.value = (order.prompt || '').replace(/\[#ORD\d+\]/g, '').trim()
+  lipSyncTaskId.value = ''
+  showLipSyncModal.value = true
+}
+
+const closeLipSyncModal = () => {
+  showLipSyncModal.value = false
+  lipSyncTaskId.value = ''
+  lipSyncSubmitting.value = false
+  lipSyncPolling.value = false
+  if (lipSyncStatusTimer) {
+    clearTimeout(lipSyncStatusTimer)
+    lipSyncStatusTimer = null
+  }
+}
+
+const selectedLipSyncModel = computed(() => lipSyncModels.value[0] || null)
+
+const lipSyncPriceHint = computed(() => {
+  const model = selectedLipSyncModel.value
+  if (!model) return ''
+  if (model.price_per_second) return `按秒计费：¥${Number(model.price_per_second).toFixed(2)}/秒`
+  if (model.price_10s) return `10秒价格：¥${Number(model.price_10s).toFixed(2)}`
+  if (model.price) return `基础价格：¥${Number(model.price).toFixed(2)}`
+  return ''
+})
+
+const pollLipSyncTask = async (taskId) => {
+  if (!taskId) return
+  lipSyncPolling.value = true
+  try {
+    const result = await klingLipSyncStatus(taskId)
+    if (result.done && result.video_url) {
+      lipSyncPolling.value = false
+      lipSyncTaskId.value = ''
+      showNotification('对口型已完成，记录已刷新', 'success')
+      await loadData()
+      closeLipSyncModal()
+      playVideo(getVideoUrl(result.video_url))
+      return
+    }
+    if (result.failed) {
+      lipSyncPolling.value = false
+      lipSyncTaskId.value = ''
+      showNotification(result.message || '对口型生成失败', 'error')
+      return
+    }
+    lipSyncStatusTimer = setTimeout(() => pollLipSyncTask(taskId), 5000)
+  } catch (err) {
+    lipSyncPolling.value = false
+    lipSyncTaskId.value = ''
+    showNotification(err.response?.data?.detail || '查询对口型状态失败', 'error')
+  }
+}
+
+const submitLipSync = async () => {
+  if (!lipSyncOrder.value || !canLipSync(lipSyncOrder.value)) {
+    showNotification('请先选择一个已完成的视频', 'error')
+    return
+  }
+  if (!lipSyncText.value.trim()) {
+    showNotification('请输入配音文案', 'error')
+    return
+  }
+  if (!lipSyncSpeakerId.value) {
+    showNotification('请选择音色', 'error')
+    return
+  }
+
+  lipSyncSubmitting.value = true
+  try {
+    const result = await klingLipSyncSubmit({
+      order_id: lipSyncOrder.value.id,
+      model_name: selectedLipSyncModel.value?.name || 'Kling Lip Sync',
+      tts_text: lipSyncText.value.trim(),
+      tts_speaker_id: lipSyncSpeakerId.value,
+      tts_speed: '1',
+      tts_emotion: '',
+      audio_start_time: 0,
+      audio_end_time: 0,
+      face_start_time: 0,
+      face_end_time: 0,
+      include_original_audio: false,
+    })
+    lipSyncTaskId.value = result.task_id || ''
+    showNotification(`对口型任务已提交${result.cost ? `，扣费 ¥${Number(result.cost).toFixed(2)}` : ''}`, 'success')
+    await loadData()
+    if (lipSyncTaskId.value) {
+      pollLipSyncTask(lipSyncTaskId.value)
+    }
+  } catch (err) {
+    showNotification(err.response?.data?.detail || '对口型提交失败', 'error')
+  } finally {
+    lipSyncSubmitting.value = false
+  }
 }
 const getVideoUrl = (url) => {
   const token = localStorage.getItem('token')
@@ -272,9 +388,20 @@ const loadData = async () => {
         (model.platform === 'kling' || model.id?.includes('kling') || model.name?.startsWith('Kling')) &&
         model.type !== 'lip_sync'
       )
+      lipSyncModels.value = modelsData.models.filter(model =>
+        (model.platform === 'kling' || model.id?.includes('kling') || model.name?.startsWith('Kling')) &&
+        model.type === 'lip_sync'
+      )
       availableModels.value = klingModels
       if (klingModels.length > 0 && !selectedModel.value) {
         selectedModel.value = klingModels[0]
+      }
+    }
+    if (lipSyncSpeakers.value.length === 0) {
+      const speakerData = await klingLipSyncSpeakers().catch(() => null)
+      if (speakerData?.speakers?.length) {
+        lipSyncSpeakers.value = speakerData.speakers
+        if (!lipSyncSpeakerId.value) lipSyncSpeakerId.value = speakerData.speakers[0].speaker_id
       }
     }
   } catch (err) {
@@ -1029,6 +1156,90 @@ const handleLogout = () => {
         </div>
       </div>
     </div>
+
+    <!-- Lip sync dialog -->
+    <Transition name="toast">
+      <div v-if="showLipSyncModal" class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4" @click.self="closeLipSyncModal">
+        <div class="w-full max-w-2xl bg-[#0f1115]/95 border border-white/10 rounded-3xl shadow-2xl overflow-hidden">
+          <div class="flex items-center justify-between px-6 py-5 border-b border-white/10 bg-white/5">
+            <div>
+              <h3 class="text-lg font-bold text-white">可灵对口型</h3>
+              <p class="text-xs text-gray-400 mt-1">仅支持可灵历史记录里已完成的视频</p>
+            </div>
+            <button @click="closeLipSyncModal" class="w-9 h-9 rounded-full bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white transition-all">×</button>
+          </div>
+
+          <div class="p-6 space-y-5">
+            <div class="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div class="flex items-center justify-between gap-4">
+                <div class="min-w-0">
+                  <p class="text-xs text-gray-500 mb-1">源视频</p>
+                  <p class="text-sm text-white line-clamp-2">{{ lipSyncOrder?.prompt }}</p>
+                </div>
+                <button
+                  v-if="lipSyncOrder?.video_url"
+                  @click="playVideo(getVideoUrl(lipSyncOrder.video_url))"
+                  class="shrink-0 px-3 py-1.5 text-xs rounded-lg bg-orange-500/10 text-orange-300 border border-orange-500/20 hover:bg-orange-500/20 transition-all"
+                >预览视频</button>
+              </div>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-4">
+              <div>
+                <label class="block text-sm text-gray-300 mb-2">音色</label>
+                <select v-model="lipSyncSpeakerId" class="w-full px-4 py-3 rounded-2xl bg-black/30 border border-white/10 text-white outline-none focus:border-violet-500/40">
+                  <option v-for="speaker in lipSyncSpeakers" :key="speaker.speaker_id" :value="speaker.speaker_id">
+                    {{ speaker.name }}
+                  </option>
+                </select>
+              </div>
+              <div class="rounded-2xl border border-violet-500/20 bg-violet-500/10 p-4">
+                <p class="text-sm font-medium text-violet-200">{{ selectedLipSyncModel?.display_name || '对口型模型' }}</p>
+                <p class="text-xs text-violet-100/80 mt-2">{{ lipSyncPriceHint || '价格由管理员在模型管理中配置' }}</p>
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-sm text-gray-300 mb-2">配音文案</label>
+              <textarea
+                v-model="lipSyncText"
+                rows="6"
+                maxlength="1000"
+                placeholder="请输入要生成配音的文本"
+                class="w-full px-4 py-3 rounded-2xl bg-black/30 border border-white/10 text-white placeholder:text-gray-500 outline-none focus:border-violet-500/40 resize-none"
+              />
+              <div class="flex items-center justify-between mt-2 text-xs text-gray-500">
+                <span>情感默认留空，语速固定 1.0</span>
+                <span>{{ lipSyncText.length }}/1000</span>
+              </div>
+            </div>
+
+            <div v-if="lipSyncTaskId || lipSyncPolling" class="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4 text-sm text-amber-100">
+              <div class="flex items-center gap-2">
+                <span class="w-4 h-4 rounded-full border-2 border-current border-t-transparent animate-spin"></span>
+                <span>任务已提交，正在轮询可灵结果{{ lipSyncTaskId ? `（任务ID: ${lipSyncTaskId}）` : '' }}</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="px-6 py-5 border-t border-white/10 bg-white/5 flex items-center justify-between gap-4">
+            <p class="text-xs text-gray-500">提交后会自动扣费并开始生成，完成后会刷新历史记录。</p>
+            <div class="flex items-center gap-3">
+              <button @click="closeLipSyncModal" class="px-4 py-2 rounded-xl border border-white/10 text-gray-300 hover:text-white hover:bg-white/5 transition-all">取消</button>
+              <button
+                @click="submitLipSync"
+                :disabled="lipSyncSubmitting || lipSyncPolling"
+                class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white font-semibold disabled:opacity-50 transition-all"
+              >
+                <span v-if="lipSyncSubmitting">提交中...</span>
+                <span v-else-if="lipSyncPolling">生成中...</span>
+                <span v-else>开始对口型</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </Transition>
 
     <!-- Insufficient balance dialog -->
     <Transition name="toast">
