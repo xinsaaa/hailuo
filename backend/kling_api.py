@@ -37,6 +37,12 @@ DATA_DIR = Path(__file__).parent.parent / "data"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 KLING_ACCOUNTS_FILE = DATA_DIR / "kling_accounts.json"
 
+# Monitor safety controls
+DEFAULT_MONITOR_INTERVAL = 1800  # 30 minutes
+REFRESH_MAX_FAILS = 3
+REFRESH_BACKOFF_BASE = 900       # 15 minutes
+REFRESH_BACKOFF_MAX = 21600      # 6 hours
+
 # 自动迁移：如果旧路径有数据但新路径没有，复制过来
 _OLD_ACCOUNTS_FILE = Path(__file__).parent / "kling_accounts.json"
 if _OLD_ACCOUNTS_FILE.exists() and not KLING_ACCOUNTS_FILE.exists():
@@ -107,6 +113,11 @@ def list_kling_accounts() -> list:
         accounts.append({
             **acc,
             "is_logged_in": is_logged,
+            "refresh_fail_count": int(acc.get("refresh_fail_count", 0) or 0),
+            "refresh_paused": bool(acc.get("refresh_paused", False)),
+            "needs_relogin": bool(acc.get("needs_relogin", False)),
+            "next_refresh_retry_at": int(acc.get("next_refresh_retry_at", 0) or 0),
+            "monitor_message": acc.get("monitor_message", ""),
         })
     return accounts
 
@@ -121,6 +132,11 @@ def save_kling_account(account_id: str, display_name: str, priority: int = 5,
         "is_active": True,
         "max_concurrent": max_concurrent,
         "current_tasks": 0,
+        "refresh_fail_count": 0,
+        "refresh_paused": False,
+        "needs_relogin": False,
+        "next_refresh_retry_at": 0,
+        "monitor_message": "",
     }
     data["accounts"][account_id] = acc
     _save_accounts(data)
@@ -1104,16 +1120,20 @@ async def refresh_token(cookie_str: str) -> Optional[str]:
 _monitor_task: Optional[asyncio.Task] = None
 
 
-async def _monitor_loop(interval: int = 600):
-    """
-    后台循环，每隔 interval 秒检查所有可灵账号的登录状态。
-    如果 cookie 失效，自动尝试用 passToken 刷新。
-    """
+def _next_refresh_retry_at(fail_count: int) -> int:
+    # Exponential backoff avoids refresh loops that trigger risk-control.
+    step = max(fail_count - 1, 0)
+    delay = min(REFRESH_BACKOFF_BASE * (2 ** step), REFRESH_BACKOFF_MAX)
+    return int(time.time()) + delay
+
+
+async def _monitor_loop(interval: int = DEFAULT_MONITOR_INTERVAL):
     import logging
     logger = logging.getLogger("kling_monitor")
     while True:
         try:
             accounts = list_kling_accounts()
+            now_ts = int(time.time())
             for acc in accounts:
                 aid = acc["account_id"]
                 creds = get_kling_credentials(aid)
@@ -1122,34 +1142,109 @@ async def _monitor_loop(interval: int = 600):
                 cookie = creds.get("cookie", "")
                 if not cookie:
                     continue
+
                 ok = await check_login(cookie)
+                if ok:
+                    update_kling_account(
+                        aid,
+                        is_logged_in=True,
+                        refresh_fail_count=0,
+                        refresh_paused=False,
+                        needs_relogin=False,
+                        next_refresh_retry_at=0,
+                        monitor_message="",
+                    )
+                    logger.info(f"[kling_monitor] {aid} isLogin=True")
+                    await asyncio.sleep(5)
+                    continue
 
-                # 登录失效时尝试自动刷新
-                if not ok:
-                    logger.info(f"[kling_monitor] {aid} cookie失效，尝试自动刷新...")
-                    new_cookie = await refresh_token(cookie)
-                    if new_cookie:
-                        # 保存新 cookie
-                        save_kling_credentials(aid, new_cookie, creds.get("did", ""))
-                        ok = True
-                        logger.info(f"[kling_monitor] {aid} token刷新成功，已续期")
+                refresh_paused = bool(acc.get("refresh_paused", False))
+                refresh_fail_count = int(acc.get("refresh_fail_count", 0) or 0)
+                next_retry_at = int(acc.get("next_refresh_retry_at", 0) or 0)
+
+                # Paused mode: keep only low-frequency check_login and do not refresh token.
+                if refresh_paused:
+                    update_kling_account(
+                        aid,
+                        is_logged_in=False,
+                        needs_relogin=True,
+                        monitor_message="Please scan QR to re-login (auto refresh paused)",
+                    )
+                    logger.warning(f"[kling_monitor] {aid} refresh paused, waiting for re-login")
+                    await asyncio.sleep(5)
+                    continue
+
+                # Backoff window: skip token refresh attempts to avoid risk-control loops.
+                if next_retry_at > now_ts:
+                    wait_sec = next_retry_at - now_ts
+                    update_kling_account(
+                        aid,
+                        is_logged_in=False,
+                        monitor_message=f"Login invalid, retry refresh in {wait_sec}s",
+                    )
+                    logger.info(f"[kling_monitor] {aid} in refresh backoff, wait={wait_sec}s")
+                    await asyncio.sleep(5)
+                    continue
+
+                logger.info(f"[kling_monitor] {aid} cookie invalid, trying refresh_token")
+                new_cookie = await refresh_token(cookie)
+                if new_cookie:
+                    save_kling_credentials(aid, new_cookie, creds.get("did", ""))
+                    update_kling_account(
+                        aid,
+                        is_logged_in=True,
+                        refresh_fail_count=0,
+                        refresh_paused=False,
+                        needs_relogin=False,
+                        next_refresh_retry_at=0,
+                        monitor_message="",
+                    )
+                    logger.info(f"[kling_monitor] {aid} token refresh success")
+                else:
+                    fail_count = refresh_fail_count + 1
+                    if fail_count >= REFRESH_MAX_FAILS:
+                        update_kling_account(
+                            aid,
+                            is_logged_in=False,
+                            refresh_fail_count=fail_count,
+                            refresh_paused=True,
+                            needs_relogin=True,
+                            next_refresh_retry_at=0,
+                            monitor_message=(
+                                f"Refresh failed {fail_count} times; auto refresh paused. "
+                                "Please scan QR to re-login"
+                            ),
+                        )
+                        logger.warning(
+                            f"[kling_monitor] {aid} refresh failed {fail_count} times, pause auto refresh"
+                        )
                     else:
-                        logger.warning(f"[kling_monitor] {aid} token刷新失败，需重新扫码登录")
+                        retry_at = _next_refresh_retry_at(fail_count)
+                        wait_sec = max(retry_at - int(time.time()), 0)
+                        update_kling_account(
+                            aid,
+                            is_logged_in=False,
+                            refresh_fail_count=fail_count,
+                            refresh_paused=False,
+                            needs_relogin=False,
+                            next_refresh_retry_at=retry_at,
+                            monitor_message=(
+                                f"token refresh failed ({fail_count}/{REFRESH_MAX_FAILS}), "
+                                f"auto retry in {wait_sec}s"
+                            ),
+                        )
+                        logger.warning(
+                            f"[kling_monitor] {aid} refresh failed ({fail_count}/{REFRESH_MAX_FAILS}), "
+                            f"retry in {wait_sec}s"
+                        )
 
-                # 更新 is_logged_in 标记
-                _data = _load_accounts()
-                if aid in _data["accounts"]:
-                    _data["accounts"][aid]["is_logged_in"] = ok
-                _save_accounts(_data)
-                logger.info(f"[kling_monitor] {aid} isLogin={ok}")
-                # 账号间间隔，避免短时间内大量请求触发风控
                 await asyncio.sleep(5)
         except Exception as e:
-            logger.warning(f"[kling_monitor] 检查异常: {e}")
+            logger.warning(f"[kling_monitor] monitor error: {e}")
         await asyncio.sleep(interval)
 
 
-def start_monitor(interval: int = 600):
+def start_monitor(interval: int = DEFAULT_MONITOR_INTERVAL):
     """在当前 event loop 中启动监测后台任务（只启动一次）"""
     global _monitor_task
     if _monitor_task is None or _monitor_task.done():

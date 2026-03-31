@@ -147,10 +147,29 @@ async def check_account_login(account_id: str, admin=Depends(get_admin_user)):
     """验证已保存 cookie 是否有效，失效时自动更新状态"""
     creds = get_kling_credentials(account_id)
     if not creds:
-        update_kling_account(account_id, is_logged_in=False)
+        update_kling_account(
+            account_id,
+            is_logged_in=False,
+            monitor_message="请扫码重登（账号未登录）",
+        )
         return {"is_logged_in": False}
     ok = await check_login(creds["cookie"])
-    update_kling_account(account_id, is_logged_in=ok)
+    if ok:
+        update_kling_account(
+            account_id,
+            is_logged_in=True,
+            refresh_fail_count=0,
+            refresh_paused=False,
+            needs_relogin=False,
+            next_refresh_retry_at=0,
+            monitor_message="",
+        )
+    else:
+        update_kling_account(
+            account_id,
+            is_logged_in=False,
+            monitor_message="请扫码重登（登录已失效）",
+        )
     return {"is_logged_in": ok}
 
 
@@ -164,10 +183,22 @@ async def refresh_account_token(account_id: str, admin=Depends(get_admin_user)):
     new_cookie = await refresh_token(creds["cookie"])
     if new_cookie:
         save_kling_credentials(account_id, new_cookie, creds.get("did", ""))
-        update_kling_account(account_id, is_logged_in=True)
+        update_kling_account(
+            account_id,
+            is_logged_in=True,
+            refresh_fail_count=0,
+            refresh_paused=False,
+            needs_relogin=False,
+            next_refresh_retry_at=0,
+            monitor_message="",
+        )
         return {"success": True, "message": "Token刷新成功"}
     else:
-        update_kling_account(account_id, is_logged_in=False)
+        update_kling_account(
+            account_id,
+            is_logged_in=False,
+            monitor_message="Token刷新失败，请扫码重登",
+        )
         raise HTTPException(status_code=502, detail="Token刷新失败，passToken可能已过期，需重新扫码登录")
 
 
@@ -232,7 +263,15 @@ async def _poll_login(account_id: str):
             try:
                 cred = await qr_accept_result(did, risk_id, token, signature, session_cookies)
                 save_kling_credentials(account_id, cred["cookie"], did)
-                update_kling_account(account_id, is_logged_in=True)
+                update_kling_account(
+                    account_id,
+                    is_logged_in=True,
+                    refresh_fail_count=0,
+                    refresh_paused=False,
+                    needs_relogin=False,
+                    next_refresh_retry_at=0,
+                    monitor_message="",
+                )
                 # 首次登录后自动初始化去水印设置
                 try:
                     await init_remove_watermark(cred["cookie"])

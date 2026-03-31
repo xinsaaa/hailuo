@@ -53,8 +53,14 @@
             <td class="px-4 py-3"><span class="px-2 py-0.5 bg-gray-700 text-gray-300 rounded text-xs">{{ account.priority }}</span></td>
             <td class="px-4 py-3 text-gray-300">{{ account.max_concurrent }}</td>
             <td class="px-4 py-3">
-              <span v-if="account.is_logged_in" class="px-2 py-0.5 bg-green-500/20 text-green-400 border border-green-500/30 rounded text-xs">已登录</span>
-              <span v-else class="px-2 py-0.5 bg-red-500/20 text-red-400 border border-red-500/30 rounded text-xs">未登录</span>
+              <div class="flex flex-col gap-1">
+                <span v-if="account.needs_relogin" class="px-2 py-0.5 bg-yellow-500/20 text-yellow-300 border border-yellow-500/30 rounded text-xs w-fit">Re-login required</span>
+                <span v-else-if="account.is_logged_in" class="px-2 py-0.5 bg-green-500/20 text-green-400 border border-green-500/30 rounded text-xs w-fit">Logged in</span>
+                <span v-else class="px-2 py-0.5 bg-red-500/20 text-red-400 border border-red-500/30 rounded text-xs w-fit">Logged out</span>
+                <span v-if="account.refresh_paused" class="text-[11px] text-yellow-300">Auto refresh paused, please re-login via QR</span>
+                <span v-else-if="account.next_refresh_retry_at && account.next_refresh_retry_at * 1000 > Date.now()" class="text-[11px] text-gray-400">Next auto retry: {{ formatRetryEta(account.next_refresh_retry_at) }}</span>
+                <span v-if="account.monitor_message" class="text-[11px] text-gray-400">{{ account.monitor_message }}</span>
+              </div>
             </td>
             <td class="px-4 py-3">
               <div class="flex items-center gap-2">
@@ -75,7 +81,7 @@
             <td class="px-4 py-3">
               <div class="flex items-center gap-2 flex-wrap">
                 <button @click="openQrLogin(account)" class="bg-orange-600 hover:bg-orange-700 text-white px-3 py-1 rounded text-xs transition-colors">{{ account.is_logged_in ? '重新登录' : '扫码登录' }}</button>
-                <button @click="refreshToken(account)" :disabled="refreshing[account.account_id]" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-xs transition-colors disabled:opacity-50">{{ refreshing[account.account_id] ? '刷新中...' : '刷新Token' }}</button>
+                <button @click="refreshToken(account)" :disabled="refreshing[account.account_id] || account.refresh_paused" class="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-xs transition-colors disabled:opacity-50">{{ account.refresh_paused ? "Auto refresh paused" : (refreshing[account.account_id] ? "Refreshing..." : "Refresh Token") }}</button>
                 <button @click="checkLogin(account)" class="bg-gray-600 hover:bg-gray-500 text-white px-3 py-1 rounded text-xs transition-colors">验证</button>
                 <button @click="toggleActive(account)" :class="account.is_active ? 'bg-yellow-600 hover:bg-yellow-700' : 'bg-green-600 hover:bg-green-700'" class="text-white px-3 py-1 rounded text-xs transition-colors">{{ account.is_active ? '禁用' : '启用' }}</button>
                 <button @click="deleteAccount(account.account_id)" class="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded text-xs transition-colors">删除</button>
@@ -197,6 +203,19 @@ const showToastMessage = (msg, type = 'success') => {
   toastTimer = setTimeout(() => { showToast.value = false }, 3000)
 }
 
+const formatRetryEta = (ts) => {
+  const sec = Number(ts || 0)
+  if (!sec) return "--"
+  const targetMs = sec * 1000
+  const deltaMs = targetMs - Date.now()
+  if (deltaMs <= 0) return "soon"
+  const mins = Math.ceil(deltaMs / 60000)
+  if (mins < 60) return `${mins} min`
+  const hours = Math.floor(mins / 60)
+  const leftMins = mins % 60
+  return leftMins > 0 ? `${hours}h ${leftMins}m` : `${hours}h`
+}
+
 const loadAccounts = async () => {
   try {
     const res = await api.get('/admin/kling-accounts')
@@ -222,10 +241,10 @@ const addAccount = async () => {
 }
 
 const deleteAccount = async (accountId) => {
-  if (!confirm('确定删除该账号吗？')) return
+  if (!confirm("Are you sure to delete this account?")) return
   try {
     await api.delete(`/admin/kling-accounts/${accountId}`)
-    showToastMessage('账号已删除')
+    showToastMessage("Account deleted")
     loadAccounts()
   } catch (e) {
     showToastMessage(e.response?.data?.detail || '删除失败', 'error')
@@ -235,7 +254,7 @@ const deleteAccount = async (accountId) => {
 const toggleActive = async (account) => {
   try {
     await api.patch(`/admin/kling-accounts/${account.account_id}`, { is_active: !account.is_active })
-    showToastMessage(account.is_active ? '账号已禁用' : '账号已启用')
+    showToastMessage(account.is_active ? "Account disabled" : "Account enabled")
     loadAccounts()
   } catch (e) {
     showToastMessage(e.response?.data?.detail || '操作失败', 'error')
@@ -246,16 +265,20 @@ const checkLogin = async (account) => {
   try {
     const res = await api.post(`/admin/kling-accounts/${account.account_id}/check-login`)
     showToastMessage(
-      res.data.is_logged_in ? 'Cookie 有效，已登录' : 'Cookie 已失效，请重新扫码',
+      res.data.is_logged_in ? "Cookie valid, logged in" : "Cookie invalid, please scan QR again",
       res.data.is_logged_in ? 'success' : 'error'
     )
     loadAccounts()
   } catch (e) {
-    showToastMessage(e.response?.data?.detail || '验证失败', 'error')
+    showToastMessage(e.response?.data?.detail || '楠岃瘉澶辫触', 'error')
   }
 }
 
 const refreshToken = async (account) => {
+  if (account.refresh_paused) {
+    showToastMessage('该账号已暂停自动刷新，请扫码重登', 'error')
+    return
+  }
   refreshing.value[account.account_id] = true
   try {
     const res = await api.post(`/admin/kling-accounts/${account.account_id}/refresh-token`)
@@ -319,7 +342,7 @@ const startPolling = (accountId) => {
         qrModal.value.status = 'done'
         stopPolling()
         stopCountdown()
-        showToastMessage('登录成功！')
+        showToastMessage("Login successful")
         loadAccounts()
       } else if (st === 'error') {
         qrModal.value.status = 'error'
@@ -354,7 +377,7 @@ const openQrLogin = async (account) => {
   } catch (e) {
     qrModal.value.status = 'error'
     qrModal.value.loading = false
-    showToastMessage(e.response?.data?.detail || '获取二维码失败', 'error')
+    showToastMessage(e.response?.data?.detail || "Failed to fetch QR code", "error")
   }
 }
 
