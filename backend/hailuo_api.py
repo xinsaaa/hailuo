@@ -235,6 +235,7 @@ def build_generate_video_body(
             "resolution": resolution,
             "duration": duration,
             "aspectRatio": aspect_ratio,
+            "referenceMode": "start-end-frames",
         },
         "videoExtra": {
             "promptStruct": _build_prompt_struct(desc),

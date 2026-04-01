@@ -35,8 +35,8 @@ def _is_kling_model(model_name: Optional[str]) -> bool:
 
 
 MODEL_ID_MAP: dict = {
-    "Hailuo 2.3":          "23217",
-    "hailuo_2_3":          "23217",
+    "Hailuo 2.3":          "23204",
+    "hailuo_2_3":          "23204",
     "Hailuo 2.3-Fast":     "23218",
     "hailuo_2_3_fast":     "23218",
     "Hailuo 2.0":          "23210",
