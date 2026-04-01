@@ -403,6 +403,16 @@ const statusMap = {
   failed: { text: '失败', class: 'bg-red-500/20 text-red-400 border-red-500/30' },
 }
 
+const getOrderProgress = (order) => {
+  const value = Number(order?.progress ?? 0)
+  if (!Number.isFinite(value)) return 0
+  return Math.max(0, Math.min(100, value))
+}
+
+const getOrderProgressMessage = (order) => {
+  return order?.status_message || (order?.status === 'processing' || order?.status === 'generating' ? 'AI 正在生成中...' : '')
+}
+
 // 余额不足提示（带充值引导）
 const showInsufficientModal = ref(false)
 const insufficientPrice = ref(0)
@@ -984,7 +994,14 @@ const handleLogout = () => {
                       <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                       <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                     </svg>
-                    <span class="text-sm text-gray-400">AI 正在生成中...</span>
+                    <span class="text-sm text-gray-300">{{ getOrderProgressMessage(order) }}</span>
+                    <span class="ml-auto text-xs font-mono text-cyan-300">{{ getOrderProgress(order) }}%</span>
+                  </div>
+                  <div class="mt-3 h-2 rounded-full bg-black/30 overflow-hidden">
+                    <div
+                      class="h-full rounded-full bg-gradient-to-r from-cyan-500 via-blue-500 to-indigo-500 transition-all duration-500"
+                      :style="{ width: `${getOrderProgress(order)}%` }"
+                    ></div>
                   </div>
                 </div>
               </div>

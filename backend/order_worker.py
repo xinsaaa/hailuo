@@ -165,6 +165,26 @@ def _load_hailuo_tracking(task_ids_raw: str) -> tuple[set[str], list[str]]:
     return {str(parsed)}, [str(parsed)]
 
 
+def _hailuo_progress_hint(status: int, message: str, current_progress: int = 0) -> tuple[int, str]:
+    """Map Hailuo feed status/message to a user-facing progress hint."""
+    text = (message or "").strip()
+    if status == 2:
+        return 100, "已生成完成"
+    if status >= 90:
+        return 0, text or "生成失败"
+    if "优化提示词" in text:
+        return max(current_progress, 15), text
+    if "排队" in text or "等待" in text:
+        return max(current_progress, 5), text or "排队中"
+    if "渲染" in text or "生成视频" in text:
+        return max(current_progress, 75), text
+    if "生成" in text or "处理中" in text:
+        return max(current_progress, 45), text
+    if status in (10, 11, 12):
+        return max(current_progress, 35), text or "正在处理中..."
+    return max(current_progress, 25), text or "正在生成中..."
+
+
 def _pick_account() -> Optional[tuple]:
     """选出优先级最高且有余量的海螺账号，返回 (account_id, client)"""
     # 优先使用新的 hailuo_api 账号管理系统
@@ -332,6 +352,8 @@ async def submit_order(order_id: int):
         with Session(engine) as session:
             order = session.get(VideoOrder, order_id)
             order.status = "generating"
+            order.progress = max(order.progress or 0, 5)
+            order.status_message = "任务已提交，等待海螺开始生成..."
             order.task_id = json.dumps(tracking, ensure_ascii=False)
             order.updated_at = datetime.utcnow()
             session.add(order)
@@ -403,6 +425,7 @@ async def poll_order_status(order_id: int, acc_id: Optional[str] = None):
                 candidate_ids.discard("")
                 if target_match_ids.intersection(candidate_ids):
                     status = ci.get("status", 0)
+                    feed_message = (feed.get("feedMessage") or {}).get("message", "")
                     if status == 2:
                         parsed = client._parse_feed(feed)
                         if parsed.get("video_url"):
@@ -412,6 +435,7 @@ async def poll_order_status(order_id: int, acc_id: Optional[str] = None):
                                     return
                                 order.status = "completed"
                                 order.progress = 100
+                                order.status_message = "已生成完成"
                                 order.video_url = parsed["video_url"]
                                 order.video_urls = json.dumps([parsed["video_url"]])
                                 order.updated_at = datetime.utcnow()
@@ -420,17 +444,28 @@ async def poll_order_status(order_id: int, acc_id: Optional[str] = None):
                             logger.info(f"[worker] 订单#{order_id}在processing中完成")
                             return
                     if status >= 90:
-                        msg = (feed.get("feedMessage") or {}).get("message", "生成失败")
+                        msg = feed_message or "生成失败"
                         _fail_order(order_id, msg)
                         return
                     still_processing = True
+                    hinted_progress, hinted_message = _hailuo_progress_hint(status, feed_message, 0)
+                    with Session(engine) as session:
+                        order = session.get(VideoOrder, order_id)
+                        if order and order.status == "generating":
+                            order.progress = max(order.progress or 0, hinted_progress)
+                            order.status_message = hinted_message
+                            order.updated_at = datetime.utcnow()
+                            session.add(order)
+                            session.commit()
 
             if still_processing:
                 # 更新进度
                 with Session(engine) as session:
                     order = session.get(VideoOrder, order_id)
                     if order and order.status == "generating":
-                        order.progress = min(80, 10 + elapsed * 70 // MAX_POLL_SECONDS)
+                        order.progress = max(order.progress or 0, min(80, 10 + elapsed * 70 // MAX_POLL_SECONDS))
+                        if not order.status_message:
+                            order.status_message = "海螺正在生成中..."
                         order.updated_at = datetime.utcnow()
                         session.add(order)
                         session.commit()
@@ -462,6 +497,7 @@ async def poll_order_status(order_id: int, acc_id: Optional[str] = None):
                         return
                     order.status = "completed"
                     order.progress = 100
+                    order.status_message = "已生成完成"
                     order.video_url = video_urls[0]
                     order.video_urls = json.dumps(video_urls)
                     order.updated_at = datetime.utcnow()
@@ -519,6 +555,7 @@ def _fail_order(order_id: int, reason: str = ""):
 def _fail_order_in_session(session, order, reason: str = ""):
     order.status = "failed"
     order.progress = 0
+    order.status_message = reason or "生成失败"
     order.updated_at = datetime.utcnow()
     if reason:
         logger.error(f"[worker] 订单#{order.id}失败: {reason}")

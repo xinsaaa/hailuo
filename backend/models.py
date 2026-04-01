@@ -24,6 +24,7 @@ class VideoOrder(SQLModel, table=True):
     prompt: str
     status: str = Field(default="pending") # pending, processing, generating, completed, failed
     progress: int = Field(default=0) # 0-100 进度百分比
+    status_message: Optional[str] = None
     video_url: Optional[str] = None
     cost: float = Field(default=0.99)
     created_at: datetime = Field(default_factory=datetime.utcnow)
@@ -199,6 +200,7 @@ def _auto_migrate():
         ("videoorder", "video_type", "TEXT DEFAULT 'image_to_video'"),
         ("videoorder", "resolution", "TEXT DEFAULT '768p'"),
         ("videoorder", "duration", "TEXT DEFAULT '6s'"),
+        ("videoorder", "status_message", "TEXT"),
         # aimodel 表
         ("aimodel", "model_type", "TEXT DEFAULT 'image_to_video'"),
         ("aimodel", "platform", "TEXT DEFAULT 'hailuo'"),
