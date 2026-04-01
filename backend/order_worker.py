@@ -96,17 +96,25 @@ def _normalize_hailuo_generation_params(
     resolution: str,
     aspect_ratio: str,
     file_count: int,
-) -> tuple[str, str]:
+) -> tuple[str, str, str]:
+    normalized_model_id = model_id
     normalized_resolution = resolution or "768"
     normalized_aspect_ratio = aspect_ratio or ""
 
     if file_count > 0:
         normalized_aspect_ratio = ""
 
-    if file_count > 0 and model_id == "23218":
+    if file_count == 1 and model_id != "23218":
+        normalized_model_id = "23217"
+
+    if file_count >= 2:
+        normalized_model_id = "23210"
         normalized_resolution = "768"
 
-    return normalized_resolution, normalized_aspect_ratio
+    if file_count > 0 and normalized_model_id == "23218":
+        normalized_resolution = "768"
+
+    return normalized_model_id, normalized_resolution, normalized_aspect_ratio
 
 
 def _extract_hailuo_tracking(resp: dict) -> dict:
@@ -306,7 +314,7 @@ async def submit_order(order_id: int):
                 except Exception as e:
                     logger.warning(f"[worker] upload last frame failed: {e}")
 
-            resolution_str, aspect_ratio = _normalize_hailuo_generation_params(
+            model_id, resolution_str, aspect_ratio = _normalize_hailuo_generation_params(
                 model_id=model_id,
                 resolution=resolution_str,
                 aspect_ratio=aspect_ratio,
