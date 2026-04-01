@@ -91,6 +91,39 @@ def _resolve_hailuo_model_id(session: Session, order: VideoOrder) -> str:
     return "23204"
 
 
+def _extract_hailuo_tracking_ids(resp: dict) -> list[str]:
+    """兼容海螺新旧提交响应，提取后续轮询可用的追踪ID。"""
+    data = resp.get("data") or {}
+    ids: list[str] = []
+
+    tasks = data.get("tasks") or []
+    for task in tasks:
+        task_id = task.get("taskID") or task.get("id")
+        if task_id:
+            ids.append(str(task_id))
+
+    direct_id = data.get("id")
+    if direct_id:
+        ids.append(str(direct_id))
+
+    task_info = data.get("task") or {}
+    batch_id = task_info.get("batchID")
+    if batch_id:
+        ids.append(str(batch_id))
+
+    for video_id in (task_info.get("videoIDs") or []):
+        if video_id:
+            ids.append(str(video_id))
+
+    deduped: list[str] = []
+    seen = set()
+    for item in ids:
+        if item not in seen:
+            seen.add(item)
+            deduped.append(item)
+    return deduped
+
+
 def _pick_account() -> Optional[tuple]:
     """选出优先级最高且有余量的海螺账号，返回 (account_id, client)"""
     # 优先使用新的 hailuo_api 账号管理系统
@@ -249,8 +282,7 @@ async def submit_order(order_id: int):
             _fail_order(order_id, msg)
             return
 
-        tasks = resp.get("data", {}).get("tasks", [])
-        task_ids = [t["taskID"] for t in tasks if "taskID" in t]
+        task_ids = _extract_hailuo_tracking_ids(resp)
         if not task_ids:
             _fail_order(order_id, "API未返回taskID")
             return
@@ -320,8 +352,13 @@ async def poll_order_status(order_id: int, acc_id: Optional[str] = None):
             still_processing = False
             for feed in feeds:
                 ci = feed.get("commonInfo") or {}
-                task_id = ci.get("taskID", "")
-                if task_id in target_task_ids:
+                candidate_ids = {
+                    str(ci.get("taskID", "") or ""),
+                    str(ci.get("id", "") or ""),
+                    str(ci.get("batchID", "") or ""),
+                }
+                candidate_ids.discard("")
+                if target_task_ids.intersection(candidate_ids):
                     status = ci.get("status", 0)
                     if status >= 90:
                         msg = (feed.get("feedMessage") or {}).get("message", "生成失败")
@@ -348,8 +385,13 @@ async def poll_order_status(order_id: int, acc_id: Optional[str] = None):
             for batch in batch_feeds:
                 for feed in (batch.get("feeds") or []):
                     ci = feed.get("commonInfo") or {}
-                    task_id = ci.get("taskID", "")
-                    if task_id in target_task_ids and ci.get("status") == 2:
+                    candidate_ids = {
+                        str(ci.get("taskID", "") or ""),
+                        str(ci.get("id", "") or ""),
+                        str(ci.get("batchID", "") or ""),
+                    }
+                    candidate_ids.discard("")
+                    if target_task_ids.intersection(candidate_ids) and ci.get("status") == 2:
                         parsed = client._parse_feed(feed)
                         if parsed.get("video_url"):
                             video_urls.append(parsed["video_url"])
