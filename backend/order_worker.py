@@ -91,16 +91,20 @@ def _resolve_hailuo_model_id(session: Session, order: VideoOrder) -> str:
     return "23204"
 
 
-def _extract_hailuo_tracking_ids(resp: dict) -> list[str]:
-    """兼容海螺新旧提交响应，提取后续轮询可用的追踪ID。"""
+def _extract_hailuo_tracking(resp: dict) -> dict:
+    """兼容海螺新旧提交响应，提取后续轮询可用的追踪信息。"""
     data = resp.get("data") or {}
     ids: list[str] = []
+    batch_ids: list[str] = []
 
     tasks = data.get("tasks") or []
     for task in tasks:
         task_id = task.get("taskID") or task.get("id")
         if task_id:
             ids.append(str(task_id))
+        batch_id = task.get("batchID")
+        if batch_id:
+            batch_ids.append(str(batch_id))
 
     direct_id = data.get("id")
     if direct_id:
@@ -109,19 +113,56 @@ def _extract_hailuo_tracking_ids(resp: dict) -> list[str]:
     task_info = data.get("task") or {}
     batch_id = task_info.get("batchID")
     if batch_id:
-        ids.append(str(batch_id))
+        batch_ids.append(str(batch_id))
 
     for video_id in (task_info.get("videoIDs") or []):
         if video_id:
             ids.append(str(video_id))
 
-    deduped: list[str] = []
+    deduped_ids: list[str] = []
+    deduped_batch_ids: list[str] = []
     seen = set()
     for item in ids:
         if item not in seen:
             seen.add(item)
-            deduped.append(item)
-    return deduped
+            deduped_ids.append(item)
+
+    seen_batches = set()
+    for item in batch_ids:
+        if item not in seen_batches:
+            seen_batches.add(item)
+            deduped_batch_ids.append(item)
+
+    if not deduped_batch_ids and deduped_ids:
+        deduped_batch_ids = deduped_ids[:]
+
+    return {
+        "ids": deduped_ids,
+        "batch_ids": deduped_batch_ids,
+    }
+
+
+def _load_hailuo_tracking(task_ids_raw: str) -> tuple[set[str], list[str]]:
+    """Load tracking ids from legacy list/string or new object payload."""
+    try:
+        parsed = json.loads(task_ids_raw)
+    except Exception:
+        return {str(task_ids_raw)}, [str(task_ids_raw)]
+
+    if isinstance(parsed, dict):
+        ids = {str(x) for x in (parsed.get("ids") or []) if x}
+        batch_ids = [str(x) for x in (parsed.get("batch_ids") or []) if x]
+        if not ids:
+            ids = {str(task_ids_raw)}
+        if not batch_ids:
+            batch_ids = sorted(ids)
+        return ids, batch_ids
+
+    if isinstance(parsed, list):
+        ids = {str(x) for x in parsed if x}
+        return ids, sorted(ids)
+
+    return {str(parsed)}, [str(parsed)]
 
 
 def _pick_account() -> Optional[tuple]:
@@ -282,7 +323,8 @@ async def submit_order(order_id: int):
             _fail_order(order_id, msg)
             return
 
-        task_ids = _extract_hailuo_tracking_ids(resp)
+        tracking = _extract_hailuo_tracking(resp)
+        task_ids = tracking["ids"]
         if not task_ids:
             _fail_order(order_id, "API未返回taskID")
             return
@@ -290,12 +332,12 @@ async def submit_order(order_id: int):
         with Session(engine) as session:
             order = session.get(VideoOrder, order_id)
             order.status = "generating"
-            order.task_id = json.dumps(task_ids)
+            order.task_id = json.dumps(tracking, ensure_ascii=False)
             order.updated_at = datetime.utcnow()
             session.add(order)
             session.commit()
 
-        logger.info(f"[worker] 订单#{order_id}已提交，task_ids={task_ids}，账号={acc_id}")
+        logger.info(f"[worker] 订单#{order_id}已提交，tracking={tracking}，账号={acc_id}")
         asyncio.create_task(poll_order_status(order_id, acc_id=acc_id))
 
     except Exception as e:
@@ -322,11 +364,7 @@ async def poll_order_status(order_id: int, acc_id: Optional[str] = None):
         logger.warning(f"[worker] 订单#{order_id}没有task_id，停止轮询")
         return
 
-    try:
-        target_task_ids = set(json.loads(task_ids_raw))
-    except Exception:
-        target_task_ids = {task_ids_raw}
-    target_batch_ids = sorted(target_task_ids)
+    target_task_ids, target_batch_ids = _load_hailuo_tracking(task_ids_raw)
 
     while elapsed < MAX_POLL_SECONDS:
         await asyncio.sleep(POLL_INTERVAL)
@@ -364,6 +402,22 @@ async def poll_order_status(order_id: int, acc_id: Optional[str] = None):
                 candidate_ids.discard("")
                 if target_task_ids.intersection(candidate_ids):
                     status = ci.get("status", 0)
+                    if status == 2:
+                        parsed = client._parse_feed(feed)
+                        if parsed.get("video_url"):
+                            with Session(engine) as session:
+                                order = session.get(VideoOrder, order_id)
+                                if not order or order.status in ("completed", "failed"):
+                                    return
+                                order.status = "completed"
+                                order.progress = 100
+                                order.video_url = parsed["video_url"]
+                                order.video_urls = json.dumps([parsed["video_url"]])
+                                order.updated_at = datetime.utcnow()
+                                session.add(order)
+                                session.commit()
+                            logger.info(f"[worker] 订单#{order_id}在processing中完成")
+                            return
                     if status >= 90:
                         msg = (feed.get("feedMessage") or {}).get("message", "生成失败")
                         _fail_order(order_id, msg)
