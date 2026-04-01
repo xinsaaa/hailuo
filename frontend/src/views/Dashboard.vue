@@ -951,14 +951,22 @@ const handleLogout = () => {
                             </svg>
                             <span class="font-bold">{{ getVideoUrls(order).length > 1 ? `下载${idx+1}` : '下载' }}</span>
                           </a>
-                          <a v-if="!url.startsWith('/videos/')"
-                            :href="url" target="_blank"
+                          <button v-if="!url.startsWith('/videos/')"
+                            @click="playVideo(url)"
                             class="px-3 py-1 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 text-xs rounded-full border border-cyan-500/20 hover:border-cyan-500/40 transition-all flex items-center gap-1.5 group/btn">
                             <svg class="w-3 h-3 transition-transform group-hover/btn:scale-110" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
                               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
                             </svg>
-                            <span class="font-bold">{{ getVideoUrls(order).length > 1 ? `观看${idx+1}` : '观看视频' }}</span>
+                            <span class="font-bold">{{ getVideoUrls(order).length > 1 ? `播放${idx+1}` : '播放' }}</span>
+                          </button>
+                          <a v-if="!url.startsWith('/videos/')"
+                            :href="url" target="_blank"
+                            class="px-3 py-1 bg-green-500/10 hover:bg-green-500/20 text-green-400 text-xs rounded-full border border-green-500/20 hover:border-green-500/40 transition-all flex items-center gap-1.5 group/btn">
+                            <svg class="w-3 h-3 transition-transform group-hover/btn:scale-110" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+                            </svg>
+                            <span class="font-bold">{{ getVideoUrls(order).length > 1 ? `下载${idx+1}` : '下载' }}</span>
                           </a>
                         </template>
                       </template>
