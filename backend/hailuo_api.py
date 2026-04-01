@@ -21,7 +21,7 @@ import uuid as _uuid
 from email.utils import formatdate
 from pathlib import Path
 from typing import Optional
-from urllib.parse import urlencode, quote
+from urllib.parse import urlencode, quote, urlsplit, urlunsplit
 
 import httpx
 
@@ -242,6 +242,13 @@ def build_generate_video_body(
         },
         "projectID": "0",
     }
+
+
+def _normalize_uploaded_asset_url(url: str) -> str:
+    if not url:
+        return url
+    parts = urlsplit(url)
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))
 
 
 # ============ 主客户端 ============
@@ -532,8 +539,15 @@ class HailuoApiClient:
 
             cb_data  = cb_resp.get("data") or {}
             file_id  = cb_data.get("fileID") or cb_data.get("id", "")
-            file_url = cb_data.get("ossPath") or cb_data.get("url") or oss_url
-            return {"id": file_id, "url": file_url, "type": ext}
+            file_url = _normalize_uploaded_asset_url(cb_data.get("ossPath") or cb_data.get("url") or oss_url)
+            # Hailuo successful image-to-video payloads use jpeg + assetFileType=1
+            # even when the source file extension is png.
+            return {
+                "id": file_id,
+                "url": file_url,
+                "type": "jpeg",
+                "assetFileType": 1,
+            }
 
         except Exception as e:
             print(f"[HailuoAPI] upload_image 失败: {e}")

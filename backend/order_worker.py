@@ -91,6 +91,24 @@ def _resolve_hailuo_model_id(session: Session, order: VideoOrder) -> str:
     return "23204"
 
 
+def _normalize_hailuo_generation_params(
+    model_id: str,
+    resolution: str,
+    aspect_ratio: str,
+    file_count: int,
+) -> tuple[str, str]:
+    normalized_resolution = resolution or "768"
+    normalized_aspect_ratio = aspect_ratio or ""
+
+    if file_count > 0:
+        normalized_aspect_ratio = ""
+
+    if file_count > 0 and model_id == "23218":
+        normalized_resolution = "768"
+
+    return normalized_resolution, normalized_aspect_ratio
+
+
 def _extract_hailuo_tracking(resp: dict) -> dict:
     """兼容海螺新旧提交响应，提取后续轮询可用的追踪信息。"""
     data = resp.get("data") or {}
@@ -257,9 +275,7 @@ async def submit_order(order_id: int):
             model_id = _resolve_hailuo_model_id(session, order)
             duration_int = int((order.duration or "6s").replace("s", ""))
             resolution_str = (order.resolution or "768p").replace("p", "")
-            # Keep Hailuo text-to-video as close as possible to the verified local script:
-            # empty aspect ratio works more reliably than forcing 16:9 on text-only tasks.
-            aspect_ratio = "" if not order.first_frame_image and not order.last_frame_image else (order.aspect_ratio or "")
+            aspect_ratio = order.aspect_ratio or ""
             quantity = order.quantity or 1
 
             file_list = []
@@ -267,16 +283,35 @@ async def submit_order(order_id: int):
                 try:
                     r = await client.upload_image(order.first_frame_image)
                     if r:
-                        file_list.append({"id": r["id"], "url": r["url"], "type": r["type"], "frameType": 0})
+                        file_list.append({
+                            "id": r["id"],
+                            "url": r["url"],
+                            "type": r["type"],
+                            "frameType": 0,
+                            "assetFileType": r.get("assetFileType", 1),
+                        })
                 except Exception as e:
-                    logger.warning(f"[worker] 上传首帧失败: {e}")
+                    logger.warning(f"[worker] upload first frame failed: {e}")
             if order.last_frame_image:
                 try:
                     r = await client.upload_image(order.last_frame_image)
                     if r:
-                        file_list.append({"id": r["id"], "url": r["url"], "type": r["type"], "frameType": 1})
+                        file_list.append({
+                            "id": r["id"],
+                            "url": r["url"],
+                            "type": r["type"],
+                            "frameType": 1,
+                            "assetFileType": r.get("assetFileType", 1),
+                        })
                 except Exception as e:
-                    logger.warning(f"[worker] 上传尾帧失败: {e}")
+                    logger.warning(f"[worker] upload last frame failed: {e}")
+
+            resolution_str, aspect_ratio = _normalize_hailuo_generation_params(
+                model_id=model_id,
+                resolution=resolution_str,
+                aspect_ratio=aspect_ratio,
+                file_count=len(file_list),
+            )
 
             logger.info(
                 f"[worker] 海螺订单#{order_id} 提交参数: model_name={order.model_name}, "
