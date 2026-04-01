@@ -358,9 +358,14 @@ class HailuoApiClient:
         )
         return await self._post("/v2/api/multimodal/generate/video", body)
 
-    async def get_processing_tasks(self) -> dict:
-        """查询生成中的任务列表"""
-        return await self._post("/api/feed/creation/my/processing", {})
+    async def get_processing_tasks(self, batch_ids: Optional[list[str]] = None) -> dict:
+        """按 batchID 查询生成中的任务列表。"""
+        body = {
+            "batchInfoList": [{"batchID": str(batch_id), "batchType": 0} for batch_id in (batch_ids or []) if batch_id],
+            "type": 1,
+            "projectID": "0",
+        }
+        return await self._post("/api/feed/creation/my/processing", body)
 
     async def get_batch_feeds(self, cursor: str = "", limit: int = 30) -> dict:
         """查询历史生成批次列表（含视频URL）"""

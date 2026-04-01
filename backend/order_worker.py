@@ -326,6 +326,7 @@ async def poll_order_status(order_id: int, acc_id: Optional[str] = None):
         target_task_ids = set(json.loads(task_ids_raw))
     except Exception:
         target_task_ids = {task_ids_raw}
+    target_batch_ids = sorted(target_task_ids)
 
     while elapsed < MAX_POLL_SECONDS:
         await asyncio.sleep(POLL_INTERVAL)
@@ -345,8 +346,11 @@ async def poll_order_status(order_id: int, acc_id: Optional[str] = None):
 
         try:
             # 1. 先查 processing 列表
-            resp = await client.get_processing_tasks()
-            feeds = (resp.get("data") or {}).get("feeds") or []
+            resp = await client.get_processing_tasks(target_batch_ids)
+            batch_feeds = (resp.get("data") or {}).get("batchFeeds") or []
+            feeds = []
+            for batch in batch_feeds:
+                feeds.extend((batch.get("feeds") or []))
 
             # 检查是否还在生成中
             still_processing = False
