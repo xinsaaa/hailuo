@@ -351,6 +351,12 @@ def list_orders(
 ):
     """获取订单列表（合并海螺 + 即梦订单）"""
 
+    def detect_video_order_platform(order: VideoOrder) -> str:
+        model_name = (order.model_name or "").strip()
+        if model_name.startswith("Kling") or model_name.startswith("可灵"):
+            return "kling"
+        return "hailuo"
+
     # 查询海螺订单
     hailuo_query = select(VideoOrder)
     if status:
@@ -368,12 +374,13 @@ def list_orders(
     for o in hailuo_orders:
         all_orders.append({
             "id": o.id,
-            "platform": "hailuo",
+            "platform": detect_video_order_platform(o),
             "user_id": o.user_id,
             "prompt": o.prompt[:100] + "..." if len(o.prompt) > 100 else o.prompt,
             "status": o.status,
             "video_url": o.video_url,
             "cost": o.cost,
+            "model_name": o.model_name,
             "created_at": utc_to_china_time(o.created_at)
         })
     for o in jimeng_orders:

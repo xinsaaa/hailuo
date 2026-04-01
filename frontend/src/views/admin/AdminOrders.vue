@@ -168,9 +168,13 @@ onMounted(() => loadOrders())
                     <td class="px-6 py-4">
                         <span
                             class="px-2 py-0.5 text-xs rounded-full font-semibold"
-                            :class="order.platform === 'jimeng' ? 'bg-violet-500/10 text-violet-400 border border-violet-500/20' : 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20'"
+                            :class="order.platform === 'jimeng'
+                              ? 'bg-violet-500/10 text-violet-400 border border-violet-500/20'
+                              : order.platform === 'kling'
+                                ? 'bg-orange-500/10 text-orange-400 border border-orange-500/20'
+                                : 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20'"
                         >
-                            {{ order.platform === 'jimeng' ? '即梦' : '海螺' }}
+                            {{ order.platform === 'jimeng' ? 'Jimeng' : order.platform === 'kling' ? 'Kling' : 'Hailuo' }}
                         </span>
                     </td>
                     <td class="px-6 py-4">
