@@ -94,6 +94,7 @@
             <td class="px-4 py-3">
               <div class="flex items-center gap-2 flex-wrap">
                 <button @click="openQrLogin(account)" class="bg-orange-600 hover:bg-orange-700 text-white px-3 py-1 rounded text-xs transition-colors">{{ account.is_logged_in ? '重新登录' : '扫码登录' }}</button>
+                <button @click="openSmsLogin(account)" class="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1 rounded text-xs transition-colors">验证码登录</button>
                 <button
                   @click="refreshToken(account)"
                   :disabled="refreshing[account.account_id] || account.refresh_paused"
@@ -178,6 +179,43 @@
         <button @click="closeQrModal" class="mt-4 px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm transition-colors w-full">{{ qrModal.status === 'done' ? '完成' : '取消' }}</button>
       </div>
     </div>
+
+    <div v-if="smsModal.show" class="fixed inset-0 bg-black/60 flex items-center justify-center z-50" @click.self="closeSmsModal">
+      <div class="bg-gray-800 p-6 rounded-xl border border-gray-700 w-full max-w-sm mx-4">
+        <h3 class="text-lg font-semibold text-white mb-1">验证码登录可灵</h3>
+        <p class="text-sm text-gray-400 mb-4">账号：{{ smsModal.accountId }}</p>
+        <div class="space-y-4">
+          <div>
+            <label class="block text-sm font-medium text-gray-300 mb-1">手机号</label>
+            <input v-model="smsModal.phone" type="text" placeholder="请输入手机号" class="w-full px-3 py-2 bg-gray-700 border border-gray-600 text-white rounded-lg">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-gray-300 mb-1">验证码</label>
+            <div class="flex gap-2">
+              <input v-model="smsModal.code" type="text" placeholder="请输入验证码" class="flex-1 px-3 py-2 bg-gray-700 border border-gray-600 text-white rounded-lg">
+              <button
+                @click="sendSmsCode"
+                :disabled="smsModal.sending || smsModal.cooldown > 0 || !smsModal.phone"
+                class="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg text-sm transition-colors whitespace-nowrap"
+              >
+                {{ smsModal.cooldown > 0 ? `${smsModal.cooldown}s` : (smsModal.sending ? '发送中...' : '发验证码') }}
+              </button>
+            </div>
+          </div>
+          <p v-if="smsModal.message" class="text-xs" :class="smsModal.error ? 'text-red-400' : 'text-gray-400'">{{ smsModal.message }}</p>
+        </div>
+        <div class="flex gap-3 mt-6">
+          <button
+            @click="submitSmsLogin"
+            :disabled="smsModal.submitting || !smsModal.phone || !smsModal.code"
+            class="flex-1 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-lg text-sm font-medium transition-colors"
+          >
+            {{ smsModal.submitting ? '登录中...' : '提交登录' }}
+          </button>
+          <button @click="closeSmsModal" class="flex-1 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm font-medium transition-colors">取消</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -194,8 +232,10 @@ const toastMessage = ref('')
 const toastType = ref('success')
 let toastTimer = null
 const qrModal = ref({ show: false, accountId: '', loading: false, status: 'none', qrBase64: '', countdown: 0 })
+const smsModal = ref({ show: false, accountId: '', phone: '', code: '', sending: false, submitting: false, cooldown: 0, message: '', error: false })
 let pollTimer = null
 let countdownTimer = null
+let smsCooldownTimer = null
 
 const accountPoints = ref({})
 const pointsLoading = ref({})
@@ -333,6 +373,13 @@ const fetchAllPoints = () => {
   })
 }
 
+const stopSmsCooldown = () => {
+  if (smsCooldownTimer) {
+    clearInterval(smsCooldownTimer)
+    smsCooldownTimer = null
+  }
+}
+
 const stopPolling = () => {
   if (pollTimer) {
     clearInterval(pollTimer)
@@ -415,6 +462,69 @@ const openQrLogin = async (account) => {
   }
 }
 
+const openSmsLogin = (account) => {
+  stopSmsCooldown()
+  smsModal.value = {
+    show: true,
+    accountId: account.account_id,
+    phone: '',
+    code: '',
+    sending: false,
+    submitting: false,
+    cooldown: 0,
+    message: '',
+    error: false,
+  }
+}
+
+const sendSmsCode = async () => {
+  smsModal.value.sending = true
+  smsModal.value.message = ''
+  smsModal.value.error = false
+  try {
+    const res = await api.post(`/admin/kling-accounts/${smsModal.value.accountId}/sms/send`, {
+      phone: smsModal.value.phone,
+      country_code: '+86',
+    })
+    smsModal.value.message = res.data.message || '验证码已发送'
+    smsModal.value.cooldown = 60
+    stopSmsCooldown()
+    smsCooldownTimer = setInterval(() => {
+      smsModal.value.cooldown--
+      if (smsModal.value.cooldown <= 0) {
+        stopSmsCooldown()
+      }
+    }, 1000)
+  } catch (e) {
+    smsModal.value.error = true
+    smsModal.value.message = e.response?.data?.detail || '发送验证码失败'
+  } finally {
+    smsModal.value.sending = false
+  }
+}
+
+const submitSmsLogin = async () => {
+  smsModal.value.submitting = true
+  smsModal.value.message = ''
+  smsModal.value.error = false
+  try {
+    const res = await api.post(`/admin/kling-accounts/${smsModal.value.accountId}/sms/login`, {
+      phone: smsModal.value.phone,
+      sms_code: smsModal.value.code,
+      country_code: '+86',
+    })
+    showToastMessage(res.data.message || '验证码登录成功')
+    closeSmsModal()
+    await loadAccounts()
+    fetchAllPoints()
+  } catch (e) {
+    smsModal.value.error = true
+    smsModal.value.message = e.response?.data?.detail || '验证码登录失败'
+  } finally {
+    smsModal.value.submitting = false
+  }
+}
+
 const refreshQr = () => {
   const accountId = qrModal.value.accountId
   const account = accounts.value.find(a => a.account_id === accountId)
@@ -430,6 +540,11 @@ const closeQrModal = () => {
   qrModal.value.show = false
 }
 
+const closeSmsModal = () => {
+  stopSmsCooldown()
+  smsModal.value.show = false
+}
+
 onMounted(async () => {
   await loadAccounts()
   fetchAllPoints()
@@ -438,5 +553,6 @@ onMounted(async () => {
 onUnmounted(() => {
   stopPolling()
   stopCountdown()
+  stopSmsCooldown()
 })
 </script>

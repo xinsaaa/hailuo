@@ -15,7 +15,8 @@ from backend.admin import get_admin_user
 from backend.kling_api import (
     _gen_did, _gen_risk_id, _url_to_qr_base64,
     qr_start, qr_scan_result, qr_accept_result, check_login,
-    list_kling_accounts, save_kling_account, save_kling_credentials,
+    request_mobile_code, mobile_code_login,
+    get_kling_account, list_kling_accounts, save_kling_account, save_kling_credentials,
     delete_kling_account, update_kling_account, get_kling_credentials,
     get_user_points, init_remove_watermark,
 )
@@ -38,6 +39,17 @@ class AccountUpdateRequest(BaseModel):
     priority: Optional[int] = None
     max_concurrent: Optional[int] = None
     is_active: Optional[bool] = None
+
+
+class KlingSmsCodeRequest(BaseModel):
+    phone: str
+    country_code: str = "+86"
+
+
+class KlingSmsLoginRequest(BaseModel):
+    phone: str
+    sms_code: str
+    country_code: str = "+86"
 
 
 # ============ 账号 CRUD ============
@@ -140,6 +152,96 @@ async def get_qr_status(account_id: str, admin=Depends(get_admin_user)):
 async def cancel_qr_login(account_id: str, admin=Depends(get_admin_user)):
     _sessions.pop(account_id, None)
     return {"success": True}
+
+
+@router.post("/{account_id}/sms/send")
+async def send_sms_code(account_id: str, req: KlingSmsCodeRequest, admin=Depends(get_admin_user)):
+    """Send Kling SMS verification code and keep the login session cookies in memory."""
+    if not get_kling_account(account_id):
+        raise HTTPException(status_code=404, detail="账号不存在")
+
+    did = _gen_did()
+    risk_id = _gen_risk_id()
+    try:
+        result = await request_mobile_code(req.phone, did, risk_id, req.country_code)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"发送验证码失败: {e}")
+
+    body = result.get("body") or {}
+    if body.get("result") != 1:
+        raise HTTPException(status_code=400, detail=f"可灵返回错误: {body}")
+
+    _sessions[account_id] = {
+        "status": "sms_pending",
+        "did": did,
+        "risk_id": risk_id,
+        "phone": req.phone,
+        "country_code": req.country_code,
+        "session_cookies": result.get("cookies", {}),
+    }
+    return {"success": True, "message": "验证码已发送"}
+
+
+@router.post("/{account_id}/sms/login")
+async def submit_sms_login(account_id: str, req: KlingSmsLoginRequest, admin=Depends(get_admin_user)):
+    """Use phone + SMS code to login to Kling and persist cookies."""
+    if not get_kling_account(account_id):
+        raise HTTPException(status_code=404, detail="账号不存在")
+
+    session = _sessions.get(account_id)
+    if not session or session.get("status") not in ("sms_pending", "sms_error"):
+        raise HTTPException(status_code=400, detail="请先发送验证码")
+
+    try:
+        result = await mobile_code_login(
+            phone=req.phone,
+            sms_code=req.sms_code,
+            did=session["did"],
+            risk_id=session["risk_id"],
+            session_cookies=session.get("session_cookies"),
+            country_code=req.country_code,
+        )
+    except Exception as e:
+        session["status"] = "sms_error"
+        session["error"] = str(e)
+        raise HTTPException(status_code=502, detail=f"验证码登录失败: {e}")
+
+    body = result.get("body") or {}
+    if body.get("result") != 1:
+        session["status"] = "sms_error"
+        session["error"] = str(body)
+        raise HTTPException(status_code=400, detail=f"可灵返回错误: {body}")
+
+    cookie = result["cookie"]
+    ok = await check_login(cookie)
+    if not ok:
+        session["status"] = "sms_error"
+        raise HTTPException(status_code=502, detail="验证码登录返回成功，但 cookie 验证失败")
+
+    save_kling_credentials(account_id, cookie, session["did"])
+    update_kling_account(
+        account_id,
+        is_logged_in=True,
+        refresh_fail_count=0,
+        refresh_paused=False,
+        needs_relogin=False,
+        next_refresh_retry_at=0,
+        monitor_message="",
+        offline_alert_sent=False,
+    )
+    try:
+        await init_remove_watermark(cookie)
+    except Exception:
+        pass
+
+    _sessions.pop(account_id, None)
+    return {
+        "success": True,
+        "message": "验证码登录成功",
+        "user_id": body.get("userId"),
+        "phone": body.get("phone", req.phone),
+        "is_new_user": body.get("isNewUser", False),
+    }
 
 
 @router.post("/{account_id}/check-login")

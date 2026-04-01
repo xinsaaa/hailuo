@@ -29,6 +29,7 @@ logger = logging.getLogger(__name__)
 
 ID_BASE = "https://id.klingai.com"
 APP_BASE = "https://app.klingai.com"
+WEB_BASE = "https://klingai.com"
 DEFAULT_UA = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
     "AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -200,6 +201,25 @@ def _build_initial_cookies(did: str, risk_id: str) -> dict:
     }
 
 
+async def _bootstrap_login_cookies(did: str, risk_id: str, landing_url: str = WEB_BASE + "/") -> dict:
+    """Visit the Kling web entry once to obtain kwfv1/kwssectoken/kwscode before login APIs."""
+    cookies = dict(_build_initial_cookies(did, risk_id))
+    headers = {
+        "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+        "accept-language": "zh-CN,zh;q=0.9",
+        "cache-control": "no-cache",
+        "pragma": "no-cache",
+        "upgrade-insecure-requests": "1",
+        "user-agent": DEFAULT_UA,
+    }
+    async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
+        resp = await client.get(landing_url, headers=headers, cookies=cookies)
+        resp.raise_for_status()
+        for key, value in resp.cookies.items():
+            cookies[key] = value
+    return cookies
+
+
 def _cookie_value(cookie_str: str, key: str, default: str = "") -> str:
     """Get one value from a raw `k1=v1; k2=v2` cookie string."""
     for part in cookie_str.split(";"):
@@ -344,6 +364,120 @@ async def qr_accept_result(did: str, risk_id: str, token: str, signature: str, s
     return {
         "body": body2,
         "cookie": cookie_str,
+        "kwfv1": cookies.get("kwfv1", ""),
+    }
+
+
+async def request_mobile_code(phone: str, did: str, risk_id: str, country_code: str = "+86") -> dict:
+    """Request a Kling SMS verification code and return the login session cookies."""
+    cookies = await _bootstrap_login_cookies(did, risk_id, f"{WEB_BASE}/")
+    kwfv1 = cookies.get("kwfv1", "")
+    headers = {
+        "accept": "*/*",
+        "accept-language": "zh-CN,zh;q=0.9",
+        "cache-control": "no-cache",
+        "connection": "keep-alive",
+        "content-type": "application/x-www-form-urlencoded",
+        "origin": WEB_BASE,
+        "pragma": "no-cache",
+        "referer": f"{WEB_BASE}/",
+        "sec-fetch-dest": "empty",
+        "sec-fetch-mode": "cors",
+        "sec-fetch-site": "same-site",
+        "user-agent": DEFAULT_UA,
+        "sec-ch-ua": '"Chromium";v="146", "Not-A.Brand";v="24", "Google Chrome";v="146"',
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": '"Windows"',
+    }
+    if kwfv1:
+        headers["kww"] = kwfv1
+
+    form = {
+        "sid": "kuaishou.ai.portal",
+        "type": "53",
+        "countryCode": country_code,
+        "phone": phone,
+        "channelType": "UNKNOWN",
+    }
+
+    async with httpx.AsyncClient(timeout=20) as client:
+        resp = await client.post(
+            f"{ID_BASE}/pass/kuaishou/sms/requestMobileCode",
+            headers=headers,
+            cookies=cookies,
+            data=form,
+        )
+        resp.raise_for_status()
+        body = resp.json()
+        for key, value in resp.cookies.items():
+            cookies[key] = value
+
+    return {"body": body, "cookies": cookies}
+
+
+async def mobile_code_login(
+    phone: str,
+    sms_code: str,
+    did: str,
+    risk_id: str,
+    session_cookies: Optional[dict] = None,
+    country_code: str = "+86",
+) -> dict:
+    """Login to Kling using phone + SMS code and return merged cookies on success."""
+    cookies = dict(session_cookies) if session_cookies else await _bootstrap_login_cookies(did, risk_id, f"{WEB_BASE}/")
+    kwfv1 = cookies.get("kwfv1", "")
+    headers = {
+        "accept": "*/*",
+        "accept-language": "zh-CN,zh;q=0.9",
+        "cache-control": "no-cache",
+        "connection": "keep-alive",
+        "content-type": "application/x-www-form-urlencoded",
+        "origin": WEB_BASE,
+        "pragma": "no-cache",
+        "referer": f"{WEB_BASE}/",
+        "sec-fetch-dest": "empty",
+        "sec-fetch-mode": "cors",
+        "sec-fetch-site": "same-site",
+        "user-agent": DEFAULT_UA,
+        "sec-ch-ua": '"Chromium";v="146", "Not-A.Brand";v="24", "Google Chrome";v="146"',
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": '"Windows"',
+    }
+    if kwfv1:
+        headers["kww"] = kwfv1
+
+    form = {
+        "countryCode": country_code,
+        "phone": phone,
+        "sid": "kuaishou.ai.portal",
+        "createId": "true",
+        "smsCode": sms_code,
+        "setCookie": "true",
+        "channelType": "UNKNOWN",
+    }
+
+    async with httpx.AsyncClient(timeout=20, follow_redirects=False) as client:
+        resp = await client.post(
+            f"{ID_BASE}/pass/kuaishou/login/mobileCode",
+            headers=headers,
+            cookies=cookies,
+            data=form,
+        )
+        resp.raise_for_status()
+        body = resp.json()
+        for cookie in resp.cookies.jar:
+            cookies[cookie.name] = cookie.value
+
+    for field in ("kuaishou.ai.portal_st", "passToken", "kuaishou.ai.portal.at", "userId", "ssecurity"):
+        value = body.get(field)
+        if value not in (None, ""):
+            cookies[field] = str(value)
+
+    cookie_str = "; ".join(f"{k}={v}" for k, v in cookies.items())
+    return {
+        "body": body,
+        "cookie": cookie_str,
+        "did": did,
         "kwfv1": cookies.get("kwfv1", ""),
     }
 
