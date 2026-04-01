@@ -204,6 +204,16 @@ def _build_prompt_struct(text: str) -> str:
     return json.dumps(struct, ensure_ascii=False)
 
 
+def _short_json(data, limit: int = 1200) -> str:
+    try:
+        text = json.dumps(data, ensure_ascii=False, separators=(",", ":"))
+    except Exception:
+        text = str(data)
+    if len(text) > limit:
+        return text[:limit] + f"...(truncated,{len(text)} chars)"
+    return text
+
+
 # ============ 主客户端 ============
 
 class HailuoApiClient:
@@ -241,11 +251,13 @@ class HailuoApiClient:
         yy, full_path = _generate_yy(url_path, body_str, unix_ms, self.uuid, self.device_id)
         headers = self._common_headers()
         headers["yy"] = yy
+        logger.info(f"[hailuo][POST] path={url_path} body={_short_json(body)}")
         resp = await self._client.post(
             full_path,
             content=body_str.encode("utf-8"),
             headers=headers,
         )
+        logger.info(f"[hailuo][POST] path={url_path} http={resp.status_code} resp={resp.text[:2000]}")
         resp.raise_for_status()
         return resp.json()
 
@@ -255,7 +267,9 @@ class HailuoApiClient:
         yy, full_path = _generate_yy(url_path, "{}", unix_ms, self.uuid, self.device_id)
         headers = self._common_headers()
         headers["yy"] = yy
+        logger.info(f"[hailuo][GET] path={url_path}")
         resp = await self._client.get(full_path, headers=headers)
+        logger.info(f"[hailuo][GET] path={url_path} http={resp.status_code} resp={resp.text[:2000]}")
         resp.raise_for_status()
         return resp.json()
 
@@ -316,6 +330,11 @@ class HailuoApiClient:
             },
             "projectID": "0",
         }
+        logger.info(
+            f"[hailuo] generate_video model_id={model_id} duration={duration} "
+            f"resolution={resolution} aspect_ratio={aspect_ratio or ''} "
+            f"quantity={quantity} files={len(file_list)}"
+        )
         return await self._post("/v2/api/multimodal/generate/video", body)
 
     async def get_processing_tasks(self) -> dict:

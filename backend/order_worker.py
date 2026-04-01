@@ -12,7 +12,7 @@ from typing import Optional
 import httpx
 from sqlmodel import Session, select
 
-from backend.models import VideoOrder, User, Transaction, engine
+from backend.models import AIModel, VideoOrder, User, Transaction, engine
 from backend.account_store import account_store
 from backend.hailuo_api import HailuoApiClient
 from backend import hailuo_api as hailuo_account_mgr
@@ -35,16 +35,29 @@ def _is_kling_model(model_name: Optional[str]) -> bool:
 
 MODEL_ID_MAP: dict = {
     "Hailuo 2.3":          "23217",
+    "hailuo_2_3":          "23217",
     "Hailuo 2.3-Fast":     "23218",
+    "hailuo_2_3_fast":     "23218",
     "Hailuo 2.0":          "23210",
+    "hailuo_2_0":          "23210",
     "Hailuo 1.0":          "23000",
+    "hailuo_1_0":          "23000",
     "Hailuo 1.0 Director": "23010",
+    "Hailuo 1.0-Director": "23010",
+    "hailuo_1_0_director": "23010",
     "Hailuo 1.0 Live":     "23011",
+    "Hailuo 1.0-Live":     "23011",
+    "hailuo_1_0_live":     "23011",
     # 3.x 系列 ID 待确认后补充
     "Hailuo 3.1":          "23217",
+    "hailuo_3_1":          "23217",
     "Hailuo 3.1-Pro":      "23217",
+    "hailuo_3_1_pro":      "23217",
     "Beta 3.1":            "23217",
+    "beta_3_1":            "23217",
     "Beta 3.1 Fast":       "23218",
+    "Beta 3.1-Fast":       "23218",
+    "beta_3_1_fast":       "23218",
 }
 
 POLL_INTERVAL = 5       # 秒
@@ -55,6 +68,26 @@ def _get_api_model_id(model_name: Optional[str]) -> str:
     if not model_name:
         return "23204"
     return MODEL_ID_MAP.get(model_name, "23204")
+
+
+def _resolve_hailuo_model_id(session: Session, order: VideoOrder) -> str:
+    """Resolve Hailuo API model id from order/model config with safe fallbacks."""
+    candidates = [order.model_name]
+
+    if order.model_name:
+        db_model = session.exec(
+            select(AIModel).where(
+                (AIModel.name == order.model_name) | (AIModel.model_id == order.model_name)
+            )
+        ).first()
+        if db_model:
+            candidates.extend([db_model.model_id, db_model.name])
+
+    for key in candidates:
+        model_id = _get_api_model_id(key)
+        if model_id != "23204":
+            return model_id
+    return "23204"
 
 
 def _pick_account() -> Optional[tuple]:
@@ -126,9 +159,10 @@ async def submit_order(order_id: int):
         with Session(engine) as session:
             order = session.get(VideoOrder, order_id)
 
-            model_id = _get_api_model_id(order.model_name)
+            model_id = _resolve_hailuo_model_id(session, order)
             duration_int = int((order.duration or "6s").replace("s", ""))
             resolution_str = (order.resolution or "768p").replace("p", "")
+            aspect_ratio = order.aspect_ratio or ""
             quantity = order.quantity or 1
 
             file_list = []
@@ -147,11 +181,19 @@ async def submit_order(order_id: int):
                 except Exception as e:
                     logger.warning(f"[worker] 上传尾帧失败: {e}")
 
+            logger.info(
+                f"[worker] 海螺订单#{order_id} 提交参数: model_name={order.model_name}, "
+                f"model_id={model_id}, duration={duration_int}, resolution={resolution_str}, aspect_ratio={aspect_ratio or ''}, "
+                f"quantity={quantity}, first_frame={bool(order.first_frame_image)}, "
+                f"last_frame={bool(order.last_frame_image)}, file_list={len(file_list)}"
+            )
+
             resp = await client.generate_video(
                 desc=order.prompt,
                 model_id=model_id,
                 duration=duration_int,
                 resolution=resolution_str,
+                aspect_ratio=aspect_ratio,
                 file_list=file_list,
                 quantity=quantity,
             )
@@ -159,7 +201,7 @@ async def submit_order(order_id: int):
         status_code = resp.get("statusInfo", {}).get("code", -1)
         if status_code != 0:
             msg = resp.get("statusInfo", {}).get("message", "未知错误")
-            logger.error(f"[worker] 订单#{order_id}提交失败: {msg}")
+            logger.error(f"[worker] 订单#{order_id}提交失败: code={status_code}, msg={msg}, resp={json.dumps(resp, ensure_ascii=False)[:3000]}")
             _fail_order(order_id, msg)
             return
 
