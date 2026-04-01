@@ -16,6 +16,7 @@ from backend.models import AIModel, VideoOrder, User, Transaction, engine
 from backend.account_store import account_store
 from backend.hailuo_api import HailuoApiClient
 from backend import hailuo_api as hailuo_account_mgr
+from backend.hailuo_api import build_generate_video_body
 from backend import kling_api
 
 logger = logging.getLogger(__name__)
@@ -187,6 +188,15 @@ async def submit_order(order_id: int):
                 f"quantity={quantity}, first_frame={bool(order.first_frame_image)}, "
                 f"last_frame={bool(order.last_frame_image)}, file_list={len(file_list)}"
             )
+            request_body = build_generate_video_body(
+                desc=order.prompt,
+                model_id=model_id,
+                duration=duration_int,
+                resolution=resolution_str,
+                aspect_ratio=aspect_ratio,
+                file_list=file_list,
+                quantity=quantity,
+            )
 
             resp = await client.generate_video(
                 desc=order.prompt,
@@ -201,7 +211,8 @@ async def submit_order(order_id: int):
         status_code = resp.get("statusInfo", {}).get("code", -1)
         if status_code != 0:
             msg = resp.get("statusInfo", {}).get("message", "未知错误")
-            logger.error(f"[worker] 订单#{order_id}提交失败: code={status_code}, msg={msg}, resp={json.dumps(resp, ensure_ascii=False)[:3000]}")
+            logger.error(f"[worker] 订单#{order_id}原始请求: body={json.dumps(request_body, ensure_ascii=False)[:5000]}")
+            logger.error(f"[worker] 订单#{order_id}提交失败: code={status_code}, msg={msg}, resp={json.dumps(resp, ensure_ascii=False)[:5000]}")
             _fail_order(order_id, msg)
             return
 

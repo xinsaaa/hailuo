@@ -214,6 +214,35 @@ def _short_json(data, limit: int = 1200) -> str:
     return text
 
 
+def build_generate_video_body(
+    desc: str,
+    model_id: str = "23204",
+    duration: int = 6,
+    resolution: str = "768",
+    aspect_ratio: str = "",
+    file_list: Optional[list] = None,
+    quantity: int = 1,
+) -> dict:
+    if file_list is None:
+        file_list = []
+    return {
+        "quantity": quantity,
+        "parameter": {
+            "modelID": model_id,
+            "desc": desc,
+            "fileList": file_list,
+            "useOriginPrompt": False,
+            "resolution": resolution,
+            "duration": duration,
+            "aspectRatio": aspect_ratio,
+        },
+        "videoExtra": {
+            "promptStruct": _build_prompt_struct(desc),
+        },
+        "projectID": "0",
+    }
+
+
 # ============ 主客户端 ============
 
 class HailuoApiClient:
@@ -312,28 +341,19 @@ class HailuoApiClient:
         提交视频生成任务
         返回原始响应，成功时 data.tasks 含 [{taskID, ...}, ...]
         """
-        if file_list is None:
-            file_list = []
-        body = {
-            "quantity": quantity,
-            "parameter": {
-                "modelID":        model_id,
-                "desc":           desc,
-                "fileList":       file_list,
-                "useOriginPrompt": False,
-                "resolution":     resolution,
-                "duration":       duration,
-                "aspectRatio":    aspect_ratio,
-            },
-            "videoExtra": {
-                "promptStruct": _build_prompt_struct(desc),
-            },
-            "projectID": "0",
-        }
+        body = build_generate_video_body(
+            desc=desc,
+            model_id=model_id,
+            duration=duration,
+            resolution=resolution,
+            aspect_ratio=aspect_ratio,
+            file_list=file_list,
+            quantity=quantity,
+        )
         logger.info(
             f"[hailuo] generate_video model_id={model_id} duration={duration} "
             f"resolution={resolution} aspect_ratio={aspect_ratio or ''} "
-            f"quantity={quantity} files={len(file_list)}"
+            f"quantity={quantity} files={len(file_list or [])}"
         )
         return await self._post("/v2/api/multimodal/generate/video", body)
 
