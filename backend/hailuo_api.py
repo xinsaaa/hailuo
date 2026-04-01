@@ -201,7 +201,7 @@ def _build_prompt_struct(text: str) -> str:
         "plainLength": len(text),
         "rawLength": len(text),
     }
-    return json.dumps(struct, ensure_ascii=False)
+    return json.dumps(struct, ensure_ascii=False, separators=(",", ":"))
 
 
 def _short_json(data, limit: int = 1200) -> str:

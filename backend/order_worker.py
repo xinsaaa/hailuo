@@ -163,7 +163,9 @@ async def submit_order(order_id: int):
             model_id = _resolve_hailuo_model_id(session, order)
             duration_int = int((order.duration or "6s").replace("s", ""))
             resolution_str = (order.resolution or "768p").replace("p", "")
-            aspect_ratio = order.aspect_ratio or ""
+            # Keep Hailuo text-to-video as close as possible to the verified local script:
+            # empty aspect ratio works more reliably than forcing 16:9 on text-only tasks.
+            aspect_ratio = "" if not order.first_frame_image and not order.last_frame_image else (order.aspect_ratio or "")
             quantity = order.quantity or 1
 
             file_list = []
@@ -209,6 +211,37 @@ async def submit_order(order_id: int):
             )
 
         status_code = resp.get("statusInfo", {}).get("code", -1)
+        if status_code == 2400001 and not file_list and aspect_ratio:
+            logger.warning(f"[worker] 海螺订单#{order_id} 命中2400001，改用空 aspect_ratio 重试一次")
+            retry_body = build_generate_video_body(
+                desc=order.prompt,
+                model_id=model_id,
+                duration=duration_int,
+                resolution=resolution_str,
+                aspect_ratio="",
+                file_list=file_list,
+                quantity=quantity,
+            )
+            retry_resp = await client.generate_video(
+                desc=order.prompt,
+                model_id=model_id,
+                duration=duration_int,
+                resolution=resolution_str,
+                aspect_ratio="",
+                file_list=file_list,
+                quantity=quantity,
+            )
+            retry_code = retry_resp.get("statusInfo", {}).get("code", -1)
+            if retry_code == 0:
+                logger.info(f"[worker] 海螺订单#{order_id} 空 aspect_ratio 重试成功")
+                resp = retry_resp
+                status_code = 0
+            else:
+                logger.error(f"[worker] 订单#{order_id}重试原始请求: body={json.dumps(retry_body, ensure_ascii=False)[:5000]}")
+                logger.error(f"[worker] 订单#{order_id}重试失败: code={retry_code}, msg={retry_resp.get('statusInfo', {}).get('message', '未知错误')}, resp={json.dumps(retry_resp, ensure_ascii=False)[:5000]}")
+                resp = retry_resp
+                status_code = retry_code
+
         if status_code != 0:
             msg = resp.get("statusInfo", {}).get("message", "未知错误")
             logger.error(f"[worker] 订单#{order_id}原始请求: body={json.dumps(request_body, ensure_ascii=False)[:5000]}")
