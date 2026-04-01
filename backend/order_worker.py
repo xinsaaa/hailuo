@@ -365,6 +365,7 @@ async def poll_order_status(order_id: int, acc_id: Optional[str] = None):
         return
 
     target_task_ids, target_batch_ids = _load_hailuo_tracking(task_ids_raw)
+    target_match_ids = set(target_task_ids) | {str(x) for x in target_batch_ids if x}
 
     while elapsed < MAX_POLL_SECONDS:
         await asyncio.sleep(POLL_INTERVAL)
@@ -400,7 +401,7 @@ async def poll_order_status(order_id: int, acc_id: Optional[str] = None):
                     str(ci.get("batchID", "") or ""),
                 }
                 candidate_ids.discard("")
-                if target_task_ids.intersection(candidate_ids):
+                if target_match_ids.intersection(candidate_ids):
                     status = ci.get("status", 0)
                     if status == 2:
                         parsed = client._parse_feed(feed)
@@ -449,7 +450,7 @@ async def poll_order_status(order_id: int, acc_id: Optional[str] = None):
                         str(ci.get("batchID", "") or ""),
                     }
                     candidate_ids.discard("")
-                    if target_task_ids.intersection(candidate_ids) and ci.get("status") == 2:
+                    if target_match_ids.intersection(candidate_ids) and ci.get("status") == 2:
                         parsed = client._parse_feed(feed)
                         if parsed.get("video_url"):
                             video_urls.append(parsed["video_url"])
