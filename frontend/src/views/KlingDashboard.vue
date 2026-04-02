@@ -589,6 +589,12 @@ const statusMap = {
   failed: { text: '失败', class: 'bg-red-500/20 text-red-400 border-red-500/30' },
 }
 
+const getOrderFailureMessage = (order) => {
+  return order?.status === 'failed'
+    ? (order?.status_message || '生成失败，请稍后重试')
+    : ''
+}
+
 // Insufficient balance dialog
 const showInsufficientModal = ref(false)
 const insufficientPrice = ref(0)
@@ -1155,6 +1161,14 @@ const handleLogout = () => {
                   <span class="text-sm text-gray-400">可灵 AI 正在生成中...</span>
                 </div>
               </div>
+                <div v-if="order.status === 'failed' && getOrderFailureMessage(order)" class="mt-4 bg-red-500/10 rounded-lg p-3 border border-red-500/20">
+                  <div class="flex items-start gap-2">
+                    <svg class="w-4 h-4 text-red-400 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                    </svg>
+                    <span class="text-sm text-red-300 leading-relaxed">{{ getOrderFailureMessage(order) }}</span>
+                  </div>
+                </div>
             </div>
 
             <div v-if="orders.length > 0" class="mt-6 text-center">
