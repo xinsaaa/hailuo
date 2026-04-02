@@ -169,7 +169,16 @@ const startOrdersPolling = () => {
     )
     if (hasProcessing) {
       pollCount = 0
-      try { orders.value = await getOrders() } catch (err) { /* ignore */ }
+      try {
+        const [userData, ordersData] = await Promise.all([
+          getCurrentUser().catch(() => user.value),
+          getOrders()
+        ])
+        user.value = userData
+        orders.value = ordersData.filter(o =>
+          o.model_name && (o.model_name.startsWith('Kling') || o.model_name.startsWith('可灵'))
+        )
+      } catch (err) { /* ignore */ }
     } else {
       pollCount++
     }

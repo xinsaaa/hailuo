@@ -107,7 +107,12 @@ const startOrdersPolling = () => {
     if (hasProcessing) {
       pollCount = 0
       try {
-        orders.value = await getOrders()
+        const [userData, ordersData] = await Promise.all([
+          getCurrentUser().catch(() => user.value),
+          getOrders()
+        ])
+        user.value = userData
+        orders.value = ordersData
       } catch (err) { /* ignore */ }
     } else {
       pollCount++
