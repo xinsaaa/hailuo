@@ -275,6 +275,12 @@ def init_default_models():
                             app_logger.info(f"Migrated old pricing_matrix to 3-tier format for {existing_model.model_id}")
                     except Exception:
                         pass
+                # 同步 price_10s（如果数据库中为0但默认配置有值）
+                new_price_10s = model_data.get("price_10s", 0)
+                if new_price_10s and (not existing_model.price_10s or existing_model.price_10s == 0):
+                    existing_model.price_10s = new_price_10s
+                    updated = True
+                    app_logger.info(f"Synced price_10s={new_price_10s} for model {existing_model.model_id}")
                 # 同步 features
                 new_features = model_data.get("features")
                 if new_features and existing_model.features != new_features:

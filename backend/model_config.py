@@ -23,7 +23,8 @@ class ModelConfigManager:
                 "is_default": True,
                 "is_enabled": True,
                 "sort_order": 1,
-                "price": 0.99
+                "price": 0.99,
+                "price_10s": 1.49
             },
             {
                 "model_id": "hailuo_2_3_fast",
@@ -36,7 +37,8 @@ class ModelConfigManager:
                 "is_default": False,
                 "is_enabled": True,
                 "sort_order": 2,
-                "price": 0.79
+                "price": 0.79,
+                "price_10s": 1.19
             },
             {
                 "model_id": "hailuo_2_0",
@@ -49,7 +51,8 @@ class ModelConfigManager:
                 "is_default": False,
                 "is_enabled": True,
                 "sort_order": 3,
-                "price": 1.19
+                "price": 1.19,
+                "price_10s": 1.79
             },
             {
                 "model_id": "hailuo_3_1",
