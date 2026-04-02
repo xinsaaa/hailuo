@@ -363,6 +363,10 @@ const formattedBalance = computed(() => {
   return user.value ? user.value.balance.toFixed(2) : '0.00'
 })
 
+const isLowBalance = computed(() => {
+  return user.value && user.value.balance < 5
+})
+
 const showNotification = (message, type = 'info') => {
   toastMessage.value = message
   toastType.value = type
@@ -645,11 +649,11 @@ const handleLogout = () => {
             </svg>
             工单反馈
           </router-link>
-          <div class="flex items-center gap-3 bg-black/40 p-1 pr-4 rounded-xl border border-white/10 backdrop-blur-sm shadow-inner">
-            <button @click="router.push('/recharge')" class="px-4 py-1.5 bg-gradient-to-r from-orange-600 to-amber-600 text-white text-xs font-bold rounded-lg hover:brightness-110 transition-all shadow-lg shadow-orange-900/40">
-              充值
+          <div :class="isLowBalance ? 'bg-red-900/30 border-red-500/40 animate-pulse' : 'bg-black/40 border-white/10'" class="flex items-center gap-3 p-1 pr-4 rounded-xl border backdrop-blur-sm shadow-inner transition-all duration-300">
+            <button @click="router.push('/recharge')" :class="isLowBalance ? 'from-red-500 to-orange-500 shadow-red-900/40 animate-none' : 'from-orange-600 to-amber-600 shadow-orange-900/40'" class="px-4 py-1.5 bg-gradient-to-r text-white text-xs font-bold rounded-lg hover:brightness-110 transition-all shadow-lg">
+              {{ isLowBalance ? '⚡ 立即充值' : '充值' }}
             </button>
-            <span class="text-sm text-gray-300">余额: <span class="font-bold text-white text-shadow-sm">¥{{ formattedBalance }}</span></span>
+            <span class="text-sm" :class="isLowBalance ? 'text-red-300' : 'text-gray-300'">余额: <span :class="isLowBalance ? 'text-red-400 font-extrabold' : 'text-white font-bold'" class="text-shadow-sm">¥{{ formattedBalance }}</span></span>
           </div>
           <button @click="handleLogout" class="text-sm text-gray-300 hover:text-white transition-colors hover:drop-shadow-sm">退出</button>
         </div>
