@@ -117,6 +117,12 @@ def _normalize_hailuo_generation_params(
     return normalized_model_id, normalized_resolution, normalized_aspect_ratio
 
 
+def _format_hailuo_failure_message(status_code: int, message: str) -> str:
+    if status_code == 2400002:
+        return "文案违反社区规范，订单已退款，请更换文案后重试"
+    return message or "生成失败"
+
+
 def _extract_hailuo_tracking(resp: dict) -> dict:
     """兼容海螺新旧提交响应，提取后续轮询可用的追踪信息。"""
     data = resp.get("data") or {}
@@ -380,9 +386,10 @@ async def submit_order(order_id: int):
                 status_code = retry_code
 
         if status_code != 0:
-            msg = resp.get("statusInfo", {}).get("message", "未知错误")
-            logger.error(f"[worker] 订单#{order_id}原始请求: body={json.dumps(request_body, ensure_ascii=False)[:5000]}")
-            logger.error(f"[worker] 订单#{order_id}提交失败: code={status_code}, msg={msg}, resp={json.dumps(resp, ensure_ascii=False)[:5000]}")
+            raw_msg = resp.get("statusInfo", {}).get("message", "unknown error")
+            msg = _format_hailuo_failure_message(status_code, raw_msg)
+            logger.error(f"[worker] order#{order_id} request body={json.dumps(request_body, ensure_ascii=False)[:5000]}")
+            logger.error(f"[worker] order#{order_id} submit failed: code={status_code}, raw_msg={raw_msg}, msg={msg}, resp={json.dumps(resp, ensure_ascii=False)[:5000]}")
             _fail_order(order_id, msg)
             return
 
