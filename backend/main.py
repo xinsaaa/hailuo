@@ -1552,7 +1552,7 @@ async def create_order(
                 tier = matrix.get("single_image")
 
             # 兼容旧格式：如果没有 tier 层，直接用 matrix 作为分辨率层
-            if not tier and ("720p" in matrix or "1080p" in matrix):
+            if not tier and ("480p" in matrix or "720p" in matrix or "768p" in matrix or "1080p" in matrix):
                 tier = matrix
 
             if tier:

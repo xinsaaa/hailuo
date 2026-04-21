@@ -52,7 +52,7 @@ const openMatrixEditor = (model) => {
   const existing = model.pricing_matrix || {}
 
   // 检测旧格式：顶层直接是 720p/1080p 而非 text/single_image/dual_image
-  const isOldFormat = !existing.text && !existing.single_image && !existing.dual_image && (existing['720p'] || existing['1080p'])
+  const isOldFormat = !existing.text && !existing.single_image && !existing.dual_image && (existing['480p'] || existing['720p'] || existing['768p'] || existing['1080p'])
 
   const data = {}
   for (const tier of matrixTiers) {
