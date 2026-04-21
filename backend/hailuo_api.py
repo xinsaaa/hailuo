@@ -225,13 +225,15 @@ def build_generate_video_body(
 ) -> dict:
     if file_list is None:
         file_list = []
+    # SeeDance 模型使用原始提示词（与官网一致）
+    use_origin_prompt = model_id.startswith("seedance")
     return {
         "quantity": quantity,
         "parameter": {
             "modelID": model_id,
             "desc": desc,
             "fileList": file_list,
-            "useOriginPrompt": False,
+            "useOriginPrompt": use_origin_prompt,
             "resolution": resolution,
             "duration": duration,
             "aspectRatio": aspect_ratio,
