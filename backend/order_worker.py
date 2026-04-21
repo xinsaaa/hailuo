@@ -59,7 +59,13 @@ MODEL_ID_MAP: dict = {
     "Beta 3.1 Fast":       "23218",
     "Beta 3.1-Fast":       "23218",
     "beta_3_1_fast":       "23218",
+    # SeeDance 系列 - 直接使用字符串代号
+    "SeeDance 2.0 Fast":   "seedance2.0-fast-t2v",
+    "seedance_2_0_fast":   "seedance2.0-fast-t2v",
+    "SeeDance 2.0":        "seedance2.0-t2v",
+    "seedance_2_0":        "seedance2.0-t2v",
 }
+
 
 POLL_INTERVAL = 5       # 秒
 MAX_POLL_SECONDS = 600  # 10 分钟超时
@@ -91,6 +97,10 @@ def _resolve_hailuo_model_id(session: Session, order: VideoOrder) -> str:
     return "23204"
 
 
+def _is_seedance_model(model_id: str) -> bool:
+    return model_id.startswith("seedance")
+
+
 def _normalize_hailuo_generation_params(
     model_id: str,
     resolution: str,
@@ -100,6 +110,10 @@ def _normalize_hailuo_generation_params(
     normalized_model_id = model_id
     normalized_resolution = resolution or "768"
     normalized_aspect_ratio = aspect_ratio or ""
+
+    # SeeDance 模型使用字符串代号，不做改写
+    if _is_seedance_model(model_id):
+        return normalized_model_id, normalized_resolution, normalized_aspect_ratio
 
     if file_count > 0:
         normalized_aspect_ratio = ""

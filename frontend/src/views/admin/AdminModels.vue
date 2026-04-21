@@ -19,9 +19,23 @@ const matrixModel = ref(null) // 当前编辑矩阵的模型
 const matrixData = ref({})    // 编辑中的矩阵数据
 const matrixSaving = ref(false)
 
-// 可灵模型的分辨率和时长配置
-const klingResolutions = ['720p', '1080p']
-const klingDurations = [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+// 矩阵定价的分辨率和时长配置（根据模型动态计算）
+const defaultResolutions = ['720p', '1080p']
+const defaultDurations = [5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+
+const matrixResolutions = computed(() => {
+  const m = matrixModel.value
+  if (!m) return defaultResolutions
+  if (m.model_id === 'seedance_2_0_fast') return ['480p', '720p']
+  if (m.model_id === 'seedance_2_0') return ['480p', '720p', '1080p']
+  return defaultResolutions
+})
+const matrixDurations = computed(() => {
+  const m = matrixModel.value
+  if (!m) return defaultDurations
+  if (m.model_id?.startsWith('seedance')) return [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+  return defaultDurations
+})
 const matrixTiers = [
   { key: 'text', label: '文生视频', color: 'blue' },
   { key: 'single_image', label: '单图模式', color: 'orange' },
@@ -41,9 +55,9 @@ const openMatrixEditor = (model) => {
     // 旧格式：所有tier共用同一份旧数据；新格式：各tier独立
     const tierExisting = isOldFormat ? existing : (existing[tier.key] || {})
     data[tier.key] = {}
-    for (const res of klingResolutions) {
+    for (const res of matrixResolutions.value) {
       data[tier.key][res] = { per_second: 0, ...(tierExisting[res] || {}) }
-      for (const d of klingDurations) {
+      for (const d of matrixDurations.value) {
         if (data[tier.key][res][String(d)] === undefined) data[tier.key][res][String(d)] = 0
       }
     }
@@ -63,7 +77,7 @@ const fillFromPerSecond = (res) => {
   const tierData = matrixData.value[activeTier.value]
   const pps = parseFloat(tierData[res].per_second) || 0
   if (pps <= 0) return
-  for (const d of klingDurations) {
+  for (const d of matrixDurations.value) {
     tierData[res][String(d)] = Math.round(pps * d * 100) / 100
   }
 }
@@ -82,7 +96,7 @@ const copyResolution = (fromRes, toRes, ratio = 1) => {
 const copyTierTo = (toTierKey, ratio = 1) => {
   const src = matrixData.value[activeTier.value]
   if (!src) return
-  for (const res of klingResolutions) {
+  for (const res of matrixResolutions.value) {
     for (const key of Object.keys(src[res])) {
       matrixData.value[toTierKey][res][key] = Math.round((parseFloat(src[res][key]) || 0) * ratio * 100) / 100
     }
@@ -96,11 +110,11 @@ const saveMatrix = async () => {
     const cleanMatrix = {}
     for (const tier of matrixTiers) {
       cleanMatrix[tier.key] = {}
-      for (const res of klingResolutions) {
+      for (const res of matrixResolutions.value) {
         cleanMatrix[tier.key][res] = {}
         const pps = parseFloat(matrixData.value[tier.key][res].per_second) || 0
         if (pps > 0) cleanMatrix[tier.key][res].per_second = pps
-        for (const d of klingDurations) {
+        for (const d of matrixDurations.value) {
           const val = parseFloat(matrixData.value[tier.key][res][String(d)]) || 0
           if (val > 0) cleanMatrix[tier.key][res][String(d)] = val
         }
@@ -385,8 +399,8 @@ onMounted(() => {
                     <button @click="startEditPPS(model)" class="text-gray-400 hover:text-white opacity-0 group-hover:opacity-100 transition-opacity"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg></button>
                   </div>
                 </template>
-                <!-- 可灵：矩阵定价按钮 -->
-                <template v-if="model.platform === 'kling'">
+                <!-- 矩阵定价按钮（可灵 & SeeDance） -->
+                <template v-if="model.platform === 'kling' || model.model_id?.startsWith('seedance')">
                   <div class="flex items-center gap-2 mt-1">
                     <button @click="openMatrixEditor(model)" class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-all border" :class="hasMatrixData(model) ? 'bg-orange-500/10 text-orange-400 border-orange-500/30 hover:bg-orange-500/20' : 'bg-gray-700/50 text-gray-400 border-gray-600 hover:bg-gray-700 hover:text-white'">
                       <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"></path></svg>
@@ -513,7 +527,7 @@ onMounted(() => {
               </div>
 
               <!-- 当前Tier的分辨率定价 -->
-              <div v-for="res in klingResolutions" :key="res" class="mb-6 last:mb-0">
+              <div v-for="res in matrixResolutions" :key="res" class="mb-6 last:mb-0">
                 <div class="flex items-center justify-between mb-3">
                   <div class="flex items-center gap-3">
                     <span class="text-sm font-bold text-white px-3 py-1 rounded-lg" :class="res === '1080p' ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'">{{ res }}</span>
@@ -540,8 +554,8 @@ onMounted(() => {
                 </div>
 
                 <!-- 时长价格网格 -->
-                <div class="grid grid-cols-11 gap-1">
-                  <div v-for="d in klingDurations" :key="d" class="flex flex-col items-center">
+                <div class="grid gap-1" :style="{gridTemplateColumns: `repeat(${matrixDurations.length}, minmax(0, 1fr))`}">
+                  <div v-for="d in matrixDurations" :key="d" class="flex flex-col items-center">
                     <span class="text-[10px] text-gray-500 mb-1 font-mono">{{ d }}s</span>
                     <input
                       v-model.number="matrixData[activeTier][res][String(d)]"
@@ -565,13 +579,13 @@ onMounted(() => {
                     <thead>
                       <tr>
                         <th class="text-left text-gray-500 py-1 px-2">分辨率</th>
-                        <th v-for="d in klingDurations" :key="d" class="text-center text-gray-500 py-1 px-1 font-mono">{{ d }}s</th>
+                        <th v-for="d in matrixDurations" :key="d" class="text-center text-gray-500 py-1 px-1 font-mono">{{ d }}s</th>
                       </tr>
                     </thead>
                     <tbody>
-                      <tr v-for="res in klingResolutions" :key="res" class="border-t border-gray-800">
+                      <tr v-for="res in matrixResolutions" :key="res" class="border-t border-gray-800">
                         <td class="py-1.5 px-2 font-bold" :class="res === '1080p' ? 'text-blue-400' : 'text-emerald-400'">{{ res }}</td>
-                        <td v-for="d in klingDurations" :key="d" class="text-center py-1.5 px-1 font-mono"
+                        <td v-for="d in matrixDurations" :key="d" class="text-center py-1.5 px-1 font-mono"
                             :class="(matrixData[activeTier][res][String(d)] || 0) > 0 ? 'text-orange-400 font-bold' : matrixData[activeTier][res].per_second > 0 ? 'text-gray-400' : 'text-gray-600'">
                           ¥{{ ((matrixData[activeTier][res][String(d)] || 0) > 0 ? matrixData[activeTier][res][String(d)] : (matrixData[activeTier][res].per_second > 0 ? (matrixData[activeTier][res].per_second * d) : 0)).toFixed(2) }}
                         </td>

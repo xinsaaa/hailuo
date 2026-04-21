@@ -46,18 +46,67 @@ const duration = ref('6s') // '6s' 或 '10s'
 // 批量生成数量（1-5）
 const batchCount = ref(1)
 
-// 1080p只能选6s
+// SeeDance 模型判断
+const isSeeDance = computed(() => selectedModel.value?.model_id?.startsWith('seedance'))
+const isSeeDanceFast = computed(() => selectedModel.value?.model_id === 'seedance_2_0_fast')
+
+// 动态分辨率选项
+const resolutionOptions = computed(() => {
+  if (isSeeDanceFast.value) return ['480p', '720p']
+  if (isSeeDance.value) return ['480p', '720p', '1080p']
+  return ['768p', '1080p']
+})
+
+// 动态时长选项
+const durationOptions = computed(() => {
+  if (isSeeDance.value) return [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+  return [6, 10]
+})
+
+// 切换模型时重置分辨率和时长到合法值
+watch(selectedModel, () => {
+  const resOpts = resolutionOptions.value
+  if (!resOpts.includes(resolution.value)) {
+    resolution.value = resOpts[resOpts.length > 1 ? 1 : 0] // 默认选第二个（720p）
+  }
+  const durOpts = durationOptions.value
+  const curDur = parseInt(duration.value)
+  if (!durOpts.includes(curDur)) {
+    duration.value = durOpts[0] + 's'
+  }
+})
+
+// 非SeeDance模式：1080p只能选6s
 watch(resolution, (val) => {
-  if (val === '1080p') {
+  if (!isSeeDance.value && val === '1080p') {
     duration.value = '6s'
   }
 })
 
 // 当前价格（根据时长动态计算）
 const currentPrice = computed(() => {
+  // 优先用 pricing_matrix
+  const pm = selectedModel.value?.pricing_matrix
+  if (pm) {
+    const videoType = videoMode.value === 'text' ? 'text' : 'single_image'
+    const tier = pm[videoType]
+    if (tier) {
+      const resPrices = tier[resolution.value]
+      if (resPrices) {
+        const durSec = parseInt(duration.value)
+        const exact = resPrices[String(durSec)]
+        if (exact && exact > 0) return exact
+        if (resPrices.per_second && resPrices.per_second > 0) return Math.round(resPrices.per_second * durSec * 100) / 100
+      }
+    }
+  }
   if (duration.value === '10s' && selectedModel.value?.price_10s) return selectedModel.value.price_10s
   return selectedModel.value?.price || 0.99
 })
+
+// SeeDance 比例选择
+const aspectRatio = ref('16:9')
+const aspectRatioOptions = ['21:9', '16:9', '4:3', '1:1', '3:4', '9:16']
 
 // 首尾帧图片上传状态
 const firstFrameImage = ref(null)
@@ -325,7 +374,8 @@ const doCreateOrder = async () => {
       videoType,
       resolution.value,
       duration.value,
-      batchCount.value
+      batchCount.value,
+      { aspectRatio: isSeeDance.value ? aspectRatio.value : undefined }
     )
     showNotification('订单提交成功！AI 正在为您生成...', 'success')
     prompt.value = ''
@@ -706,50 +756,69 @@ const handleLogout = () => {
               </div>
 
               <!-- 分辨率和时长选择 -->
-              <div class="flex items-center gap-4">
+              <div class="flex items-center gap-4 flex-wrap">
                 <!-- 分辨率 -->
                 <div class="flex items-center gap-2">
                   <span class="text-gray-400 text-sm">分辨率</span>
                   <div class="flex items-center gap-1 p-1 bg-black/30 rounded-xl border border-white/10">
                     <button
-                      @click="resolution = '768p'"
+                      v-for="res in resolutionOptions" :key="res"
+                      @click="resolution = res"
                       class="px-3 py-1.5 text-sm font-medium rounded-lg transition-all duration-200"
-                      :class="resolution === '768p'
+                      :class="resolution === res
                         ? 'bg-gradient-to-r from-cyan-500/80 to-blue-500/80 text-white shadow-lg shadow-cyan-900/30'
                         : 'text-gray-400 hover:text-white hover:bg-white/5'"
-                    >768p</button>
-                    <button
-                      @click="resolution = '1080p'"
-                      class="px-3 py-1.5 text-sm font-medium rounded-lg transition-all duration-200"
-                      :class="resolution === '1080p'
-                        ? 'bg-gradient-to-r from-cyan-500/80 to-blue-500/80 text-white shadow-lg shadow-cyan-900/30'
-                        : 'text-gray-400 hover:text-white hover:bg-white/5'"
-                    >1080p</button>
+                    >{{ res }}</button>
                   </div>
                 </div>
                 <!-- 时长 -->
                 <div class="flex items-center gap-2">
                   <span class="text-gray-400 text-sm">时长</span>
                   <div class="flex items-center gap-1 p-1 bg-black/30 rounded-xl border border-white/10">
-                    <button
-                      @click="duration = '6s'"
-                      class="px-3 py-1.5 text-sm font-medium rounded-lg transition-all duration-200"
-                      :class="duration === '6s'
-                        ? 'bg-gradient-to-r from-purple-500/80 to-pink-500/80 text-white shadow-lg shadow-purple-900/30'
-                        : 'text-gray-400 hover:text-white hover:bg-white/5'"
-                    >6秒</button>
-                    <button
-                      @click="duration = '10s'"
-                      :disabled="resolution === '1080p'"
-                      class="px-3 py-1.5 text-sm font-medium rounded-lg transition-all duration-200"
-                      :class="duration === '10s' && resolution !== '1080p'
-                        ? 'bg-gradient-to-r from-purple-500/80 to-pink-500/80 text-white shadow-lg shadow-purple-900/30'
-                        : resolution === '1080p'
-                          ? 'text-gray-600 cursor-not-allowed'
+                    <template v-if="isSeeDance">
+                      <select
+                        :value="parseInt(duration)"
+                        @change="duration = $event.target.value + 's'"
+                        class="px-3 py-1.5 text-sm font-medium rounded-lg bg-transparent text-white border-none focus:outline-none cursor-pointer"
+                      >
+                        <option v-for="d in durationOptions" :key="d" :value="d" class="bg-gray-900 text-white">{{ d }}秒</option>
+                      </select>
+                    </template>
+                    <template v-else>
+                      <button
+                        @click="duration = '6s'"
+                        class="px-3 py-1.5 text-sm font-medium rounded-lg transition-all duration-200"
+                        :class="duration === '6s'
+                          ? 'bg-gradient-to-r from-purple-500/80 to-pink-500/80 text-white shadow-lg shadow-purple-900/30'
                           : 'text-gray-400 hover:text-white hover:bg-white/5'"
-                    >10秒</button>
+                      >6秒</button>
+                      <button
+                        @click="duration = '10s'"
+                        :disabled="resolution === '1080p'"
+                        class="px-3 py-1.5 text-sm font-medium rounded-lg transition-all duration-200"
+                        :class="duration === '10s' && resolution !== '1080p'
+                          ? 'bg-gradient-to-r from-purple-500/80 to-pink-500/80 text-white shadow-lg shadow-purple-900/30'
+                          : resolution === '1080p'
+                            ? 'text-gray-600 cursor-not-allowed'
+                            : 'text-gray-400 hover:text-white hover:bg-white/5'"
+                      >10秒</button>
+                    </template>
                   </div>
-                  <span v-if="resolution === '1080p'" class="text-gray-500 text-xs">1080p仅支持6秒</span>
+                  <span v-if="!isSeeDance && resolution === '1080p'" class="text-gray-500 text-xs">1080p仅支持6秒</span>
+                </div>
+                <!-- 比例（SeeDance） -->
+                <div v-if="isSeeDance" class="flex items-center gap-2">
+                  <span class="text-gray-400 text-sm">比例</span>
+                  <div class="flex items-center gap-1 p-1 bg-black/30 rounded-xl border border-white/10">
+                    <button
+                      v-for="ar in aspectRatioOptions" :key="ar"
+                      @click="aspectRatio = ar"
+                      class="px-2.5 py-1.5 text-xs font-medium rounded-lg transition-all duration-200"
+                      :class="aspectRatio === ar
+                        ? 'bg-gradient-to-r from-amber-500/80 to-orange-500/80 text-white shadow-lg shadow-amber-900/30'
+                        : 'text-gray-400 hover:text-white hover:bg-white/5'"
+                    >{{ ar }}</button>
+                  </div>
                 </div>
                 <!-- 批量生成 -->
                 <div class="flex items-center gap-2">

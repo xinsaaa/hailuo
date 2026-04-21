@@ -146,6 +146,63 @@ class ModelConfigManager:
                 "price": 0.49
             },
             {
+                "model_id": "seedance_2_0_fast",
+                "name": "SeeDance 2.0 Fast",
+                "display_name": "SeeDance 2.0 Fast",
+                "description": "SeeDance舞蹈视频生成，极速版",
+                "features": json.dumps(["480P-720P", "4s-15s", "首尾帧", "21:9/16:9/4:3/1:1/3:4/9:16"]),
+                "badge": "NEW",
+                "supports_last_frame": True,
+                "is_default": False,
+                "is_enabled": True,
+                "sort_order": 11,
+                "price": 0.79,
+                "pricing_matrix": json.dumps({
+                    "text": {
+                        "480p": {"per_second": 0.08},
+                        "720p": {"per_second": 0.12}
+                    },
+                    "single_image": {
+                        "480p": {"per_second": 0.10},
+                        "720p": {"per_second": 0.15}
+                    },
+                    "dual_image": {
+                        "480p": {"per_second": 0.12},
+                        "720p": {"per_second": 0.18}
+                    }
+                })
+            },
+            {
+                "model_id": "seedance_2_0",
+                "name": "SeeDance 2.0",
+                "display_name": "SeeDance 2.0",
+                "description": "SeeDance舞蹈视频生成，高清版",
+                "features": json.dumps(["480P-1080P", "4s-15s", "首尾帧", "21:9/16:9/4:3/1:1/3:4/9:16"]),
+                "badge": "NEW",
+                "supports_last_frame": True,
+                "is_default": False,
+                "is_enabled": True,
+                "sort_order": 12,
+                "price": 0.99,
+                "pricing_matrix": json.dumps({
+                    "text": {
+                        "480p": {"per_second": 0.08},
+                        "720p": {"per_second": 0.12},
+                        "1080p": {"per_second": 0.18}
+                    },
+                    "single_image": {
+                        "480p": {"per_second": 0.10},
+                        "720p": {"per_second": 0.15},
+                        "1080p": {"per_second": 0.22}
+                    },
+                    "dual_image": {
+                        "480p": {"per_second": 0.12},
+                        "720p": {"per_second": 0.18},
+                        "1080p": {"per_second": 0.26}
+                    }
+                })
+            },
+            {
                 "model_id": "kling_3_0",
                 "name": "Kling 3.0",
                 "display_name": "可灵 3.0",

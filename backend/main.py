@@ -1513,7 +1513,7 @@ async def create_order(
         raise HTTPException(status_code=400, detail="无效的视频类型")
 
     # 校验分辨率和秒数
-    if resolution not in ("720p", "768p", "1080p"):
+    if resolution not in ("480p", "720p", "768p", "1080p"):
         raise HTTPException(status_code=400, detail="无效的分辨率")
     duration_seconds = int(duration.replace("s", "")) if duration else 5
     if duration_seconds < 3 or duration_seconds > 15:
