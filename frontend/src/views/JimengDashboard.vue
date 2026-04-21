@@ -313,16 +313,19 @@ const handleLogout = () => {
           </router-link>
           <router-link to="/invite" class="text-sm text-gray-400 hover:text-white transition-colors">邀请</router-link>
 
-          <div :class="isLowBalance ? 'bg-red-900/30 border-red-500/40 animate-pulse' : 'bg-black/40 border-white/10'" class="flex items-center gap-3 p-1 pr-4 rounded-xl border backdrop-blur-sm shadow-inner transition-all duration-300">
-             <button 
-               @click="router.push('/recharge')"
-               :class="isLowBalance ? 'from-red-500 to-orange-500 shadow-red-900/40 animate-none' : 'from-violet-600 to-fuchsia-600 shadow-violet-900/40'"
-               class="px-4 py-1.5 bg-gradient-to-r text-white text-xs font-bold rounded-lg hover:brightness-110 transition-all shadow-lg"
-             >
-               {{ isLowBalance ? '⚡ 立即充值' : '充值' }}
-             </button>
-             <span class="text-sm" :class="isLowBalance ? 'text-red-300' : 'text-gray-300'">余额: <span :class="isLowBalance ? 'text-red-400 font-extrabold' : 'text-white font-bold'" class="text-shadow-sm">¥{{ formattedBalance }}</span></span>
-          </div>
+          <router-link to="/profile" class="flex items-center gap-1.5 px-3 py-1.5 text-sm text-cyan-400/90 hover:text-cyan-300 bg-cyan-500/10 hover:bg-cyan-500/15 border border-cyan-500/20 hover:border-cyan-500/30 rounded-lg transition-all">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+            </svg>
+            我的
+          </router-link>
+          <button 
+            @click="router.push('/recharge')"
+            :class="isLowBalance ? 'from-red-500 to-orange-500 shadow-red-900/40' : 'from-violet-600 to-fuchsia-600 shadow-violet-900/40'"
+            class="px-4 py-1.5 bg-gradient-to-r text-white text-xs font-bold rounded-lg hover:brightness-110 transition-all shadow-lg"
+          >
+            {{ isLowBalance ? '⚡ 充值' : '充值' }}
+          </button>
           <button @click="handleLogout" class="text-sm text-gray-300 hover:text-white transition-colors hover:drop-shadow-sm">退出</button>
         </div>
       </div>
