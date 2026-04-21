@@ -24,7 +24,21 @@ class ModelConfigManager:
                 "is_enabled": True,
                 "sort_order": 1,
                 "price": 0.99,
-                "price_10s": 1.49
+                "price_10s": 1.49,
+                "pricing_matrix": json.dumps({
+                    "text": {
+                        "768p": {"6": 0.99, "10": 1.49, "per_second": 0.17},
+                        "1080p": {"6": 1.29, "10": 1.89, "per_second": 0.22}
+                    },
+                    "single_image": {
+                        "768p": {"6": 0.99, "10": 1.49, "per_second": 0.17},
+                        "1080p": {"6": 1.29, "10": 1.89, "per_second": 0.22}
+                    },
+                    "dual_image": {
+                        "768p": {"6": 0.99, "10": 1.49, "per_second": 0.17},
+                        "1080p": {"6": 1.29, "10": 1.89, "per_second": 0.22}
+                    }
+                })
             },
             {
                 "model_id": "hailuo_2_3_fast",
@@ -38,7 +52,21 @@ class ModelConfigManager:
                 "is_enabled": True,
                 "sort_order": 2,
                 "price": 0.79,
-                "price_10s": 1.19
+                "price_10s": 1.19,
+                "pricing_matrix": json.dumps({
+                    "text": {
+                        "768p": {"6": 0.79, "10": 1.19, "per_second": 0.13},
+                        "1080p": {"6": 0.99, "10": 1.49, "per_second": 0.17}
+                    },
+                    "single_image": {
+                        "768p": {"6": 0.79, "10": 1.19, "per_second": 0.13},
+                        "1080p": {"6": 0.99, "10": 1.49, "per_second": 0.17}
+                    },
+                    "dual_image": {
+                        "768p": {"6": 0.79, "10": 1.19, "per_second": 0.13},
+                        "1080p": {"6": 0.99, "10": 1.49, "per_second": 0.17}
+                    }
+                })
             },
             {
                 "model_id": "hailuo_2_0",
@@ -52,7 +80,21 @@ class ModelConfigManager:
                 "is_enabled": True,
                 "sort_order": 3,
                 "price": 1.19,
-                "price_10s": 1.79
+                "price_10s": 1.79,
+                "pricing_matrix": json.dumps({
+                    "text": {
+                        "768p": {"6": 1.19, "10": 1.79, "per_second": 0.20},
+                        "1080p": {"6": 1.49, "10": 2.19, "per_second": 0.25}
+                    },
+                    "single_image": {
+                        "768p": {"6": 1.19, "10": 1.79, "per_second": 0.20},
+                        "1080p": {"6": 1.49, "10": 2.19, "per_second": 0.25}
+                    },
+                    "dual_image": {
+                        "768p": {"6": 1.49, "10": 2.19, "per_second": 0.25},
+                        "1080p": {"6": 1.79, "10": 2.59, "per_second": 0.30}
+                    }
+                })
             },
             {
                 "model_id": "hailuo_3_1",
@@ -65,7 +107,21 @@ class ModelConfigManager:
                 "is_default": False,
                 "is_enabled": True,
                 "sort_order": 4,
-                "price": 1.59
+                "price": 1.59,
+                "pricing_matrix": json.dumps({
+                    "text": {
+                        "768p": {"6": 1.39, "10": 1.59, "per_second": 0.18},
+                        "1080p": {"6": 1.59, "10": 1.99, "per_second": 0.22}
+                    },
+                    "single_image": {
+                        "768p": {"6": 1.39, "10": 1.59, "per_second": 0.18},
+                        "1080p": {"6": 1.59, "10": 1.99, "per_second": 0.22}
+                    },
+                    "dual_image": {
+                        "768p": {"6": 1.59, "10": 1.99, "per_second": 0.22},
+                        "1080p": {"6": 1.99, "10": 2.49, "per_second": 0.28}
+                    }
+                })
             },
             {
                 "model_id": "hailuo_3_1_pro",
@@ -78,7 +134,21 @@ class ModelConfigManager:
                 "is_default": False,
                 "is_enabled": True,
                 "sort_order": 5,
-                "price": 2.99
+                "price": 2.99,
+                "pricing_matrix": json.dumps({
+                    "text": {
+                        "768p": {"6": 2.49, "10": 2.99, "per_second": 0.35},
+                        "1080p": {"6": 2.99, "10": 3.79, "per_second": 0.42}
+                    },
+                    "single_image": {
+                        "768p": {"6": 2.49, "10": 2.99, "per_second": 0.35},
+                        "1080p": {"6": 2.99, "10": 3.79, "per_second": 0.42}
+                    },
+                    "dual_image": {
+                        "768p": {"6": 2.99, "10": 3.79, "per_second": 0.42},
+                        "1080p": {"6": 3.49, "10": 4.49, "per_second": 0.50}
+                    }
+                })
             },
             {
                 "model_id": "beta_3_1",
@@ -91,7 +161,21 @@ class ModelConfigManager:
                 "is_default": False,
                 "is_enabled": True,
                 "sort_order": 6,
-                "price": 0.69
+                "price": 0.69,
+                "pricing_matrix": json.dumps({
+                    "text": {
+                        "768p": {"6": 0.69, "10": 0.69, "per_second": 0.09},
+                        "1080p": {"6": 0.89, "10": 0.89, "per_second": 0.11}
+                    },
+                    "single_image": {
+                        "768p": {"6": 0.69, "10": 0.69, "per_second": 0.09},
+                        "1080p": {"6": 0.89, "10": 0.89, "per_second": 0.11}
+                    },
+                    "dual_image": {
+                        "768p": {"6": 0.69, "10": 0.69, "per_second": 0.09},
+                        "1080p": {"6": 0.89, "10": 0.89, "per_second": 0.11}
+                    }
+                })
             },
             {
                 "model_id": "beta_3_1_fast",
@@ -104,7 +188,21 @@ class ModelConfigManager:
                 "is_default": False,
                 "is_enabled": True,
                 "sort_order": 7,
-                "price": 0.35
+                "price": 0.35,
+                "pricing_matrix": json.dumps({
+                    "text": {
+                        "768p": {"6": 0.35, "10": 0.35, "per_second": 0.05},
+                        "1080p": {"6": 0.45, "10": 0.45, "per_second": 0.06}
+                    },
+                    "single_image": {
+                        "768p": {"6": 0.35, "10": 0.35, "per_second": 0.05},
+                        "1080p": {"6": 0.45, "10": 0.45, "per_second": 0.06}
+                    },
+                    "dual_image": {
+                        "768p": {"6": 0.35, "10": 0.35, "per_second": 0.05},
+                        "1080p": {"6": 0.45, "10": 0.45, "per_second": 0.06}
+                    }
+                })
             },
             {
                 "model_id": "hailuo_1_0_director",
@@ -117,7 +215,18 @@ class ModelConfigManager:
                 "is_default": False,
                 "is_enabled": True,
                 "sort_order": 8,
-                "price": 0.59
+                "price": 0.59,
+                "pricing_matrix": json.dumps({
+                    "text": {
+                        "768p": {"6": 0.59, "per_second": 0.10}
+                    },
+                    "single_image": {
+                        "768p": {"6": 0.59, "per_second": 0.10}
+                    },
+                    "dual_image": {
+                        "768p": {"6": 0.59, "per_second": 0.10}
+                    }
+                })
             },
             {
                 "model_id": "hailuo_1_0_live",
@@ -130,7 +239,18 @@ class ModelConfigManager:
                 "is_default": False,
                 "is_enabled": True,
                 "sort_order": 9,
-                "price": 0.59
+                "price": 0.59,
+                "pricing_matrix": json.dumps({
+                    "text": {
+                        "768p": {"6": 0.59, "per_second": 0.10}
+                    },
+                    "single_image": {
+                        "768p": {"6": 0.59, "per_second": 0.10}
+                    },
+                    "dual_image": {
+                        "768p": {"6": 0.59, "per_second": 0.10}
+                    }
+                })
             },
             {
                 "model_id": "hailuo_1_0",
@@ -143,7 +263,18 @@ class ModelConfigManager:
                 "is_default": False,
                 "is_enabled": True,
                 "sort_order": 10,
-                "price": 0.49
+                "price": 0.49,
+                "pricing_matrix": json.dumps({
+                    "text": {
+                        "768p": {"6": 0.49, "per_second": 0.08}
+                    },
+                    "single_image": {
+                        "768p": {"6": 0.49, "per_second": 0.08}
+                    },
+                    "dual_image": {
+                        "768p": {"6": 0.49, "per_second": 0.08}
+                    }
+                })
             },
             {
                 "model_id": "seedance_2_0_fast",

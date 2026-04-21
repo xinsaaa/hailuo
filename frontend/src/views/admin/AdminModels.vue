@@ -28,12 +28,16 @@ const matrixResolutions = computed(() => {
   if (!m) return defaultResolutions
   if (m.model_id === 'seedance_2_0_fast') return ['480p', '720p']
   if (m.model_id === 'seedance_2_0') return ['480p', '720p', '1080p']
+  // 海螺传统模型：支持 768p 和 1080p
+  if (m.platform === 'hailuo' && !m.model_id?.startsWith('seedance')) return ['768p', '1080p']
   return defaultResolutions
 })
 const matrixDurations = computed(() => {
   const m = matrixModel.value
   if (!m) return defaultDurations
   if (m.model_id?.startsWith('seedance')) return [4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+  // 海螺传统模型：6s 和 10s
+  if (m.platform === 'hailuo' && !m.model_id?.startsWith('seedance')) return [6, 10]
   return defaultDurations
 })
 const matrixTiers = [
@@ -146,8 +150,8 @@ const hasMatrixData = (model) => {
       }
     }
   }
-  // 旧两层结构（720p/1080p直接在顶层）
-  for (const resKey of ['720p', '1080p']) {
+  // 旧两层结构（分辨率直接在顶层）
+  for (const resKey of ['480p', '720p', '768p', '1080p']) {
     const res = pm[resKey]
     if (!res || typeof res !== 'object') continue
     for (const [k, v] of Object.entries(res)) {
@@ -399,8 +403,8 @@ onMounted(() => {
                     <button @click="startEditPPS(model)" class="text-gray-400 hover:text-white opacity-0 group-hover:opacity-100 transition-opacity"><svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg></button>
                   </div>
                 </template>
-                <!-- 矩阵定价按钮（可灵 & SeeDance） -->
-                <template v-if="model.platform === 'kling' || model.model_id?.startsWith('seedance')">
+                <!-- 矩阵定价按钮（海螺 & 可灵 & SeeDance） -->
+                <template v-if="model.platform === 'kling' || model.platform === 'hailuo'">
                   <div class="flex items-center gap-2 mt-1">
                     <button @click="openMatrixEditor(model)" class="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-all border" :class="hasMatrixData(model) ? 'bg-orange-500/10 text-orange-400 border-orange-500/30 hover:bg-orange-500/20' : 'bg-gray-700/50 text-gray-400 border-gray-600 hover:bg-gray-700 hover:text-white'">
                       <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"></path></svg>
@@ -472,8 +476,8 @@ onMounted(() => {
         <p class="font-medium text-blue-200">配置说明</p>
         <p>• 禁用模型后，用户前端将无法看到该选项。</p>
         <p>• 默认模型将在用户未手动选择时自动应用。</p>
-        <p>• <span class="text-blue-300 font-medium">可灵定价</span>：矩阵定价 &gt; 固定价格。矩阵定价分三档（文生视频/单图/双图），每档可为每个分辨率×时长组合单独设价。</p>
-        <p>• <span class="text-blue-300 font-medium">海螺定价</span>：固定价格(6s) + 10s价格。</p>
+        <p>• <span class="text-blue-300 font-medium">可灵/海螺/SeeDance 定价</span>：矩阵定价 &gt; 固定价格。矩阵定价分三档（文生视频/单图/双图），每档可为每个分辨率×时长组合单独设价。</p>
+        <p>• <span class="text-blue-300 font-medium">海螺传统</span>：未设矩阵时回退到固定价格(6s) + 10s价格。</p>
         <p>• <span class="text-blue-300 font-medium">即梦定价</span>：每秒单价 &gt; 固定价格。</p>
       </div>
     </div>
@@ -530,7 +534,7 @@ onMounted(() => {
               <div v-for="res in matrixResolutions" :key="res" class="mb-6 last:mb-0">
                 <div class="flex items-center justify-between mb-3">
                   <div class="flex items-center gap-3">
-                    <span class="text-sm font-bold text-white px-3 py-1 rounded-lg" :class="res === '1080p' ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'">{{ res }}</span>
+                    <span class="text-sm font-bold text-white px-3 py-1 rounded-lg" :class="res === matrixResolutions[matrixResolutions.length - 1] ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'">{{ res }}</span>
                     <div class="flex items-center gap-2">
                       <span class="text-xs text-gray-400">每秒单价</span>
                       <input
@@ -546,9 +550,9 @@ onMounted(() => {
                     </div>
                   </div>
                   <div class="flex items-center gap-2">
-                    <template v-if="res === '1080p'">
-                      <button @click="copyResolution('720p', '1080p', 1)" class="px-2 py-1 text-[10px] bg-gray-700 text-gray-300 rounded hover:bg-gray-600 transition-all">复制720p (1x)</button>
-                      <button @click="copyResolution('720p', '1080p', 1.3)" class="px-2 py-1 text-[10px] bg-gray-700 text-gray-300 rounded hover:bg-gray-600 transition-all">复制720p (1.3x)</button>
+                    <template v-if="res !== matrixResolutions[0]">
+                      <button @click="copyResolution(matrixResolutions[0], res, 1)" class="px-2 py-1 text-[10px] bg-gray-700 text-gray-300 rounded hover:bg-gray-600 transition-all">复制{{ matrixResolutions[0] }} (1x)</button>
+                      <button @click="copyResolution(matrixResolutions[0], res, 1.3)" class="px-2 py-1 text-[10px] bg-gray-700 text-gray-300 rounded hover:bg-gray-600 transition-all">复制{{ matrixResolutions[0] }} (1.3x)</button>
                     </template>
                   </div>
                 </div>
@@ -584,7 +588,7 @@ onMounted(() => {
                     </thead>
                     <tbody>
                       <tr v-for="res in matrixResolutions" :key="res" class="border-t border-gray-800">
-                        <td class="py-1.5 px-2 font-bold" :class="res === '1080p' ? 'text-blue-400' : 'text-emerald-400'">{{ res }}</td>
+                        <td class="py-1.5 px-2 font-bold" :class="res === matrixResolutions[matrixResolutions.length - 1] ? 'text-blue-400' : 'text-emerald-400'">{{ res }}</td>
                         <td v-for="d in matrixDurations" :key="d" class="text-center py-1.5 px-1 font-mono"
                             :class="(matrixData[activeTier][res][String(d)] || 0) > 0 ? 'text-orange-400 font-bold' : matrixData[activeTier][res].per_second > 0 ? 'text-gray-400' : 'text-gray-600'">
                           ¥{{ ((matrixData[activeTier][res][String(d)] || 0) > 0 ? matrixData[activeTier][res][String(d)] : (matrixData[activeTier][res].per_second > 0 ? (matrixData[activeTier][res].per_second * d) : 0)).toFixed(2) }}

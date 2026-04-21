@@ -265,10 +265,10 @@ def init_default_models():
                     updated = True
                     app_logger.info(f"Synced pricing_matrix for model {existing_model.model_id}")
                 # 自动迁移旧的两层pricing_matrix到三层结构
-                if existing_model.pricing_matrix and existing_model.platform == "kling":
+                if existing_model.pricing_matrix and existing_model.platform in ("kling", "hailuo"):
                     try:
                         old_pm = json.loads(existing_model.pricing_matrix) if isinstance(existing_model.pricing_matrix, str) else existing_model.pricing_matrix
-                        if old_pm and ("720p" in old_pm or "1080p" in old_pm) and "text" not in old_pm and "single_image" not in old_pm:
+                        if old_pm and ("480p" in old_pm or "720p" in old_pm or "768p" in old_pm or "1080p" in old_pm) and "text" not in old_pm and "single_image" not in old_pm:
                             migrated = {"text": old_pm, "single_image": old_pm, "dual_image": old_pm}
                             existing_model.pricing_matrix = json.dumps(migrated)
                             updated = True
