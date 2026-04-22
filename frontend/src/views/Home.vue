@@ -1,40 +1,23 @@
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '../stores/user'
 import { getPublicConfig, getAvailableModels } from '../api'
-import { getJimengStatus, getJimengModels } from '../api/jimeng'
 
 const prompt = ref('')
 const router = useRouter()
 const userStore = useUserStore()
 const videoPrice23 = ref(0.99)
-const videoPrice31 = ref(0.99)
-const jimengPrice = ref(0.99)
 const modelsList = ref([])
-const jimengEnabled = ref(true)
-const jimengModels = ref([])
 const klingPrice = ref(0.99)
 const hasKling = computed(() => modelsList.value.some(m => m.id?.includes('kling') && m.type !== 'lip_sync'))
 
 const has23Series = computed(() => modelsList.value.some(m => m.id.includes('2_0') || m.id.includes('2_3') || m.id.includes('hailuo_1_0')))
-const has31Series = computed(() => modelsList.value.some(m => m.id.includes('3_1') || m.id.includes('beta_3')))
-
-const hasJimeng = computed(() => jimengEnabled.value && jimengModels.value.length > 0)
 
 const siteName = ref(localStorage.getItem('site_name') || '大帝AI')
 const siteAnnouncement = ref('')
 const isLoggedIn = computed(() => !!userStore.token)
 const user = computed(() => userStore.user)
-
-// 鼠标跟随效果
-const mouseX = ref(0)
-const mouseY = ref(0)
-
-const handleMouseMove = (e) => {
-  mouseX.value = e.clientX
-  mouseY.value = e.clientY
-}
 
 const bonusInfo = ref([])
 
@@ -42,40 +25,22 @@ const loadConfig = async () => {
     try {
         const config = await getPublicConfig()
         
-        // 加载海螺模型
+        // 加载模型
         try {
             const modelsData = await getAvailableModels()
             if (modelsData && modelsData.models && modelsData.models.length > 0) {
                 modelsList.value = modelsData.models
                 const models23 = modelsData.models.filter(m => m.id.includes('2_0') || m.id.includes('2_3') || m.id.includes('hailuo_1_0'))
-                const models31 = modelsData.models.filter(m => m.id.includes('3_1') || m.id.includes('beta_3'))
                 if (models23.length > 0) {
                     videoPrice23.value = Math.min(...models23.map(m => m.price || 0.99))
                 }
-                if (models31.length > 0) {
-                    videoPrice31.value = Math.min(...models31.map(m => m.price || 0.99))
-                }
-                const modelsKling = modelsData.models.filter(m => m.id?.includes('kling') && m.type !== 'lip_sync')
+                const modelsKling = modelsData.models.filter(m => m.id === 'kling_3_0')
                 if (modelsKling.length > 0) {
                     klingPrice.value = Math.min(...modelsKling.map(m => m.price || 0.99))
                 }
             }
         } catch (e) {
             // 保持默认价格
-        }
-        
-        // 加载即梦模型状态
-        try {
-            const jimengData = await getJimengModels()
-            if (jimengData && jimengData.models && jimengData.models.length > 0) {
-                jimengModels.value = jimengData.models
-                jimengEnabled.value = true
-                jimengPrice.value = Math.min(...jimengData.models.map(m => m.price || 0.99))
-            } else {
-                jimengEnabled.value = false
-            }
-        } catch (e) {
-            jimengEnabled.value = false
         }
         
         // 生成赠送信息
@@ -109,12 +74,7 @@ const loadConfig = async () => {
 }
 
 onMounted(() => {
-  window.addEventListener('mousemove', handleMouseMove)
   loadConfig()
-})
-
-onUnmounted(() => {
-  window.removeEventListener('mousemove', handleMouseMove)
 })
 
 const handleStart = () => {
@@ -191,10 +151,10 @@ const handleModelSeriesGenerate = (series) => {
       </div>
       
       <!-- AI模型卡片网格 -->
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 w-full max-w-6xl">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-8 w-full max-w-3xl">
         
         <!-- 海螺AI卡片 -->
-        <div :class="['group relative md:col-start-2 lg:col-start-auto', { 'opacity-60': !has23Series }]">
+        <div :class="['group relative', { 'opacity-60': !has23Series }]">
           <!-- 发光边框 - 优化为单色简约光晕 -->
           <div v-if="has23Series" class="absolute -inset-0.5 bg-gradient-to-b from-cyan-500/20 to-blue-500/5 rounded-3xl blur opacity-20 group-hover:opacity-60 transition-opacity duration-700"></div>
           
@@ -245,64 +205,14 @@ const handleModelSeriesGenerate = (series) => {
           </div>
         </div>
         
-        <!-- 海螺 AI 3.1模型 -->
-        <div :class="['group relative transition-all duration-500 md:col-start-2 md:row-start-2 lg:col-start-auto lg:row-start-auto', has31Series ? 'hover:opacity-100' : 'opacity-60']">
-          <div v-if="has31Series" class="absolute -inset-0.5 bg-gradient-to-br from-purple-500/10 to-pink-500/10 rounded-3xl opacity-50 group-hover:opacity-100 transition-all"></div>
-          
-          <div class="relative bg-white/5 border border-white/5 border-t-white/10 rounded-2xl p-6 shadow-xl h-full backdrop-blur-3xl transition-all duration-500 hover:bg-white/10 hover:border-white/10 hover:-translate-y-1">
-            <div class="flex justify-between items-center mb-4">
-              <div class="px-2.5 py-1 rounded-full bg-gradient-to-r from-purple-500/80 to-pink-500/80 text-white text-xs font-bold shadow-sm ring-1 ring-white/10">
-                NEW
-              </div>
-              <div class="text-xl font-bold text-white drop-shadow-sm tracking-wide">
-                ¥{{ videoPrice31 }}
-              </div>
-            </div>
-            
-            <!-- 模型名称 -->
-            <h3 class="text-xl font-bold text-white mb-4 flex items-center gap-2">
-              海螺 AI 3.1 <span class="text-[10px] text-purple-400 font-normal px-1.5 py-0.5 border border-purple-400/30 rounded tracking-wider uppercase">3.1系列</span>
-              <div class="w-1.5 h-1.5 rounded-full bg-purple-500 shadow-[0_0_8px_rgba(147,51,234,0.8)] animate-pulse"></div>
-            </h3>
-            
-            <!-- 特性标签 -->
-            <div class="space-y-2 mb-6">
-              <div class="px-3 py-2 rounded-lg bg-black/20 text-gray-300 text-xs font-medium flex items-center gap-2 border border-white/5 group-hover:border-white/10 transition-colors">
-                <svg class="w-3.5 h-3.5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
-                音画同步技术
-              </div>
-              <div class="px-3 py-2 rounded-lg bg-black/20 text-gray-300 text-xs font-medium border border-white/5 group-hover:border-white/10 transition-colors">
-                3.1系列：高精度控制，音画完美融合
-              </div>
-            </div>
-            
-            <!-- 价格说明 -->
-            <div class="text-center mb-6">
-              <div class="text-sm font-medium text-gray-400">
-                单次生成仅需 <span class="text-white font-bold mx-1">{{ videoPrice31 }}元</span>
-              </div>
-            </div>
-            
-            <!-- 生成按钮 -->
-            <div>
-              <button v-if="has31Series" @click.stop="handleModelSeriesGenerate('3.1')" class="w-full py-3.5 bg-white text-black hover:bg-gray-50 rounded-xl font-bold text-sm transition-all duration-300 shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-95">
-                使用3.1系列生成
-              </button>
-              <button v-else class="w-full py-3.5 bg-gray-700 text-gray-500 rounded-xl font-bold text-sm cursor-not-allowed">
-                暂未开放
-              </button>
-            </div>
-          </div>
-        </div>
-        
-        <!-- 可灵AI模型 -->
-        <div :class="['group relative md:col-start-2 lg:col-start-auto', { 'opacity-60': !hasKling }]" @click="hasKling && router.push('/kling')">
-          <div v-if="hasKling" class="absolute -inset-0.5 bg-gradient-to-b from-orange-500/20 to-amber-500/5 rounded-3xl blur opacity-20 group-hover:opacity-60 transition-opacity duration-700"></div>
+        <!-- Seedance极速版 -->
+        <div :class="['group relative', { 'opacity-60': !hasKling }]" @click="hasKling && router.push('/kling')">
+          <div v-if="hasKling" class="absolute -inset-0.5 bg-gradient-to-b from-violet-500/20 to-fuchsia-500/5 rounded-3xl blur opacity-20 group-hover:opacity-60 transition-opacity duration-700"></div>
 
-          <div class="relative bg-white/5 border border-white/5 border-t-white/20 rounded-2xl p-6 shadow-2xl h-full cursor-pointer transition-all duration-500 hover:scale-[1.02] hover:-translate-y-1 backdrop-blur-3xl hover:bg-white/10 hover:shadow-orange-500/10">
+          <div class="relative bg-white/5 border border-white/5 border-t-white/20 rounded-2xl p-6 shadow-2xl h-full cursor-pointer transition-all duration-500 hover:scale-[1.02] hover:-translate-y-1 backdrop-blur-3xl hover:bg-white/10 hover:shadow-violet-500/10">
             <div class="flex justify-between items-center mb-4">
-              <div class="px-2.5 py-1 rounded-full bg-gradient-to-r from-orange-500 to-amber-500 text-white text-xs font-bold shadow-sm ring-1 ring-white/10">
-                NEW
+              <div class="px-2.5 py-1 rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white text-xs font-bold shadow-sm ring-1 ring-white/10">
+                HOT
               </div>
               <div class="text-xl font-bold text-white drop-shadow-sm tracking-wide">
                 ¥{{ klingPrice }}
@@ -310,17 +220,17 @@ const handleModelSeriesGenerate = (series) => {
             </div>
 
             <h3 class="text-xl font-bold text-white mb-4 flex items-center gap-2">
-              可灵 AI <span class="text-[10px] text-orange-400 font-normal px-1.5 py-0.5 border border-orange-400/30 rounded tracking-wider uppercase">KlingAI</span>
-              <div v-if="hasKling" class="w-1.5 h-1.5 rounded-full bg-orange-400 shadow-[0_0_8px_rgba(251,146,60,0.8)] animate-pulse"></div>
+              Seedance 极速版 <span class="text-[10px] text-violet-400 font-normal px-1.5 py-0.5 border border-violet-400/30 rounded tracking-wider uppercase">Seedance 2.0</span>
+              <div v-if="hasKling" class="w-1.5 h-1.5 rounded-full bg-violet-400 shadow-[0_0_8px_rgba(167,139,250,0.8)] animate-pulse"></div>
             </h3>
 
             <div class="space-y-2 mb-6">
               <div class="px-3 py-2 rounded-lg bg-black/20 text-gray-300 text-xs font-medium flex items-center gap-2 border border-white/5 group-hover:border-white/10 transition-colors">
-                <svg class="w-3.5 h-3.5 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 4v16M17 4v16M3 8h4m10 0h4M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z"/></svg>
-                快手旗下，电影级画质
+                <svg class="w-3.5 h-3.5 text-violet-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                字节跳动出品，极速生成
               </div>
               <div class="px-3 py-2 rounded-lg bg-black/20 text-gray-300 text-xs font-medium border border-white/5 group-hover:border-white/10 transition-colors">
-                运动自然流畅，支持5s-10s生成
+                电影级画质，运动自然流畅
               </div>
             </div>
 
@@ -332,7 +242,7 @@ const handleModelSeriesGenerate = (series) => {
 
             <div>
               <button v-if="hasKling" class="w-full py-3.5 bg-white text-black hover:bg-gray-50 rounded-xl font-bold text-sm transition-all duration-300 shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-95">
-                使用可灵生成
+                使用 Seedance 生成
               </button>
               <button v-else class="w-full py-3.5 bg-gray-700 text-gray-500 rounded-xl font-bold text-sm cursor-not-allowed">
                 暂未开放
@@ -340,138 +250,8 @@ const handleModelSeriesGenerate = (series) => {
             </div>
           </div>
         </div>
-        
-        <!-- 即梦AI卡片 -->
-        <div :class="['group relative md:col-start-2 lg:col-start-auto', { 'opacity-60 cursor-not-allowed': !hasJimeng }]" @click="hasJimeng && router.push('/jimeng')">
-          <!-- 发光边框 -->
-          <div v-if="hasJimeng" class="absolute -inset-0.5 bg-gradient-to-b from-violet-500/20 to-fuchsia-500/5 rounded-3xl blur opacity-20 group-hover:opacity-60 transition-opacity duration-700"></div>
 
-          <div class="relative bg-white/5 border border-white/5 border-t-white/20 rounded-2xl p-6 shadow-2xl h-full transition-all duration-500 hover:scale-[1.02] hover:-translate-y-1 backdrop-blur-3xl hover:bg-white/10 hover:shadow-violet-500/10">
-            <!-- 顶部标签 -->
-            <div class="flex justify-between items-center mb-4">
-              <div class="px-2.5 py-1 rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white text-xs font-bold shadow-sm ring-1 ring-white/10">
-                NEW
-              </div>
-              <div class="text-xl font-bold text-white drop-shadow-sm tracking-wide">
-                ¥{{ jimengPrice }}
-              </div>
-            </div>
-
-            <!-- 模型名称 -->
-            <h3 class="text-xl font-bold text-white mb-4 flex items-center gap-2">
-              Seedance-即梦
-              <div v-if="hasJimeng" class="w-1.5 h-1.5 rounded-full bg-violet-400 shadow-[0_0_8px_rgba(167,139,250,0.8)] animate-pulse"></div>
-            </h3>
-
-            <!-- 特性标签 -->
-            <div class="space-y-2 mb-6">
-              <div class="px-3 py-2 rounded-lg bg-black/20 text-gray-300 text-xs font-medium flex items-center gap-2 border border-white/5 group-hover:border-white/10 transition-colors">
-                <svg class="w-3.5 h-3.5 text-violet-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.069A1 1 0 0121 8.82v6.36a1 1 0 01-1.447.893L15 14M3 8a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z"/></svg>
-                字节跳动出品
-              </div>
-              <div class="px-3 py-2 rounded-lg bg-black/20 text-gray-300 text-xs font-medium border border-white/5 group-hover:border-white/10 transition-colors">
-                高质量视频生成，流畅自然
-              </div>
-            </div>
-
-            <!-- 价格说明 -->
-            <div class="text-center mb-6">
-              <div class="text-sm font-medium text-gray-400">
-                单次生成仅需 <span class="text-white font-bold mx-1">{{ jimengPrice }}元</span>
-              </div>
-            </div>
-
-            <!-- 生成按钮 -->
-            <div>
-              <button v-if="hasJimeng" class="w-full py-3.5 bg-white text-black hover:bg-gray-50 rounded-xl font-bold text-sm transition-all duration-300 shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-95">
-                使用即梦生成
-              </button>
-              <button v-else class="w-full py-3.5 bg-gray-700 text-gray-500 rounded-xl font-bold text-sm cursor-not-allowed">
-                暂未开放
-              </button>
-            </div>
-          </div>
-        </div>
-        
-        <!-- Sora 模型 -->
-        <div class="group relative opacity-60">
-          <div class="absolute -inset-0.5 bg-gradient-to-r from-yellow-500 to-orange-600 rounded-2xl opacity-20 blur"></div>
-          
-          <div class="relative bg-[#12121a] border border-gray-700/50 rounded-2xl p-4 shadow-2xl h-full">
-            <div class="flex justify-between items-center mb-3">
-              <div class="px-2 py-1 rounded-full bg-gray-600 text-gray-400 text-xs font-bold">
-                计划中
-              </div>
-              <div class="text-3xl font-black text-gray-600">
-                ¥?
-              </div>
-            </div>
-            
-            <h3 class="text-xl font-bold text-gray-500 mb-3">
-              Sora 模型
-            </h3>
-            
-            <div class="space-y-2 mb-4">
-              <div class="px-3 py-1.5 rounded-lg border border-gray-600/30 bg-gray-600/10 text-gray-500 text-xs font-medium">
-                OpenAI Sora
-              </div>
-              <div class="px-3 py-1.5 rounded-lg border border-gray-600/30 bg-gray-600/10 text-gray-500 text-xs font-medium">
-                长视频生成
-              </div>
-            </div>
-            
-            <div class="text-center mb-3">
-              <div class="text-sm font-semibold text-gray-500 mb-1">
-                敬请期待
-              </div>
-              <p class="text-xs text-gray-600">计划中</p>
-            </div>
-            
-            <button class="w-full py-2 bg-gray-700 text-gray-500 rounded-xl font-bold text-sm cursor-not-allowed">
-              即将推出
-            </button>
-          </div>
-        </div>
-        
-        <!-- 文心一格模型 -->
-        <div class="group relative opacity-60">
-          <div class="absolute -inset-0.5 bg-gradient-to-r from-red-500 to-pink-600 rounded-2xl opacity-20 blur"></div>
-          
-          <div class="relative bg-[#12121a] border border-gray-700/50 rounded-2xl p-4 shadow-2xl h-full">
-            <div class="flex justify-between items-center mb-3">
-              <div class="px-2 py-1 rounded-full bg-gray-600 text-gray-400 text-xs font-bold">
-                研究中
-              </div>
-              <div class="text-3xl font-black text-gray-600">
-                ¥?
-              </div>
-            </div>
-            
-            <h3 class="text-xl font-bold text-gray-500 mb-3">
-              文心一格
-            </h3>
-            
-            <div class="space-y-2 mb-4">
-              <div class="px-3 py-1.5 rounded-lg border border-gray-600/30 bg-gray-600/10 text-gray-500 text-xs font-medium">
-                百度技术
-              </div>
-              <div class="px-3 py-1.5 rounded-lg border border-gray-600/30 bg-gray-600/10 text-gray-500 text-xs font-medium">
-                本土化优势
-              </div>
-            </div>
-            
-            <div class="text-center mb-3">
-              <div class="text-sm font-semibold text-gray-500 mb-1">
-                敬请期待
-              </div>
-              <p class="text-xs text-gray-600">研究中</p>
-            </div>
-            
-            <button class="w-full py-2 bg-gray-700 text-gray-500 rounded-xl font-bold text-sm cursor-not-allowed">
-              即将推出
-            </button>
-          </div>
-        </div>
+        <!-- nanobanana pro 满血版 (暂时隐藏) -->
         
       </div>
 

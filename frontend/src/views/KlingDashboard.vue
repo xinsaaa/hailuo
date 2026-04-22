@@ -396,10 +396,11 @@ const loadData = async () => {
       o.model_name && (o.model_name.startsWith('Kling') || o.model_name.startsWith('可灵'))
     )
     if (modelsData && modelsData.models) {
-      // Only keep Kling models
+      // Only keep Kling 3.0 (Seedance 2.0)
       const klingModels = modelsData.models.filter(model =>
         (model.platform === 'kling' || model.id?.includes('kling') || model.name?.startsWith('Kling')) &&
-        model.type !== 'lip_sync'
+        model.type !== 'lip_sync' &&
+        model.id === 'kling_3_0'
       )
       lipSyncModels.value = modelsData.models.filter(model =>
         (model.platform === 'kling' || model.id?.includes('kling') || model.name?.startsWith('Kling')) &&
@@ -471,7 +472,7 @@ const handleCreateOrder = async () => {
       quantity.value,
       opts
     )
-    showNotification('订单提交成功，可灵 AI 正在为您生成...', 'success')
+    showNotification('订单提交成功，Seedance 正在为您生成...', 'success')
     prompt.value = ''
     firstFrameCdnUrl.value = null
     lastFrameCdnUrl.value = null
@@ -511,7 +512,7 @@ const processFile = async (file, type = 'first') => {
       const res = await klingPreUpload(file, 'first')
       if (res.cdn_url) {
         firstFrameCdnUrl.value = res.cdn_url
-        showNotification('图片已预上传到可灵 CDN', 'success')
+        showNotification('图片已预上传到 CDN', 'success')
       }
     } catch (e) {
       const msg = e.response?.data?.detail || e.message || '未知错误'
@@ -649,15 +650,16 @@ const handleLogout = () => {
           <div class="text-2xl font-extrabold cursor-pointer flex items-center gap-2" @click="router.push('/')">
             <span class="text-white drop-shadow-md">{{ siteName }}</span>
           </div>
-          <div class="flex items-center gap-1 px-3 py-1 bg-orange-500/10 border border-orange-500/20 rounded-lg">
-            <svg class="w-4 h-4 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 4v16M17 4v16M3 8h4m10 0h4M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z" />
+          <div class="flex items-center gap-1 px-3 py-1 bg-violet-500/10 border border-violet-500/20 rounded-lg">
+            <svg class="w-4 h-4 text-violet-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
             </svg>
-            <span class="text-xs font-bold text-orange-400 tracking-wide">KlingAI</span>
+            <span class="text-xs font-bold text-violet-400 tracking-wide">Seedance 极速版</span>
           </div>
         </div>
         <div class="flex items-center gap-6">
           <router-link to="/dashboard" class="text-sm text-gray-400 hover:text-white transition-colors">海螺AI</router-link>
+          <router-link to="/nanobanana" class="text-sm text-gray-400 hover:text-white transition-colors">nanobanana pro</router-link>
           <router-link to="/tickets" class="flex items-center gap-1.5 px-3 py-1.5 text-sm text-amber-400/90 hover:text-amber-300 bg-amber-500/10 hover:bg-amber-500/15 border border-amber-500/20 hover:border-amber-500/30 rounded-lg transition-all">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/>
@@ -695,10 +697,10 @@ const handleLogout = () => {
               <div>
                 <h2 class="text-xl font-bold text-white flex items-center gap-2">
                   <span class="w-1 h-6 rounded-full bg-orange-500"></span>
-                  可灵 AI 视频生成
+                  Seedance 极速版 视频生成
                 </h2>
                 <p class="text-xs text-gray-400 mt-1 ml-5">
-                  快手旗下 AI 视频生成，电影级画质，运动自然流畅
+                  字节跳动出品，极速生成，电影级画质
                   <a href="https://docs.qingque.cn/d/home/eZQCqDGoymg61UKgMckSB2oMh?identityId=1oEGKOVUffX" target="_blank" class="ml-2 text-orange-400 hover:text-orange-300 transition-colors inline-flex items-center gap-1">
                     <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>
                     使用教程
@@ -727,7 +729,7 @@ const handleLogout = () => {
                 <Transition name="dropdown">
                   <div v-if="showModelSelector" class="absolute top-full right-0 mt-3 w-80 bg-[#0f1115]/95 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-2xl z-50 overflow-hidden ring-1 ring-white/5">
                     <div class="p-4 border-b border-white/5 bg-white/5">
-                      <h3 class="text-sm font-bold text-white mb-1">选择可灵模型</h3>
+                      <h3 class="text-sm font-bold text-white mb-1">选择 Seedance 模型</h3>
                       <p class="text-xs text-gray-400">不同版本有不同的画质和速度</p>
                     </div>
                     <div class="max-h-[320px] overflow-y-auto custom-scrollbar">
@@ -958,7 +960,7 @@ const handleLogout = () => {
                       <div v-if="uploadingFirst" class="absolute bottom-1 right-1 w-5 h-5 bg-black/70 rounded-full flex items-center justify-center">
                         <svg class="w-3 h-3 text-orange-400 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
                       </div>
-                      <div v-else-if="firstFrameCdnUrl" class="absolute bottom-1 right-1 w-5 h-5 bg-green-500/80 rounded-full flex items-center justify-center" title="已预上传到可灵 CDN">
+                      <div v-else-if="firstFrameCdnUrl" class="absolute bottom-1 right-1 w-5 h-5 bg-green-500/80 rounded-full flex items-center justify-center" title="已预上传到 CDN">
                         <svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>
                       </div>
                     </div>
@@ -1004,7 +1006,7 @@ const handleLogout = () => {
                       <div v-if="uploadingLast" class="absolute bottom-1 right-1 w-5 h-5 bg-black/70 rounded-full flex items-center justify-center">
                         <svg class="w-3 h-3 text-orange-400 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg>
                       </div>
-                      <div v-else-if="lastFrameCdnUrl" class="absolute bottom-1 right-1 w-5 h-5 bg-green-500/80 rounded-full flex items-center justify-center" title="已预上传到可灵 CDN">
+                      <div v-else-if="lastFrameCdnUrl" class="absolute bottom-1 right-1 w-5 h-5 bg-green-500/80 rounded-full flex items-center justify-center" title="已预上传到 CDN">
                         <svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>
                       </div>
                     </div>
@@ -1027,7 +1029,7 @@ const handleLogout = () => {
                     <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75"></span>
                     <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-orange-500"></span>
                   </span>
-                  <span class="font-medium">可灵AI</span>
+                  <span class="font-medium">Seedance 极速版</span>
                 </div>
                 <div class="flex items-center gap-1 p-0.5 bg-black/30 rounded-lg border border-white/10">
                   <button
@@ -1074,7 +1076,7 @@ const handleLogout = () => {
         <div>
           <h3 class="text-lg font-bold text-white mb-4 px-2 flex items-center gap-2">
             <svg class="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-            可灵生成记录
+            Seedance 生成记录
           </h3>
           <div class="space-y-4">
             <div v-if="orders.length === 0" class="text-center py-16 bg-black/20 backdrop-blur-md rounded-3xl border border-white/5 text-gray-500">
@@ -1083,7 +1085,7 @@ const handleLogout = () => {
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 4v16M17 4v16M3 8h4m10 0h4M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z" />
                 </svg>
               </div>
-              <p>暂无可灵生成记录，快去创作吧~</p>
+              <p>暂无 Seedance 生成记录，快去创作吧~</p>
             </div>
 
             <div
@@ -1165,7 +1167,7 @@ const handleLogout = () => {
                     <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                     <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                   </svg>
-                  <span class="text-sm text-gray-400">可灵 AI 正在生成中...</span>
+                  <span class="text-sm text-gray-400">Seedance 正在生成中...</span>
                 </div>
               </div>
                 <div v-if="order.status === 'failed' && getOrderFailureMessage(order)" class="mt-4 bg-red-500/10 rounded-lg p-3 border border-red-500/20">
@@ -1197,8 +1199,8 @@ const handleLogout = () => {
         <div class="w-full max-w-2xl bg-[#0f1115]/95 border border-white/10 rounded-3xl shadow-2xl overflow-hidden">
           <div class="flex items-center justify-between px-6 py-5 border-b border-white/10 bg-white/5">
             <div>
-              <h3 class="text-lg font-bold text-white">可灵对口型</h3>
-              <p class="text-xs text-gray-400 mt-1">仅支持可灵历史记录里已完成的视频</p>
+              <h3 class="text-lg font-bold text-white">Seedance 对口型</h3>
+              <p class="text-xs text-gray-400 mt-1">仅支持 Seedance 历史记录里已完成的视频</p>
             </div>
             <button @click="closeLipSyncModal" class="w-9 h-9 rounded-full bg-white/5 hover:bg-white/10 text-gray-300 hover:text-white transition-all">×</button>
           </div>
@@ -1251,7 +1253,7 @@ const handleLogout = () => {
             <div v-if="lipSyncTaskId || lipSyncPolling" class="rounded-2xl border border-amber-500/20 bg-amber-500/10 p-4 text-sm text-amber-100">
               <div class="flex items-center gap-2">
                 <span class="w-4 h-4 rounded-full border-2 border-current border-t-transparent animate-spin"></span>
-                <span>任务已提交，正在轮询可灵结果{{ lipSyncTaskId ? `（任务ID: ${lipSyncTaskId}）` : '' }}</span>
+                <span>任务已提交，正在轮询 Seedance 结果{{ lipSyncTaskId ? `（任务ID: ${lipSyncTaskId}）` : '' }}</span>
               </div>
             </div>
           </div>
