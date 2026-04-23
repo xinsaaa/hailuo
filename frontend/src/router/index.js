@@ -40,8 +40,8 @@ const routes = [
         meta: { requiresAuth: true }
     },
     {
-        path: '/kling',
-        name: 'KlingDashboard',
+        path: '/seedance',
+        name: 'SeedanceDashboard',
         component: () => import('../views/KlingDashboard.vue'),
         meta: { requiresAuth: true }
     },

@@ -206,7 +206,7 @@ const handleModelSeriesGenerate = (series) => {
         </div>
         
         <!-- Seedance极速版 -->
-        <div :class="['group relative', { 'opacity-60': !hasKling }]" @click="hasKling && router.push('/kling')">
+        <div :class="['group relative', { 'opacity-60': !hasKling }]" @click="hasKling && router.push('/seedance')">
           <div v-if="hasKling" class="absolute -inset-0.5 bg-gradient-to-b from-violet-500/20 to-fuchsia-500/5 rounded-3xl blur opacity-20 group-hover:opacity-60 transition-opacity duration-700"></div>
 
           <div class="relative bg-white/5 border border-white/5 border-t-white/20 rounded-2xl p-6 shadow-2xl h-full cursor-pointer transition-all duration-500 hover:scale-[1.02] hover:-translate-y-1 backdrop-blur-3xl hover:bg-white/10 hover:shadow-violet-500/10">
