@@ -46,6 +46,12 @@ const routes = [
         meta: { requiresAuth: true }
     },
     {
+        path: '/gptimage',
+        name: 'GptimageDashboard',
+        component: () => import('../views/GptimageDashboard.vue'),
+        meta: { requiresAuth: true }
+    },
+    {
         path: '/nanobanana',
         name: 'NanobananaDashboard',
         component: () => import('../views/NanobananaDashboard.vue'),

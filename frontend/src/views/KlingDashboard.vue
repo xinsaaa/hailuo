@@ -668,6 +668,7 @@ const handleLogout = () => {
         </div>
         <div class="flex items-center gap-6">
           <router-link to="/dashboard" class="text-sm text-gray-400 hover:text-white transition-colors">海螺AI</router-link>
+          <router-link to="/gptimage" class="text-sm text-gray-400 hover:text-white transition-colors">GPT Image 2</router-link>
           <router-link to="/nanobanana" class="text-sm text-gray-400 hover:text-white transition-colors">nanobanana pro</router-link>
           <router-link to="/tickets" class="flex items-center gap-1.5 px-3 py-1.5 text-sm text-amber-400/90 hover:text-amber-300 bg-amber-500/10 hover:bg-amber-500/15 border border-amber-500/20 hover:border-amber-500/30 rounded-lg transition-all">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

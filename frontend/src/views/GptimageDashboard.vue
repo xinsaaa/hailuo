@@ -2,7 +2,7 @@
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { getCurrentUser, getPublicConfig } from '../api'
-import { getNanobananaModels, getNanobananaOrders, nanobananaCreateOrder } from '../api/nanobanana'
+import { getGptimageModels, getGptimageOrders, gptimageCreateOrder } from '../api/gptimage'
 
 const router = useRouter()
 const siteName = ref(localStorage.getItem('site_name') || '大帝AI')
@@ -22,7 +22,10 @@ const refImagePreview = ref(null)
 const ratioOptions = ['1:1', '4:3', '3:4', '16:9', '9:16']
 const selectedRatio = ref('1:1')
 
-const maxPromptLength = 500
+const qualityOptions = ['standard', 'hd']
+const selectedQuality = ref('hd')
+
+const maxPromptLength = 1000
 const promptLength = computed(() => prompt.value.length)
 
 const handleKeydown = (e) => {
@@ -44,7 +47,7 @@ const startOrdersPolling = () => {
     if (hasProcessing) {
       pollCount = 0
       try {
-        orders.value = await getNanobananaOrders()
+        orders.value = await getGptimageOrders()
       } catch (err) { /* ignore */ }
     } else {
       pollCount++
@@ -95,8 +98,8 @@ const loadData = async () => {
   try {
     const [userData, ordersData, modelsData] = await Promise.all([
       getCurrentUser(),
-      getNanobananaOrders().catch(() => []),
-      getNanobananaModels().catch(() => null),
+      getGptimageOrders().catch(() => []),
+      getGptimageModels().catch(() => null),
     ])
     user.value = userData
     orders.value = ordersData || []
@@ -106,7 +109,7 @@ const loadData = async () => {
       const defaultModel = modelsData.models.find(m => m.is_default) || modelsData.models[0]
       selectedModel.value = defaultModel
     } else {
-      showNotification('nanobanana pro 服务暂未开放', 'error')
+      showNotification('GPT Image 2 服务暂未开放', 'error')
       setTimeout(() => router.push('/'), 2000)
     }
   } catch (err) {
@@ -137,13 +140,14 @@ const handleCreateOrder = async () => {
   loading.value = true
 
   try {
-    await nanobananaCreateOrder({
+    await gptimageCreateOrder({
       prompt: prompt.value,
       model: selectedModel.value.name,
       ratio: selectedRatio.value,
+      quality: selectedQuality.value,
       ref_image: refImage.value,
     })
-    showNotification('订单提交成功！AI 正在为您生成图片...', 'success')
+    showNotification('订单提交成功！GPT Image 2 正在为您生成图片...', 'success')
     prompt.value = ''
     removeImage()
     await loadData()
@@ -165,8 +169,8 @@ const processFile = (file) => {
     showNotification('请选择图片文件', 'error')
     return
   }
-  if (file.size > 5 * 1024 * 1024) {
-    showNotification('图片大小不能超过5MB', 'error')
+  if (file.size > 10 * 1024 * 1024) {
+    showNotification('图片大小不能超过10MB', 'error')
     return
   }
   refImage.value = file
@@ -199,7 +203,7 @@ const removeImage = () => {
 const statusMap = {
   pending: { text: '排队中', class: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30' },
   processing: { text: '处理中', class: 'bg-blue-500/20 text-blue-400 border-blue-500/30' },
-  generating: { text: '生成中', class: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' },
+  generating: { text: '生成中', class: 'bg-sky-500/20 text-sky-400 border-sky-500/30' },
   completed: { text: '已完成', class: 'bg-green-500/20 text-green-400 border-green-500/30' },
   failed: { text: '失败', class: 'bg-red-500/20 text-red-400 border-red-500/30' },
 }
@@ -246,17 +250,16 @@ const handleLogout = () => {
           <div class="text-2xl font-extrabold cursor-pointer flex items-center gap-2" @click="router.push('/')">
             <span class="text-white drop-shadow-md">{{ siteName }}</span>
           </div>
-          <div class="flex items-center gap-1 px-3 py-1 bg-emerald-500/10 border border-emerald-500/20 rounded-lg">
-            <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div class="flex items-center gap-1 px-3 py-1 bg-sky-500/10 border border-sky-500/20 rounded-lg">
+            <svg class="w-4 h-4 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
-            <span class="text-xs font-bold text-emerald-400 tracking-wide">nanobanana pro</span>
+            <span class="text-xs font-bold text-sky-400 tracking-wide">GPT Image 2</span>
           </div>
         </div>
         <div class="flex items-center gap-6">
           <router-link to="/dashboard" class="text-sm text-gray-400 hover:text-white transition-colors">海螺AI</router-link>
           <router-link to="/seedance" class="text-sm text-gray-400 hover:text-white transition-colors">Seedance极速版</router-link>
-          <router-link to="/gptimage" class="text-sm text-gray-400 hover:text-white transition-colors">GPT Image 2</router-link>
           <router-link to="/tickets" class="flex items-center gap-1.5 px-3 py-1.5 text-sm text-amber-400/90 hover:text-amber-300 bg-amber-500/10 hover:bg-amber-500/15 border border-amber-500/20 hover:border-amber-500/30 rounded-lg transition-all">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/>
@@ -271,7 +274,7 @@ const handleLogout = () => {
           </router-link>
           <button
             @click="router.push('/recharge')"
-            :class="isLowBalance ? 'from-red-500 to-orange-500 shadow-red-900/40' : 'from-emerald-600 to-teal-600 shadow-emerald-900/40'"
+            :class="isLowBalance ? 'from-red-500 to-orange-500 shadow-red-900/40' : 'from-sky-600 to-blue-600 shadow-sky-900/40'"
             class="px-4 py-1.5 bg-gradient-to-r text-white text-xs font-bold rounded-lg hover:brightness-110 transition-all shadow-lg"
           >
             {{ isLowBalance ? '⚡ 充值' : '充值' }}
@@ -287,17 +290,17 @@ const handleLogout = () => {
 
         <!-- Generator Card -->
         <div class="relative">
-          <div class="absolute -inset-1 rounded-3xl blur-2xl opacity-40 bg-gradient-to-br from-emerald-500/20 to-teal-500/20"></div>
+          <div class="absolute -inset-1 rounded-3xl blur-2xl opacity-40 bg-gradient-to-br from-sky-500/20 to-blue-500/20"></div>
 
           <div class="relative bg-white/5 backdrop-blur-3xl border border-white/10 border-t-white/20 rounded-3xl p-8 shadow-2xl">
             <div class="flex justify-between items-center mb-6">
               <div>
                 <h2 class="text-xl font-bold text-white flex items-center gap-2">
-                  <span class="w-1 h-6 rounded-full bg-emerald-500"></span>
-                  nanobanana pro 满血版
+                  <span class="w-1 h-6 rounded-full bg-sky-500"></span>
+                  GPT Image 2 文生图
                 </h2>
                 <p class="text-xs text-gray-400 mt-1 ml-5">
-                  AI 图片生成，输入描述即刻创作精美图片
+                  OpenAI 旗舰图片生成模型，支持文字渲染、精准控制
                 </p>
               </div>
 
@@ -305,10 +308,10 @@ const handleLogout = () => {
               <div class="relative model-selector">
                 <button
                   @click="showModelSelector = !showModelSelector"
-                  class="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-sm text-white transition-all hover:border-emerald-500/30 hover:shadow-lg hover:shadow-emerald-500/10"
+                  class="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-sm text-white transition-all hover:border-sky-500/30 hover:shadow-lg hover:shadow-sky-500/10"
                 >
                   <div class="flex items-center gap-2">
-                    <div class="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)]"></div>
+                    <div class="w-2 h-2 rounded-full bg-sky-400 shadow-[0_0_8px_rgba(56,189,248,0.8)]"></div>
                     <span class="font-medium tracking-wide">{{ selectedModel?.display_name || '选择模型' }}</span>
                   </div>
                   <svg class="w-4 h-4 text-gray-400 transition-transform duration-300" :class="{ 'rotate-180': showModelSelector }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -319,8 +322,8 @@ const handleLogout = () => {
                 <Transition name="dropdown">
                   <div v-if="showModelSelector" class="absolute top-full right-0 mt-3 w-72 bg-[#0f1115]/95 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-2xl z-50 overflow-hidden ring-1 ring-white/5">
                     <div class="p-4 border-b border-white/5 bg-white/5">
-                      <h3 class="text-sm font-bold text-white mb-1">选择图片模型</h3>
-                      <p class="text-xs text-gray-400">不同模型有不同的风格和效果</p>
+                      <h3 class="text-sm font-bold text-white mb-1">选择 GPT Image 模型</h3>
+                      <p class="text-xs text-gray-400">OpenAI 图片生成模型</p>
                     </div>
                     <div class="max-h-[320px] overflow-y-auto">
                       <div
@@ -328,18 +331,18 @@ const handleLogout = () => {
                         :key="model.id"
                         @click="selectModel(model)"
                         class="p-3 hover:bg-white/5 cursor-pointer border-b border-white/5 last:border-b-0 transition-all group"
-                        :class="{ 'bg-emerald-500/10': selectedModel?.id === model.id }"
+                        :class="{ 'bg-sky-500/10': selectedModel?.id === model.id }"
                       >
                         <div class="flex items-start justify-between">
                           <div class="flex-1">
                             <div class="flex items-center gap-2 mb-1">
-                              <span class="font-bold text-white text-sm group-hover:text-emerald-400 transition-colors">{{ model.display_name }}</span>
-                              <span v-if="model.is_default" class="px-1.5 py-0.5 bg-green-500/20 text-green-400 text-[10px] font-bold rounded border border-green-500/30">推荐</span>
+                              <span class="font-bold text-white text-sm group-hover:text-sky-400 transition-colors">{{ model.display_name }}</span>
+                              <span v-if="model.is_default" class="px-1.5 py-0.5 bg-sky-500/20 text-sky-400 text-[10px] font-bold rounded border border-sky-500/30">推荐</span>
                             </div>
                             <p class="text-xs text-gray-400 mb-2">{{ model.description }}</p>
                             <span class="text-sm font-bold text-white">¥{{ model.price?.toFixed(2) || '0.99' }}</span>
                           </div>
-                          <div v-if="selectedModel?.id === model.id" class="ml-3 text-emerald-400">
+                          <div v-if="selectedModel?.id === model.id" class="ml-3 text-sky-400">
                             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
                             </svg>
@@ -352,8 +355,8 @@ const handleLogout = () => {
               </div>
             </div>
 
-            <!-- Ratio selector -->
-            <div class="flex items-center gap-4 mb-4">
+            <!-- Ratio & Quality selectors -->
+            <div class="flex items-center gap-6 mb-4">
               <div class="flex items-center gap-2">
                 <span class="text-xs text-gray-400">比例</span>
                 <div class="flex items-center gap-1 p-0.5 bg-black/30 rounded-lg border border-white/10">
@@ -363,22 +366,36 @@ const handleLogout = () => {
                     @click="selectedRatio = r"
                     class="px-2.5 py-1 text-xs font-medium rounded-md transition-all duration-200"
                     :class="selectedRatio === r
-                      ? 'bg-emerald-500/80 text-white'
+                      ? 'bg-sky-500/80 text-white'
                       : 'text-gray-400 hover:text-white hover:bg-white/5'"
                   >{{ r }}</button>
+                </div>
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="text-xs text-gray-400">质量</span>
+                <div class="flex items-center gap-1 p-0.5 bg-black/30 rounded-lg border border-white/10">
+                  <button
+                    v-for="q in qualityOptions"
+                    :key="q"
+                    @click="selectedQuality = q"
+                    class="px-2.5 py-1 text-xs font-medium rounded-md transition-all duration-200"
+                    :class="selectedQuality === q
+                      ? 'bg-sky-500/80 text-white'
+                      : 'text-gray-400 hover:text-white hover:bg-white/5'"
+                  >{{ q === 'hd' ? 'HD' : '标准' }}</button>
                 </div>
               </div>
             </div>
 
             <!-- Prompt -->
             <div class="relative group">
-              <div class="absolute -inset-0.5 bg-gradient-to-r from-emerald-500/20 to-teal-500/20 rounded-2xl blur opacity-0 group-hover:opacity-100 transition duration-500"></div>
+              <div class="absolute -inset-0.5 bg-gradient-to-r from-sky-500/20 to-blue-500/20 rounded-2xl blur opacity-0 group-hover:opacity-100 transition duration-500"></div>
               <textarea
                 v-model="prompt"
                 :maxlength="maxPromptLength"
                 @keydown="handleKeydown"
-                placeholder="请输入图片描述... (例如: 一只橘猫站在樱花树下，日系动漫风格，柔和光线)"
-                class="relative w-full h-40 p-6 rounded-2xl bg-black/20 border border-white/10 text-white placeholder-gray-500 outline-none focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/20 transition-all resize-none text-lg shadow-inner backdrop-blur-sm"
+                placeholder="请输入图片描述... (例如: A photorealistic image of a cat wearing sunglasses on a beach, golden hour lighting)"
+                class="relative w-full h-40 p-6 rounded-2xl bg-black/20 border border-white/10 text-white placeholder-gray-500 outline-none focus:border-sky-500/50 focus:ring-1 focus:ring-sky-500/20 transition-all resize-none text-lg shadow-inner backdrop-blur-sm"
               ></textarea>
               <div class="absolute bottom-4 right-4 flex items-center gap-3 pointer-events-none">
                 <span class="text-xs px-2 py-1 rounded-lg bg-black/20 border border-white/5 backdrop-blur-md" :class="promptLength > maxPromptLength * 0.9 ? 'text-orange-400' : 'text-gray-500'">{{ promptLength }}/{{ maxPromptLength }}</span>
@@ -390,7 +407,7 @@ const handleLogout = () => {
 
             <!-- Reference image upload -->
             <div class="mt-6">
-              <p class="text-xs text-gray-400 mb-2">参考图（可选）</p>
+              <p class="text-xs text-gray-400 mb-2">参考图 / 编辑图（可选）</p>
               <div
                 class="relative inline-block"
                 @dragover.prevent
@@ -398,13 +415,13 @@ const handleLogout = () => {
                 @paste="handlePaste"
                 tabindex="0"
               >
-                <input type="file" accept="image/*" @change="handleImageUpload" class="hidden" id="nano-ref-input" />
-                <label for="nano-ref-input" class="block cursor-pointer group">
+                <input type="file" accept="image/*" @change="handleImageUpload" class="hidden" id="gptimg-ref-input" />
+                <label for="gptimg-ref-input" class="block cursor-pointer group">
                   <div
                     v-if="!refImagePreview"
-                    class="w-32 h-32 border border-dashed border-white/20 rounded-2xl flex flex-col items-center justify-center gap-2 transition-all bg-white/[0.02] hover:bg-white/[0.05] hover:border-emerald-500/30"
+                    class="w-32 h-32 border border-dashed border-white/20 rounded-2xl flex flex-col items-center justify-center gap-2 transition-all bg-white/[0.02] hover:bg-white/[0.05] hover:border-sky-500/30"
                   >
-                    <svg class="w-6 h-6 text-gray-400 group-hover:text-emerald-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg class="w-6 h-6 text-gray-400 group-hover:text-sky-400 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
                     </svg>
                     <span class="text-[10px] text-gray-500">上传参考图</span>
@@ -425,10 +442,11 @@ const handleLogout = () => {
             <div class="flex justify-between items-center mt-8 pt-6 border-t border-white/10">
               <div class="flex items-center gap-2 text-sm text-gray-400">
                 <span class="relative flex h-2.5 w-2.5">
-                  <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                  <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                  <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75"></span>
+                  <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-sky-500"></span>
                 </span>
-                <span class="font-medium">nanobanana pro 满血版</span>
+                <span class="font-medium">GPT Image 2</span>
+                <span class="text-[10px] text-gray-500 px-1.5 py-0.5 bg-white/5 rounded border border-white/5">by OpenAI</span>
               </div>
 
               <div class="flex items-center gap-6">
@@ -439,7 +457,7 @@ const handleLogout = () => {
                 <button
                   @click="handleCreateOrder"
                   :disabled="loading"
-                  class="relative py-3 px-8 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white rounded-xl font-bold transition-all duration-300 transform hover:scale-105 hover:shadow-[0_0_20px_rgba(52,211,153,0.4)] disabled:opacity-50 disabled:scale-100 disabled:hover:shadow-none flex items-center gap-2 overflow-hidden group"
+                  class="relative py-3 px-8 bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 text-white rounded-xl font-bold transition-all duration-300 transform hover:scale-105 hover:shadow-[0_0_20px_rgba(56,189,248,0.4)] disabled:opacity-50 disabled:scale-100 disabled:hover:shadow-none flex items-center gap-2 overflow-hidden group"
                 >
                   <div class="absolute inset-0 bg-white/20 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000"></div>
                   <span v-if="loading" class="animate-spin w-4 h-4 border-2 border-white border-t-transparent rounded-full"></span>
@@ -477,29 +495,18 @@ const handleLogout = () => {
                   <div class="flex items-center gap-4 mt-3">
                     <p class="text-xs text-gray-500 font-mono">{{ formatUTCTime(order.created_at) }}</p>
                     <div v-if="order.model_name" class="flex items-center gap-1.5 px-2 py-0.5 bg-white/5 rounded border border-white/5">
-                      <div class="w-1.5 h-1.5 bg-emerald-400 rounded-full shadow-[0_0_5px_rgba(52,211,153,0.8)]"></div>
+                      <div class="w-1.5 h-1.5 bg-sky-400 rounded-full shadow-[0_0_5px_rgba(56,189,248,0.8)]"></div>
                       <span class="text-xs text-gray-300">{{ order.model_name }}</span>
                     </div>
                     <template v-if="order.status === 'completed' && order.image_url">
                       <a
                         :href="order.image_url" target="_blank" rel="noopener noreferrer"
-                        class="px-3 py-1 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 text-xs rounded-full border border-emerald-500/20 hover:border-emerald-500/40 transition-all flex items-center gap-1.5"
+                        class="px-3 py-1 bg-sky-500/10 hover:bg-sky-500/20 text-sky-400 text-xs rounded-full border border-sky-500/20 hover:border-sky-500/40 transition-all flex items-center gap-1.5"
                       >
                         <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
                         </svg>
                         <span class="font-bold">查看图片</span>
-                      </a>
-                    </template>
-                    <template v-if="order.status === 'completed' && order.video_url">
-                      <a
-                        :href="order.video_url" target="_blank" rel="noopener noreferrer"
-                        class="px-3 py-1 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 text-xs rounded-full border border-emerald-500/20 hover:border-emerald-500/40 transition-all flex items-center gap-1.5"
-                      >
-                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
-                        </svg>
-                        <span class="font-bold">查看结果</span>
                       </a>
                     </template>
                     <button v-if="order.status === 'failed'"
@@ -539,7 +546,7 @@ const handleLogout = () => {
             <p class="text-gray-400 text-sm mb-6">本次生成需要 <span class="text-white font-bold">¥{{ insufficientPrice }}</span>，当前余额 <span class="text-orange-400 font-bold">¥{{ formattedBalance }}</span></p>
             <div class="flex gap-3">
               <button @click="showInsufficientModal = false" class="flex-1 py-2.5 bg-white/5 border border-white/10 text-gray-300 rounded-xl hover:bg-white/10 transition-all">取消</button>
-              <button @click="showInsufficientModal = false; router.push('/recharge')" class="flex-1 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-bold rounded-xl hover:brightness-110 transition-all shadow-lg">去充值</button>
+              <button @click="showInsufficientModal = false; router.push('/recharge')" class="flex-1 py-2.5 bg-gradient-to-r from-sky-500 to-blue-600 text-white font-bold rounded-xl hover:brightness-110 transition-all shadow-lg">去充值</button>
             </div>
           </div>
         </div>
@@ -548,7 +555,7 @@ const handleLogout = () => {
 
     <!-- Background -->
     <div class="fixed inset-0 z-0">
-      <div class="absolute inset-0 bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(16,185,129,0.15),transparent)]"></div>
+      <div class="absolute inset-0 bg-[radial-gradient(ellipse_80%_80%_at_50%_-20%,rgba(56,189,248,0.12),transparent)]"></div>
     </div>
   </div>
 </template>

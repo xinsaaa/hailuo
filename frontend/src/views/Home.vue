@@ -151,7 +151,7 @@ const handleModelSeriesGenerate = (series) => {
       </div>
       
       <!-- AI模型卡片网格 -->
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-8 w-full max-w-3xl">
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8 w-full max-w-5xl">
         
         <!-- 海螺AI卡片 -->
         <div :class="['group relative', { 'opacity-60': !has23Series }]">
@@ -251,8 +251,48 @@ const handleModelSeriesGenerate = (series) => {
           </div>
         </div>
 
-        <!-- nanobanana pro 满血版 (暂时隐藏) -->
-        
+        <!-- GPT Image 2 文生图 -->
+        <div class="group relative" @click="router.push('/gptimage')">
+          <div class="absolute -inset-0.5 bg-gradient-to-b from-sky-500/20 to-blue-500/5 rounded-3xl blur opacity-20 group-hover:opacity-60 transition-opacity duration-700"></div>
+
+          <div class="relative bg-white/5 border border-white/5 border-t-white/20 rounded-2xl p-6 shadow-2xl h-full cursor-pointer transition-all duration-500 hover:scale-[1.02] hover:-translate-y-1 backdrop-blur-3xl hover:bg-white/10 hover:shadow-sky-500/10">
+            <div class="flex justify-between items-center mb-4">
+              <div class="px-2.5 py-1 rounded-full bg-gradient-to-r from-sky-500 to-blue-500 text-white text-xs font-bold shadow-sm ring-1 ring-white/10">
+                NEW
+              </div>
+              <div class="text-xl font-bold text-white drop-shadow-sm tracking-wide">
+                ¥0.99
+              </div>
+            </div>
+
+            <h3 class="text-xl font-bold text-white mb-4 flex items-center gap-2">
+              GPT Image 2 <span class="text-[10px] text-sky-400 font-normal px-1.5 py-0.5 border border-sky-400/30 rounded tracking-wider uppercase">OpenAI</span>
+              <div class="w-1.5 h-1.5 rounded-full bg-sky-400 shadow-[0_0_8px_rgba(56,189,248,0.8)] animate-pulse"></div>
+            </h3>
+
+            <div class="space-y-2 mb-6">
+              <div class="px-3 py-2 rounded-lg bg-black/20 text-gray-300 text-xs font-medium flex items-center gap-2 border border-white/5 group-hover:border-white/10 transition-colors">
+                <svg class="w-3.5 h-3.5 text-sky-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                OpenAI 旗舰文生图
+              </div>
+              <div class="px-3 py-2 rounded-lg bg-black/20 text-gray-300 text-xs font-medium border border-white/5 group-hover:border-white/10 transition-colors">
+                精准文字渲染，超高画质
+              </div>
+            </div>
+
+            <div class="text-center mb-6">
+              <div class="text-sm font-medium text-gray-400">
+                单次生成仅需 <span class="text-white font-bold mx-1">0.99元</span>
+              </div>
+            </div>
+
+            <div>
+              <button class="w-full py-3.5 bg-white text-black hover:bg-gray-50 rounded-xl font-bold text-sm transition-all duration-300 shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-95">
+                使用 GPT Image 生成
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- 服务特色 -->
