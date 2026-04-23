@@ -164,6 +164,12 @@ const routes = [
                 component: () => import('../views/DevCodes.vue')
             }
         ]
+    },
+    // 404
+    {
+        path: '/:pathMatch(.*)*',
+        name: 'NotFound',
+        component: () => import('../views/NotFound.vue')
     }
 ]
 
