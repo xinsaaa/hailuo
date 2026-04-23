@@ -406,6 +406,15 @@ const loadData = async () => {
         (model.platform === 'kling' || model.id?.includes('kling') || model.name?.startsWith('Kling')) &&
         model.type === 'lip_sync'
       )
+      // Rename display names: 可灵 -> Seedance, 3.0 -> 2.0
+      klingModels.forEach(m => {
+        if (m.display_name) {
+          m.display_name = m.display_name.replace(/可灵/g, 'Seedance').replace(/3\.0/g, '2.0')
+        }
+        if (m.description) {
+          m.description = m.description.replace(/可灵/g, 'Seedance').replace(/3\.0/g, '2.0')
+        }
+      })
       availableModels.value = klingModels
       if (klingModels.length > 0 && !selectedModel.value) {
         selectedModel.value = klingModels[0]
