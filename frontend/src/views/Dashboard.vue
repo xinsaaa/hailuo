@@ -15,7 +15,7 @@ const prompt = ref(route.query.prompt || '')
 const loading = ref(false)
 
 // 模型系列过滤
-const modelSeries = ref(route.query.series || 'all') // '2.3', '3.1', 'all'
+const modelSeries = ref('2.3') // 固定2.3系列
 
 // 平台区分：hailuo / jimeng
 const platform = ref(route.query.platform || 'hailuo')
@@ -24,11 +24,7 @@ const isJimeng = computed(() => platform.value === 'jimeng')
 // 系列名称映射
 const getSeriesDisplayName = (series) => {
   if (isJimeng.value) return '即梦 AI Seedance'
-  switch (series) {
-    case '2.3': return '海螺AI 2.3系列'
-    case '3.1': return '海螺AI 3.1系列'
-    default: return '海螺AI 全系列'
-  }
+  return '海螺AI 2.3系列'
 }
 
 // 模型选择相关状态
@@ -181,8 +177,8 @@ const handleClickOutside = (event) => {
 }
 
 // 监听路由参数变化
-watch(() => route.query.series, (newSeries) => {
-  modelSeries.value = newSeries || 'all'
+watch(() => route.query.series, () => {
+  modelSeries.value = '2.3'
   loadData()
 })
 
@@ -300,11 +296,6 @@ const loadData = async () => {
           model.id.includes('2_0') || 
           model.id.includes('2_3') || 
           model.id.includes('hailuo_1_0')
-        )
-      } else if (modelSeries.value === '3.1') {
-        filteredModels = hailuoModels.filter(model => 
-          model.id.includes('3_1') || 
-          model.id.includes('beta_3')
         )
       }
       
@@ -615,7 +606,7 @@ const handleLogout = () => {
               <div class="flex justify-between items-center mb-6">
                 <div>
                   <h2 class="text-xl font-bold text-white flex items-center gap-2">
-                    <span class="w-1 h-6 rounded-full" :class="isJimeng ? 'bg-violet-500' : modelSeries === '3.1' ? 'bg-purple-500' : 'bg-cyan-500'"></span>
+                    <span class="w-1 h-6 rounded-full" :class="isJimeng ? 'bg-violet-500' : 'bg-cyan-500'"></span>
                     {{ getSeriesDisplayName(modelSeries) }}
                   </h2>
                   <p v-if="!isJimeng && modelSeries !== 'all'" class="text-xs text-gray-400 mt-1 ml-5">
@@ -627,41 +618,6 @@ const handleLogout = () => {
                 </div>
                 <div class="flex items-center gap-3">
                   <!-- 系列切换器（仅海螺显示） -->
-                  <div v-if="!isJimeng" class="flex bg-white/5 border border-white/10 rounded-xl p-1">
-                    <button
-                      @click="router.push({ query: { ...route.query, series: '2.3' } })"
-                      :class="[
-                        'px-3 py-1.5 text-xs font-medium rounded-lg transition-all',
-                        modelSeries === '2.3'
-                          ? 'bg-cyan-500/80 text-white shadow-sm'
-                          : 'text-gray-400 hover:text-white hover:bg-white/5'
-                      ]"
-                    >
-                      2.3系列
-                    </button>
-                    <button
-                      @click="router.push({ query: { ...route.query, series: '3.1' } })"
-                      :class="[
-                        'px-3 py-1.5 text-xs font-medium rounded-lg transition-all',
-                        modelSeries === '3.1'
-                          ? 'bg-purple-500/80 text-white shadow-sm'
-                          : 'text-gray-400 hover:text-white hover:bg-white/5'
-                      ]"
-                    >
-                      3.1系列
-                    </button>
-                    <button
-                      @click="router.push({ query: { ...route.query, series: undefined } })"
-                      :class="[
-                        'px-3 py-1.5 text-xs font-medium rounded-lg transition-all',
-                        modelSeries === 'all'
-                          ? 'bg-gray-500/80 text-white shadow-sm'
-                          : 'text-gray-400 hover:text-white hover:bg-white/5'
-                      ]"
-                    >
-                      全部
-                    </button>
-                  </div>
                   
                   <!-- 模型选择器 -->
                   <div class="relative model-selector">
@@ -669,7 +625,7 @@ const handleLogout = () => {
                       @click="showModelSelector = !showModelSelector"
                       :class="[
                         'flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-sm text-white transition-all hover:border-white/20 hover:shadow-lg',
-                        isJimeng ? 'hover:shadow-violet-500/10' : modelSeries === '3.1' ? 'hover:shadow-purple-500/10' : 'hover:shadow-cyan-500/10'
+                        isJimeng ? 'hover:shadow-violet-500/10' : 'hover:shadow-cyan-500/10'
                       ]"
                     >
                       <div class="flex items-center gap-2">
@@ -677,9 +633,7 @@ const handleLogout = () => {
                           class="w-2 h-2 rounded-full"
                           :class="isJimeng
                             ? 'bg-violet-400 shadow-[0_0_8px_rgba(167,139,250,0.8)]'
-                            : modelSeries === '3.1'
-                              ? 'bg-purple-400 shadow-[0_0_8px_rgba(147,51,234,0.8)]'
-                              : 'bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.8)]'"
+                            : 'bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.8)]'"
                         ></div>
                         <span class="font-medium tracking-wide">{{ selectedModel?.display_name || '选择模型' }}</span>
                         <span v-if="selectedModel?.badge" class="px-1.5 py-0.5 bg-gradient-to-r from-pink-500 to-rose-500 text-white text-[10px] font-bold rounded uppercase tracking-wider shadow-sm">
