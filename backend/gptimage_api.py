@@ -26,8 +26,6 @@ router = APIRouter(prefix="/api/gptimage", tags=["gptimage"])
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
 # ============ NOVART 配置 ============
-NOVART_BASE_URL = os.getenv("NOVART_BASE_URL", "https://www.novartspace.art")
-NOVART_API_KEY = os.getenv("NOVART_API_KEY", "")
 
 # 质量到分辨率映射
 QUALITY_RESOLUTION_MAP = {
@@ -35,6 +33,33 @@ QUALITY_RESOLUTION_MAP = {
     "hd": "2k",
     "ultra": "4k",
 }
+
+
+def _get_novart_config() -> tuple:
+    """从数据库读取 NOVART 配置，回退到环境变量"""
+    from backend.models import SystemConfig
+    api_key = os.getenv("NOVART_API_KEY", "")
+    base_url = os.getenv("NOVART_BASE_URL", "https://www.novartspace.art")
+    try:
+        with Session(engine) as session:
+            key_cfg = session.exec(
+                select(SystemConfig).where(SystemConfig.key == "novart_api_key")
+            ).first()
+            if key_cfg:
+                import json
+                val = json.loads(key_cfg.value)
+                if val:
+                    api_key = val
+            url_cfg = session.exec(
+                select(SystemConfig).where(SystemConfig.key == "novart_base_url")
+            ).first()
+            if url_cfg:
+                val = json.loads(url_cfg.value)
+                if val:
+                    base_url = val
+    except Exception:
+        pass
+    return api_key, base_url
 
 
 def get_session():
@@ -167,8 +192,9 @@ async def create_gptimage_order(
     if not prompt.strip():
         raise HTTPException(status_code=400, detail="请输入图片描述")
 
-    if not NOVART_API_KEY:
-        raise HTTPException(status_code=503, detail="GPT Image 服务未配置 API Key")
+    novart_api_key, _ = _get_novart_config()
+    if not novart_api_key:
+        raise HTTPException(status_code=503, detail="GPT Image 服务未配置 API Key，请联系管理员")
 
     # 查找模型获取价格
     db_model = session.exec(
@@ -303,9 +329,15 @@ async def _generate_image(order_id: int):
             },
         }
 
-        url = f"{NOVART_BASE_URL}/v1beta/models/{order.model_name}:generateContent"
+        novart_api_key, novart_base_url = _get_novart_config()
+        if not novart_api_key:
+            _update_order_status(order_id, "failed", error_message="API Key 未配置")
+            _refund_order(order_id)
+            return
+
+        url = f"{novart_base_url}/v1beta/models/{order.model_name}:generateContent"
         headers = {
-            "x-goog-api-key": NOVART_API_KEY,
+            "x-goog-api-key": novart_api_key,
             "Content-Type": "application/json",
         }
 

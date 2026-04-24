@@ -89,6 +89,17 @@
         />
       </SettingsSection>
 
+      <!-- GPT Image API 设置 -->
+      <SettingsSection title="GPT Image API" icon="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z">
+        <SettingsItem
+          v-for="item in getByCategory('gptimage')"
+          :key="item.key"
+          :item="item"
+          v-model="editedValues[item.key]"
+          :original="originalValues[item.key]"
+        />
+      </SettingsSection>
+
       <!-- 调度规则 -->
       <SettingsSection title="调度规则" icon="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4">
         <SettingsItem
@@ -244,6 +255,28 @@ const SettingsItem = (props, { emit }) => {
         class: 'w-full max-w-xs px-3 py-2 bg-slate-700/60 border border-slate-600 rounded-lg text-white focus:outline-none focus:border-blue-500',
         onInput: (e) => emit('update:modelValue', parseFloat(e.target.value) || 0)
       })
+    } else if (item.type === 'password') {
+      return h('div', { class: 'flex items-center gap-2 w-full max-w-md' }, [
+        h('input', {
+          type: passwordVisible.value[item.key] ? 'text' : 'password',
+          value: props.modelValue,
+          placeholder: '请输入...',
+          class: 'flex-1 px-3 py-2 bg-slate-700/60 border border-slate-600 rounded-lg text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 font-mono text-sm',
+          onInput: (e) => emit('update:modelValue', e.target.value)
+        }),
+        h('button', {
+          type: 'button',
+          class: 'px-2 py-2 bg-slate-600 hover:bg-slate-500 rounded-lg text-gray-300 transition-colors',
+          title: passwordVisible.value[item.key] ? '隐藏' : '显示',
+          onClick: () => { passwordVisible.value[item.key] = !passwordVisible.value[item.key] }
+        }, [
+          h('svg', { class: 'w-4 h-4', fill: 'none', stroke: 'currentColor', viewBox: '0 0 24 24',
+            innerHTML: passwordVisible.value[item.key]
+              ? '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.878 9.878L3 3m6.878 6.878l4.242 4.242M15.12 15.12L21 21" />'
+              : '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />'
+          })
+        ])
+      ])
     } else {
       return h(item.key.includes('announcement') ? 'textarea' : 'input', {
         type: 'text',
@@ -288,6 +321,8 @@ const editedValues = reactive({})
 const newPassword = ref('')
 const confirmPassword = ref('')
 const changingPwd = ref(false)
+
+const passwordVisible = ref({})
 
 const storageStats = ref(null)
 const storageLoading = ref(false)
