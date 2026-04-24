@@ -73,6 +73,10 @@ app.include_router(kling_account_router)
 from backend.jimeng_api import router as jimeng_api_router
 app.include_router(jimeng_api_router)
 
+# 注册 GPT Image 2 路由
+from backend.gptimage_api import router as gptimage_api_router
+app.include_router(gptimage_api_router)
+
 
 # ============ Rate Limiting 中间件 ============
 # 敏感接口（需要严格限制）

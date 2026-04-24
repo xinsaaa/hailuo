@@ -123,6 +123,25 @@ class JimengOrder(SQLModel, table=True):
     completed_at: Optional[datetime] = None
 
 
+class GptimageOrder(SQLModel, table=True):
+    """GPT Image 2 文生图订单"""
+    id: Optional[int] = Field(default=None, primary_key=True)
+    user_id: int = Field(foreign_key="user.id", index=True)
+    prompt: str
+    model_name: str = Field(default="nova-image-pro-flex")
+    ratio: str = Field(default="1:1")
+    quality: str = Field(default="hd")  # standard / hd (mapped to novartResolution)
+    status: str = Field(default="pending")  # pending, processing, generating, completed, failed
+    progress: int = Field(default=0)
+    image_url: Optional[str] = None
+    ref_image_path: Optional[str] = None  # 用户上传的参考图本地路径
+    cost: float = Field(default=0.99)
+    error_message: Optional[str] = None
+    task_id: Optional[str] = None  # novart task_id
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    completed_at: Optional[datetime] = None
+
+
 class SystemConfig(SQLModel, table=True):
     """系统配置表"""
     id: Optional[int] = Field(default=None, primary_key=True)
