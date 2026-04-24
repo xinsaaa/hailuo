@@ -102,24 +102,24 @@ async def get_gptimage_models(session: Session = Depends(get_session)):
         return {
             "models": [
                 {
-                    "id": "gptimage_pro_flex",
-                    "name": "nova-image-pro-flex",
+                    "id": "gptimage_nova_g",
+                    "name": "nova-g-image-2",
                     "display_name": "GPT Image 2",
                     "description": "OpenAI 旗舰文生图，支持文字渲染，精准控制",
                     "price": 0.50,
                     "badge": "NEW",
-                    "features": ["文字渲染", "精准控制", "2K画质"],
+                    "features": ["文字渲染", "精准控制", "高画质"],
                     "is_default": True,
                     "is_enabled": True,
                 },
                 {
-                    "id": "gptimage_pro",
-                    "name": "nova-image-pro",
+                    "id": "gptimage_pro_flex",
+                    "name": "nova-image-pro-flex",
                     "display_name": "GPT Image 2 Pro",
-                    "description": "更多宽高比支持，更丰富细节",
+                    "description": "更多宽高比支持，支持参考图",
                     "price": 0.80,
                     "badge": "PRO",
-                    "features": ["11种宽高比", "4K画质", "极致细节"],
+                    "features": ["参考图", "多宽高比", "高画质"],
                     "is_default": False,
                     "is_enabled": True,
                 },
@@ -185,7 +185,7 @@ async def get_gptimage_orders(
 @router.post("/orders")
 async def create_gptimage_order(
     prompt: str = Form(...),
-    model: str = Form("nova-image-pro-flex"),
+    model: str = Form("nova-g-image-2"),
     ratio: str = Form("1:1"),
     quality: str = Form("hd"),
     ref_image: Optional[UploadFile] = File(None),

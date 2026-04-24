@@ -435,11 +435,11 @@ class ModelConfigManager:
             },
             # ============ GPT Image 2 文生图模型 ============
             {
-                "model_id": "gptimage_pro_flex",
-                "name": "nova-image-pro-flex",
+                "model_id": "gptimage_nova_g",
+                "name": "nova-g-image-2",
                 "display_name": "GPT Image 2",
                 "description": "OpenAI 旗舰文生图，支持文字渲染，精准控制",
-                "features": json.dumps(["文字渲染", "精准控制", "2K画质"]),
+                "features": json.dumps(["文字渲染", "精准控制", "高画质"]),
                 "badge": "NEW",
                 "supports_last_frame": False,
                 "is_default": True,
@@ -450,11 +450,11 @@ class ModelConfigManager:
                 "model_type": "text_to_image"
             },
             {
-                "model_id": "gptimage_pro",
-                "name": "nova-image-pro",
+                "model_id": "gptimage_pro_flex",
+                "name": "nova-image-pro-flex",
                 "display_name": "GPT Image 2 Pro",
-                "description": "更多宽高比支持，更丰富细节",
-                "features": json.dumps(["11种宽高比", "4K画质", "极致细节"]),
+                "description": "更多宽高比支持，支持参考图",
+                "features": json.dumps(["参考图", "多宽高比", "高画质"]),
                 "badge": "PRO",
                 "supports_last_frame": False,
                 "is_default": False,
