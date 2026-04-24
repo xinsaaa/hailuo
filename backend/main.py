@@ -293,9 +293,21 @@ def init_default_models():
                 if updated:
                     session.add(existing_model)
         
+        # 清理数据库中已废弃的 gptimage 模型（不在默认配置里的）
+        valid_gptimage_ids = {m["model_id"] for m in default_models if m.get("platform") == "gptimage"}
+        stale_models = session.exec(
+            select(AIModel).where(AIModel.platform == "gptimage")
+        ).all()
+        removed_count = 0
+        for m in stale_models:
+            if m.model_id not in valid_gptimage_ids:
+                session.delete(m)
+                removed_count += 1
+                app_logger.info(f"Removed stale gptimage model: {m.model_id}")
+
         session.commit()
-        if created_count > 0:
-            app_logger.info(f"Default AI models initialized: {created_count} new models created")
+        if created_count > 0 or removed_count > 0:
+            app_logger.info(f"Default AI models initialized: {created_count} created, {removed_count} removed")
         else:
             app_logger.info("All models already exist, no changes made")
 
