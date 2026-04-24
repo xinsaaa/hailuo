@@ -449,21 +449,6 @@ class ModelConfigManager:
                 "platform": "gptimage",
                 "model_type": "text_to_image"
             },
-            {
-                "model_id": "gptimage_pro_flex",
-                "name": "nova-image-pro-flex",
-                "display_name": "GPT Image 2 Pro",
-                "description": "更多宽高比支持，支持参考图",
-                "features": json.dumps(["参考图", "多宽高比", "高画质"]),
-                "badge": "PRO",
-                "supports_last_frame": False,
-                "is_default": False,
-                "is_enabled": True,
-                "sort_order": 21,
-                "price": 0.80,
-                "platform": "gptimage",
-                "model_type": "text_to_image"
-            },
         ]
     
     @staticmethod

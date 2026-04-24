@@ -112,17 +112,6 @@ async def get_gptimage_models(session: Session = Depends(get_session)):
                     "is_default": True,
                     "is_enabled": True,
                 },
-                {
-                    "id": "gptimage_pro_flex",
-                    "name": "nova-image-pro-flex",
-                    "display_name": "GPT Image 2 Pro",
-                    "description": "更多宽高比支持，支持参考图",
-                    "price": 0.80,
-                    "badge": "PRO",
-                    "features": ["参考图", "多宽高比", "高画质"],
-                    "is_default": False,
-                    "is_enabled": True,
-                },
             ]
         }
 
