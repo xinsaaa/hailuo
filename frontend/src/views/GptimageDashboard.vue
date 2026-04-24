@@ -21,6 +21,7 @@ const refImagePreview = ref(null)
 
 const selectedRatio = ref('16:9')
 const selectedQuality = ref('standard')
+const generateCount = ref(1)
 
 const maxPromptLength = 1000
 const promptLength = computed(() => prompt.value.length)
@@ -128,9 +129,10 @@ const handleCreateOrder = async () => {
   }
 
   const modelPrice = selectedModel.value?.price || 0.99
-  if (!user.value || user.value.balance < modelPrice) {
+  const totalPrice = (modelPrice * generateCount.value).toFixed(2)
+  if (!user.value || user.value.balance < totalPrice) {
     showInsufficientModal.value = true
-    insufficientPrice.value = modelPrice
+    insufficientPrice.value = totalPrice
     return
   }
 
@@ -142,9 +144,13 @@ const handleCreateOrder = async () => {
       model: selectedModel.value.name,
       ratio: selectedRatio.value,
       quality: selectedQuality.value,
+      count: generateCount.value,
       ref_image: refImage.value,
     })
-    showNotification('订单提交成功！GPT Image 2 正在为您生成图片...', 'success')
+    const msg = generateCount.value > 1
+      ? `已提交 ${generateCount.value} 张图片生成任务...`
+      : '订单提交成功！GPT Image 2 正在为您生成图片...'
+    showNotification(msg, 'success')
     prompt.value = ''
     removeImage()
     await loadData()
@@ -406,19 +412,38 @@ const handleLogout = () => {
 
             <!-- Footer action bar -->
             <div class="flex justify-between items-center mt-8 pt-6 border-t border-white/10">
-              <div class="flex items-center gap-2 text-sm text-gray-400">
-                <span class="relative flex h-2.5 w-2.5">
-                  <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75"></span>
-                  <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-sky-500"></span>
-                </span>
-                <span class="font-medium">GPT Image 2</span>
-                <span class="text-[10px] text-gray-500 px-1.5 py-0.5 bg-white/5 rounded border border-white/5">by OpenAI</span>
+              <div class="flex items-center gap-4">
+                <div class="flex items-center gap-2 text-sm text-gray-400">
+                  <span class="relative flex h-2.5 w-2.5">
+                    <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75"></span>
+                    <span class="relative inline-flex rounded-full h-2.5 w-2.5 bg-sky-500"></span>
+                  </span>
+                  <span class="font-medium">GPT Image 2</span>
+                </div>
+                <!-- 数量选择 -->
+                <div class="flex items-center gap-2">
+                  <span class="text-xs text-gray-400">数量</span>
+                  <div class="flex items-center bg-black/30 rounded-lg border border-white/10">
+                    <button
+                      @click="generateCount = Math.max(1, generateCount - 1)"
+                      :disabled="generateCount <= 1"
+                      class="w-7 h-7 flex items-center justify-center text-gray-400 hover:text-white transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                    >−</button>
+                    <span class="w-8 text-center text-sm font-bold text-white">{{ generateCount }}</span>
+                    <button
+                      @click="generateCount = Math.min(10, generateCount + 1)"
+                      :disabled="generateCount >= 10"
+                      class="w-7 h-7 flex items-center justify-center text-gray-400 hover:text-white transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                    >+</button>
+                  </div>
+                </div>
               </div>
 
               <div class="flex items-center gap-6">
                 <div class="text-right">
                   <span class="text-xs text-gray-500 block">本次消耗</span>
-                  <span class="text-lg font-bold text-white leading-none">¥{{ selectedModel?.price ? selectedModel.price.toFixed(2) : '0.99' }}</span>
+                  <span class="text-lg font-bold text-white leading-none">¥{{ ((selectedModel?.price || 0.50) * generateCount).toFixed(2) }}</span>
+                  <span v-if="generateCount > 1" class="text-[10px] text-gray-500 block mt-0.5">{{ generateCount }}张 × ¥{{ (selectedModel?.price || 0.50).toFixed(2) }}</span>
                 </div>
                 <button
                   @click="handleCreateOrder"

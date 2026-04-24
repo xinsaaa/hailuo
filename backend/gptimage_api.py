@@ -9,6 +9,7 @@ import os
 import time
 import threading
 import httpx
+from collections import deque
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status
 from fastapi.security import OAuth2PasswordBearer
 from typing import Optional, List
@@ -22,6 +23,34 @@ from backend.auth import SECRET_KEY, ALGORITHM
 from backend.logger import app_logger
 
 router = APIRouter(prefix="/api/gptimage", tags=["gptimage"])
+
+# ============ 全局速率限制器 ============
+# NOVART API 限制：每秒 ≤4 请求，每分钟 ≤20 请求
+_rate_lock = threading.Lock()
+_second_timestamps: deque = deque()   # 最近 1 秒内的请求时间戳
+_minute_timestamps: deque = deque()   # 最近 60 秒内的请求时间戳
+
+MAX_PER_SECOND = 3   # 保守值，留余量
+MAX_PER_MINUTE = 18  # 保守值，留余量
+
+
+def _wait_for_rate_limit():
+    """阻塞等待直到满足速率限制，然后记录本次请求"""
+    while True:
+        with _rate_lock:
+            now = time.monotonic()
+            # 清理过期记录
+            while _second_timestamps and now - _second_timestamps[0] > 1.0:
+                _second_timestamps.popleft()
+            while _minute_timestamps and now - _minute_timestamps[0] > 60.0:
+                _minute_timestamps.popleft()
+            # 检查是否可以发送
+            if len(_second_timestamps) < MAX_PER_SECOND and len(_minute_timestamps) < MAX_PER_MINUTE:
+                _second_timestamps.append(now)
+                _minute_timestamps.append(now)
+                return
+        # 等待后重试
+        time.sleep(0.35)
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
@@ -177,13 +206,16 @@ async def create_gptimage_order(
     model: str = Form("nova-g-image-2"),
     ratio: str = Form("16:9"),
     quality: str = Form("standard"),
+    count: int = Form(1),
     ref_image: Optional[UploadFile] = File(None),
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ):
-    """创建 GPT Image 2 生成订单"""
+    """创建 GPT Image 2 生成订单，支持批量 1-10 张"""
     if not prompt.strip():
         raise HTTPException(status_code=400, detail="请输入图片描述")
+
+    count = max(1, min(count, 10))
 
     novart_api_key, _ = _get_novart_config()
     if not novart_api_key:
@@ -193,13 +225,17 @@ async def create_gptimage_order(
     db_model = session.exec(
         select(AIModel).where(AIModel.name == model, AIModel.platform == "gptimage")
     ).first()
-    price = db_model.price if db_model else 0.50
+    unit_price = db_model.price if db_model else 0.50
+    total_price = round(unit_price * count, 2)
 
     # 余额检查
-    if current_user.balance < price:
-        raise HTTPException(status_code=400, detail=f"余额不足，需要 ¥{price}，当前余额 ¥{current_user.balance:.2f}")
+    if current_user.balance < total_price:
+        raise HTTPException(
+            status_code=400,
+            detail=f"余额不足，{count}张需要 ¥{total_price}，当前余额 ¥{current_user.balance:.2f}"
+        )
 
-    # 处理参考图 → 转为 data URL
+    # 处理参考图 → 转为 data URL（所有订单共用同一张参考图）
     ref_image_path = None
     ref_data_url = None
     if ref_image and ref_image.filename:
@@ -211,52 +247,59 @@ async def create_gptimage_order(
         content = await ref_image.read()
         with open(ref_image_path, "wb") as f:
             f.write(content)
-        # 构建 data URL 供 NOVART API 使用
         mime_map = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "webp": "image/webp", "gif": "image/gif"}
         mime_type = mime_map.get(ext.lower(), "image/png")
         b64 = base64.b64encode(content).decode("utf-8")
         ref_data_url = f"data:{mime_type};base64,{b64}"
 
-    # 扣费
-    current_user.balance -= price
+    # 一次性扣费（总价）
+    current_user.balance -= total_price
     session.add(current_user)
 
-    # 记录交易
     transaction = Transaction(
         user_id=current_user.id,
-        amount=-price,
+        amount=-total_price,
         bonus=0,
         type="expense",
     )
     session.add(transaction)
 
-    # 创建订单
-    order = GptimageOrder(
-        user_id=current_user.id,
-        prompt=prompt.strip(),
-        model_name=model,
-        ratio=ratio,
-        quality=quality,
-        status="pending",
-        cost=price,
-        ref_image_path=ref_image_path,
-    )
-    session.add(order)
+    # 批量创建订单
+    order_ids = []
+    for i in range(count):
+        order = GptimageOrder(
+            user_id=current_user.id,
+            prompt=prompt.strip(),
+            model_name=model,
+            ratio=ratio,
+            quality=quality,
+            status="pending",
+            cost=unit_price,
+            ref_image_path=ref_image_path,
+        )
+        session.add(order)
+        session.flush()
+        order_ids.append(order.id)
+
     session.commit()
-    session.refresh(order)
 
     app_logger.info(
-        f"[GPTImage] 新订单 #{order.id} by user {current_user.username}, model={model}, ratio={ratio}, quality={quality}"
+        f"[GPTImage] 批量创建 {count} 个订单 {order_ids} by user {current_user.username}, model={model}"
     )
 
-    # 后台异步执行生成任务
-    threading.Thread(
-        target=_run_generation_task,
-        args=(order.id, ref_data_url),
-        daemon=True,
-    ).start()
+    # 为每个订单启动后台生成线程（速率限制器保证不超限）
+    for oid in order_ids:
+        threading.Thread(
+            target=_run_generation_task,
+            args=(oid, ref_data_url),
+            daemon=True,
+        ).start()
 
-    return {"message": "订单创建成功", "order_id": order.id}
+    return {
+        "message": f"已提交 {count} 张图片生成任务",
+        "order_ids": order_ids,
+        "total_cost": total_price,
+    }
 
 
 # ============ NOVART 异步任务 API ============
@@ -319,7 +362,8 @@ async def _generate_image_async(order_id: int, ref_data_url: str = None):
             "Content-Type": "application/json",
         }
 
-        # Step 1: 创建异步任务
+        # Step 1: 创建异步任务（等待速率限制窗口）
+        _wait_for_rate_limit()
         create_url = f"{novart_base_url}/v1/images/generations?async=1"
 
         async with httpx.AsyncClient(timeout=30) as client:

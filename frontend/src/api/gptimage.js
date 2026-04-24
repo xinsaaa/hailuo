@@ -34,6 +34,7 @@ export const gptimageCreateOrder = async (data) => {
   formData.append('model', data.model)
   if (data.ratio) formData.append('ratio', data.ratio)
   if (data.quality) formData.append('quality', data.quality)
+  if (data.count && data.count > 1) formData.append('count', data.count)
   if (data.ref_image) {
     formData.append('ref_image', data.ref_image)
   }
