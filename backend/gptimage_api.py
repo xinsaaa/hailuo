@@ -1,6 +1,6 @@
 """
 GPT Image 2 文生图 API
-调用 NOVART 平台的图片生成接口
+调用 NOVART 平台异步任务接口 (/v1/images/generations?async=1)
 """
 import asyncio
 import base64
@@ -34,6 +34,11 @@ QUALITY_RESOLUTION_MAP = {
     "ultra": "4k",
 }
 
+# 轮询配置
+POLL_INTERVAL_QUEUED = 3   # QUEUED 状态每 3 秒轮询
+POLL_INTERVAL_RUNNING = 4  # RUNNING 状态每 4 秒轮询
+POLL_MAX_ATTEMPTS = 150    # 最多轮询 150 次（约 10 分钟）
+
 
 def _get_novart_config() -> tuple:
     """从数据库读取 NOVART 配置，回退到环境变量"""
@@ -46,7 +51,6 @@ def _get_novart_config() -> tuple:
                 select(SystemConfig).where(SystemConfig.key == "novart_api_key")
             ).first()
             if key_cfg:
-                import json
                 val = json.loads(key_cfg.value)
                 if val:
                     api_key = val
@@ -206,10 +210,10 @@ async def create_gptimage_order(
     if current_user.balance < price:
         raise HTTPException(status_code=400, detail=f"余额不足，需要 ¥{price}，当前余额 ¥{current_user.balance:.2f}")
 
-    # 处理参考图
+    # 处理参考图 → 转为 data URL
     ref_image_path = None
+    ref_data_url = None
     if ref_image and ref_image.filename:
-        import tempfile
         import uuid as _uuid
         ext = ref_image.filename.split(".")[-1] if "." in ref_image.filename else "jpg"
         tmp_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads", "gptimage")
@@ -218,6 +222,11 @@ async def create_gptimage_order(
         content = await ref_image.read()
         with open(ref_image_path, "wb") as f:
             f.write(content)
+        # 构建 data URL 供 NOVART API 使用
+        mime_map = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "webp": "image/webp", "gif": "image/gif"}
+        mime_type = mime_map.get(ext.lower(), "image/png")
+        b64 = base64.b64encode(content).decode("utf-8")
+        ref_data_url = f"data:{mime_type};base64,{b64}"
 
     # 扣费
     current_user.balance -= price
@@ -254,182 +263,189 @@ async def create_gptimage_order(
     # 后台异步执行生成任务
     threading.Thread(
         target=_run_generation_task,
-        args=(order.id,),
+        args=(order.id, ref_data_url),
         daemon=True,
     ).start()
 
     return {"message": "订单创建成功", "order_id": order.id}
 
 
-# ============ NOVART API 调用 ============
-def _run_generation_task(order_id: int):
+# ============ NOVART 异步任务 API ============
+def _run_generation_task(order_id: int, ref_data_url: str = None):
     """在后台线程中执行生图任务"""
     try:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        loop.run_until_complete(_generate_image(order_id))
+        loop.run_until_complete(_generate_image_async(order_id, ref_data_url))
     except Exception as e:
         app_logger.error(f"[GPTImage] 任务线程异常 order#{order_id}: {e}")
         _update_order_status(order_id, "failed", error_message=str(e))
+        _refund_order(order_id)
     finally:
         loop.close()
 
 
-async def _generate_image(order_id: int):
-    """调用 NOVART API 生成图片"""
+async def _generate_image_async(order_id: int, ref_data_url: str = None):
+    """使用 NOVART 异步任务 API 生成图片：创建任务 → 轮询状态 → 获取结果"""
     with Session(engine) as session:
         order = session.get(GptimageOrder, order_id)
         if not order:
             return
-
         order.status = "processing"
         order.progress = 10
         session.add(order)
         session.commit()
+        # 缓存订单信息
+        model_name = order.model_name
+        prompt = order.prompt
+        ratio = order.ratio
+        quality = order.quality
 
-    app_logger.info(f"[GPTImage] 开始生成 order#{order_id}, model={order.model_name}")
+    novart_api_key, novart_base_url = _get_novart_config()
+    if not novart_api_key:
+        _update_order_status(order_id, "failed", error_message="API Key 未配置")
+        _refund_order(order_id)
+        return
+
+    app_logger.info(f"[GPTImage] 开始生成 order#{order_id}, model={model_name}")
 
     try:
-        # 构建请求
-        resolution = QUALITY_RESOLUTION_MAP.get(order.quality, "2k")
+        resolution = QUALITY_RESOLUTION_MAP.get(quality, "2k")
 
-        parts = [{"text": order.prompt}]
-
-        # 如果有参考图，附加 inlineData
-        if order.ref_image_path and os.path.exists(order.ref_image_path):
-            with open(order.ref_image_path, "rb") as f:
-                img_bytes = f.read()
-            img_b64 = base64.b64encode(img_bytes).decode("utf-8")
-            ext = order.ref_image_path.rsplit(".", 1)[-1].lower()
-            mime_map = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "webp": "image/webp", "gif": "image/gif"}
-            mime_type = mime_map.get(ext, "image/png")
-            parts.append({
-                "inlineData": {
-                    "mimeType": mime_type,
-                    "data": img_b64,
-                }
-            })
+        # 构建异步任务请求体
+        reference_images = []
+        if ref_data_url:
+            reference_images.append(ref_data_url)
 
         payload = {
-            "contents": [
-                {
-                    "role": "user",
-                    "parts": parts,
-                }
-            ],
-            "generationConfig": {
-                "responseModalities": ["TEXT", "IMAGE"],
-                "imageConfig": {
-                    "aspectRatio": order.ratio,
-                    "novartResolution": resolution,
-                },
-                "novart": {
-                    "includeResultUrls": True,
-                },
-            },
+            "model": model_name,
+            "prompt": prompt,
+            "resolution": resolution,
+            "aspect_ratio": ratio,
+            "reference_images": reference_images,
         }
 
-        novart_api_key, novart_base_url = _get_novart_config()
-        if not novart_api_key:
-            _update_order_status(order_id, "failed", error_message="API Key 未配置")
-            _refund_order(order_id)
-            return
-
-        url = f"{novart_base_url}/v1beta/models/{order.model_name}:generateContent"
         headers = {
-            "x-goog-api-key": novart_api_key,
+            "Authorization": f"Bearer {novart_api_key}",
             "Content-Type": "application/json",
         }
 
-        with Session(engine) as session:
-            order = session.get(GptimageOrder, order_id)
-            order.status = "generating"
-            order.progress = 30
-            session.add(order)
-            session.commit()
+        # Step 1: 创建异步任务
+        create_url = f"{novart_base_url}/v1/images/generations?async=1"
 
-        async with httpx.AsyncClient(timeout=180) as client:
-            resp = await client.post(url, json=payload, headers=headers)
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.post(create_url, json=payload, headers=headers)
 
         if resp.status_code != 200:
             error_text = resp.text[:500]
-            app_logger.error(f"[GPTImage] NOVART API 错误 {resp.status_code}: {error_text}")
-            _update_order_status(order_id, "failed", error_message=f"API 错误 {resp.status_code}: {error_text[:200]}")
+            app_logger.error(f"[GPTImage] 创建任务失败 {resp.status_code}: {error_text}")
+            _update_order_status(order_id, "failed", error_message=f"创建任务失败: {error_text[:200]}")
             _refund_order(order_id)
             return
 
-        data = resp.json()
+        create_data = resp.json()
+        if not create_data.get("ok"):
+            err_msg = create_data.get("error", {}).get("message", "创建任务返回失败")
+            _update_order_status(order_id, "failed", error_message=err_msg)
+            _refund_order(order_id)
+            return
 
-        # 解析响应 - 优先用 download_url，否则用 base64
+        task_id = create_data["data"]["task_id"]
+        task_status = create_data["data"].get("status", "QUEUED")
+
+        # 保存 task_id 到订单
+        with Session(engine) as session:
+            order = session.get(GptimageOrder, order_id)
+            order.task_id = str(task_id)
+            order.status = "generating"
+            order.progress = 20
+            session.add(order)
+            session.commit()
+
+        app_logger.info(f"[GPTImage] 任务已创建 order#{order_id}, task_id={task_id}, status={task_status}")
+
+        # Step 2: 轮询任务状态
+        poll_url = f"{novart_base_url}/v1/images/{task_id}"
         image_url = None
-        novart_info = data.get("novart", {})
-        results = novart_info.get("results", [])
-        if results and results[0].get("download_url"):
-            image_url = results[0]["download_url"]
 
-        if not image_url:
-            # 从 candidates 中提取 base64 图片，保存到本地
-            candidates = data.get("candidates", [])
-            if candidates:
-                content_parts = candidates[0].get("content", {}).get("parts", [])
-                for part in content_parts:
-                    inline_data = part.get("inlineData")
-                    if inline_data and inline_data.get("data"):
-                        # 保存 base64 到本地文件并生成 URL
-                        image_url = _save_b64_image(inline_data["data"], inline_data.get("mimeType", "image/png"), order_id)
-                        break
+        for attempt in range(POLL_MAX_ATTEMPTS):
+            # 动态轮询间隔
+            interval = POLL_INTERVAL_QUEUED if task_status == "QUEUED" else POLL_INTERVAL_RUNNING
+            await asyncio.sleep(interval)
 
-        if not image_url:
-            app_logger.error(f"[GPTImage] 响应中未找到图片 order#{order_id}")
-            _update_order_status(order_id, "failed", error_message="API 响应中未找到生成的图片")
+            try:
+                async with httpx.AsyncClient(timeout=15) as client:
+                    poll_resp = await client.get(poll_url, headers=headers)
+
+                if poll_resp.status_code != 200:
+                    app_logger.warning(f"[GPTImage] 轮询异常 {poll_resp.status_code}, 继续...")
+                    continue
+
+                poll_data = poll_resp.json()
+                if not poll_data.get("ok"):
+                    continue
+
+                task = poll_data["data"]
+                task_status = task.get("status", "UNKNOWN")
+
+                # 更新进度
+                progress = 20 + min(attempt * 2, 70)  # 20 → 90
+                _update_order_progress(order_id, progress)
+
+                if task_status == "SUCCESS":
+                    results = task.get("results", [])
+                    if results:
+                        # 优先用 signed_download_url（前端可直接展示），否则用 download_url
+                        image_url = results[0].get("signed_download_url") or results[0].get("download_url")
+                    break
+
+                if task_status in ("FAILED", "CANCELLED"):
+                    err_msg = task.get("error", {}).get("message", f"任务{task_status}")
+                    app_logger.error(f"[GPTImage] 任务失败 order#{order_id}: {err_msg}")
+                    _update_order_status(order_id, "failed", error_message=err_msg)
+                    _refund_order(order_id)
+                    return
+
+            except httpx.TimeoutException:
+                app_logger.warning(f"[GPTImage] 轮询超时 attempt={attempt}, 继续...")
+                continue
+            except Exception as poll_err:
+                app_logger.warning(f"[GPTImage] 轮询异常: {poll_err}, 继续...")
+                continue
+        else:
+            # 超过最大轮询次数
+            app_logger.error(f"[GPTImage] 轮询超时 order#{order_id}, 已达最大次数")
+            _update_order_status(order_id, "failed", error_message="生成超时，请重试")
             _refund_order(order_id)
             return
 
-        # 更新订单为完成
+        if not image_url:
+            _update_order_status(order_id, "failed", error_message="任务完成但未返回图片")
+            _refund_order(order_id)
+            return
+
+        # Step 3: 完成
         with Session(engine) as session:
             order = session.get(GptimageOrder, order_id)
             order.status = "completed"
             order.progress = 100
             order.image_url = image_url
-            order.task_id = str(novart_info.get("task_id", ""))
             order.completed_at = datetime.utcnow()
             session.add(order)
             session.commit()
 
-        app_logger.info(f"[GPTImage] 生成完成 order#{order_id}, url={image_url[:80]}...")
+        app_logger.info(f"[GPTImage] 生成完成 order#{order_id}, url={image_url[:100]}...")
 
-    except httpx.TimeoutException:
-        app_logger.error(f"[GPTImage] 请求超时 order#{order_id}")
-        _update_order_status(order_id, "failed", error_message="生成请求超时，请重试")
-        _refund_order(order_id)
     except Exception as e:
         app_logger.error(f"[GPTImage] 生成失败 order#{order_id}: {e}", exc_info=True)
         _update_order_status(order_id, "failed", error_message=str(e)[:200])
         _refund_order(order_id)
 
 
-def _save_b64_image(b64_data: str, mime_type: str, order_id: int) -> str:
-    """将 base64 图片保存到本地，返回访问路径"""
-    ext_map = {"image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "image/gif": "gif"}
-    ext = ext_map.get(mime_type, "png")
-
-    output_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads", "gptimage", "results")
-    os.makedirs(output_dir, exist_ok=True)
-
-    filename = f"gptimg_{order_id}_{int(time.time())}.{ext}"
-    filepath = os.path.join(output_dir, filename)
-
-    img_bytes = base64.b64decode(b64_data)
-    with open(filepath, "wb") as f:
-        f.write(img_bytes)
-
-    # 返回可访问的 URL 路径
-    return f"/api/gptimage/files/{filename}"
-
-
+# ============ 图片文件服务 ============
 @router.get("/files/{filename}")
 async def serve_gptimage_file(filename: str):
-    """提供生成的图片文件"""
+    """提供生成的图片文件（兼容本地存储的场景）"""
     from starlette.responses import FileResponse as StarletteFileResponse
 
     filepath = os.path.join(
@@ -438,7 +454,6 @@ async def serve_gptimage_file(filename: str):
     if not os.path.exists(filepath):
         raise HTTPException(status_code=404, detail="文件不存在")
 
-    # 根据扩展名设置 content-type
     ext = filename.rsplit(".", 1)[-1].lower()
     media_map = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "webp": "image/webp", "gif": "image/gif"}
     media_type = media_map.get(ext, "application/octet-stream")
@@ -446,19 +461,30 @@ async def serve_gptimage_file(filename: str):
     return StarletteFileResponse(filepath, media_type=media_type)
 
 
-def _update_order_status(order_id: int, status: str, error_message: str = None):
+# ============ 辅助函数 ============
+def _update_order_status(order_id: int, new_status: str, error_message: str = None):
     """更新订单状态"""
     with Session(engine) as session:
         order = session.get(GptimageOrder, order_id)
         if order:
-            order.status = status
+            order.status = new_status
             if error_message:
                 order.error_message = error_message
-            if status == "completed":
+            if new_status == "completed":
                 order.progress = 100
                 order.completed_at = datetime.utcnow()
-            elif status == "failed":
+            elif new_status == "failed":
                 order.progress = 0
+            session.add(order)
+            session.commit()
+
+
+def _update_order_progress(order_id: int, progress: int):
+    """仅更新订单进度"""
+    with Session(engine) as session:
+        order = session.get(GptimageOrder, order_id)
+        if order and order.status not in ("completed", "failed"):
+            order.progress = min(progress, 95)
             session.add(order)
             session.commit()
 
@@ -473,7 +499,6 @@ def _refund_order(order_id: int):
         if user:
             user.balance += order.cost
             session.add(user)
-            # 记录退款交易
             transaction = Transaction(
                 user_id=user.id,
                 amount=order.cost,
