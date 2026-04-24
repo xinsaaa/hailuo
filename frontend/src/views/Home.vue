@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '../stores/user'
 import { getPublicConfig, getAvailableModels } from '../api'
+import { getGptimageModels } from '../api/gptimage'
 
 const prompt = ref('')
 const router = useRouter()
@@ -10,6 +11,7 @@ const userStore = useUserStore()
 const videoPrice23 = ref(0.99)
 const modelsList = ref([])
 const klingPrice = ref(0.99)
+const gptimagePrice = ref(0.50)
 const hasKling = computed(() => modelsList.value.some(m => m.id?.includes('kling') && m.type !== 'lip_sync'))
 
 const has23Series = computed(() => modelsList.value.some(m => m.id.includes('2_0') || m.id.includes('2_3') || m.id.includes('hailuo_1_0')))
@@ -38,6 +40,16 @@ const loadConfig = async () => {
                 if (modelsKling.length > 0) {
                     klingPrice.value = Math.min(...modelsKling.map(m => m.price || 0.99))
                 }
+            }
+        } catch (e) {
+            // 保持默认价格
+        }
+
+        // 加载 GPT Image 价格
+        try {
+            const gptData = await getGptimageModels()
+            if (gptData && gptData.models && gptData.models.length > 0) {
+                gptimagePrice.value = gptData.models[0].price || 0.50
             }
         } catch (e) {
             // 保持默认价格
@@ -261,7 +273,7 @@ const handleModelSeriesGenerate = (series) => {
                 NEW
               </div>
               <div class="text-xl font-bold text-white drop-shadow-sm tracking-wide">
-                ¥0.99
+                ¥{{ gptimagePrice.toFixed(2) }}
               </div>
             </div>
 
@@ -282,7 +294,7 @@ const handleModelSeriesGenerate = (series) => {
 
             <div class="text-center mb-6">
               <div class="text-sm font-medium text-gray-400">
-                单次生成仅需 <span class="text-white font-bold mx-1">0.99元</span>
+                单次生成仅需 <span class="text-white font-bold mx-1">{{ gptimagePrice.toFixed(2) }}元</span>
               </div>
             </div>
 

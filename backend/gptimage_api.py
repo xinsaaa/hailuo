@@ -175,7 +175,7 @@ async def get_gptimage_orders(
 async def create_gptimage_order(
     prompt: str = Form(...),
     model: str = Form("nova-g-image-2"),
-    ratio: str = Form("1:1"),
+    ratio: str = Form("16:9"),
     quality: str = Form("hd"),
     ref_image: Optional[UploadFile] = File(None),
     current_user: User = Depends(get_current_user),

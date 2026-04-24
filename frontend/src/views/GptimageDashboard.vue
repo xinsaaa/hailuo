@@ -19,10 +19,7 @@ const showModelSelector = ref(false)
 const refImage = ref(null)
 const refImagePreview = ref(null)
 
-const ratioOptions = ['1:1', '4:3', '3:4', '16:9', '9:16']
-const selectedRatio = ref('1:1')
-
-const qualityOptions = ['standard', 'hd']
+const selectedRatio = ref('16:9')
 const selectedQuality = ref('hd')
 
 const maxPromptLength = 1000
@@ -355,37 +352,6 @@ const handleLogout = () => {
               </div>
             </div>
 
-            <!-- Ratio & Quality selectors -->
-            <div class="flex items-center gap-6 mb-4">
-              <div class="flex items-center gap-2">
-                <span class="text-xs text-gray-400">比例</span>
-                <div class="flex items-center gap-1 p-0.5 bg-black/30 rounded-lg border border-white/10">
-                  <button
-                    v-for="r in ratioOptions"
-                    :key="r"
-                    @click="selectedRatio = r"
-                    class="px-2.5 py-1 text-xs font-medium rounded-md transition-all duration-200"
-                    :class="selectedRatio === r
-                      ? 'bg-sky-500/80 text-white'
-                      : 'text-gray-400 hover:text-white hover:bg-white/5'"
-                  >{{ r }}</button>
-                </div>
-              </div>
-              <div class="flex items-center gap-2">
-                <span class="text-xs text-gray-400">质量</span>
-                <div class="flex items-center gap-1 p-0.5 bg-black/30 rounded-lg border border-white/10">
-                  <button
-                    v-for="q in qualityOptions"
-                    :key="q"
-                    @click="selectedQuality = q"
-                    class="px-2.5 py-1 text-xs font-medium rounded-md transition-all duration-200"
-                    :class="selectedQuality === q
-                      ? 'bg-sky-500/80 text-white'
-                      : 'text-gray-400 hover:text-white hover:bg-white/5'"
-                  >{{ q === 'hd' ? 'HD' : '标准' }}</button>
-                </div>
-              </div>
-            </div>
 
             <!-- Prompt -->
             <div class="relative group">
