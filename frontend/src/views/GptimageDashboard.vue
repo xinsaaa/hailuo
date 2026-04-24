@@ -20,7 +20,7 @@ const refImage = ref(null)
 const refImagePreview = ref(null)
 
 const selectedRatio = ref('16:9')
-const selectedQuality = ref('hd')
+const selectedQuality = ref('standard')
 
 const maxPromptLength = 1000
 const promptLength = computed(() => prompt.value.length)
