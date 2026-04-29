@@ -83,6 +83,43 @@ def create_payment_url(
     return f"{ZPAY_API_URL}?{urlencode(params)}"
 
 
+def query_order_status(out_trade_no: str) -> dict:
+    """
+    主动查询 Z-Pay 订单状态
+    文档: https://zpayz.cn/api.php?act=order&pid={商户ID}&key={商户密钥}&out_trade_no={商户订单号}
+    
+    返回:
+        {"ok": True/False, "paid": bool, "trade_no": "...", "money": "..."}
+    """
+    import httpx
+
+    query_url = ZPAY_API_URL.replace("/submit.php", "/api.php")
+
+    params = {
+        "act": "order",
+        "pid": ZPAY_PID,
+        "key": ZPAY_KEY,
+        "out_trade_no": out_trade_no,
+    }
+
+    try:
+        resp = httpx.get(query_url, params=params, timeout=10)
+        data = resp.json()
+        # 返回: {"code":1, "status":1, "trade_no":"xxx", "money":"0.01", ...}
+        # status=1 已支付, status=0 未支付
+        if data.get("code") == 1:
+            return {
+                "ok": True,
+                "paid": data.get("status") == 1,
+                "trade_no": data.get("trade_no", ""),
+                "money": data.get("money", ""),
+            }
+        else:
+            return {"ok": False, "msg": data.get("msg", "查询失败")}
+    except Exception as e:
+        return {"ok": False, "msg": str(e)}
+
+
 def generate_order_no() -> str:
     """生成唯一订单号"""
     import random

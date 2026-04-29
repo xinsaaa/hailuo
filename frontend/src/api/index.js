@@ -187,6 +187,16 @@ export const confirmPayment = async (params) => {
     return response.data
 }
 
+export const getPendingPayments = async () => {
+    const response = await api.get('/pay/pending')
+    return response.data
+}
+
+export const recoverPayment = async (outTradeNo) => {
+    const response = await api.post(`/pay/recover/${outTradeNo}`)
+    return response.data
+}
+
 export const klingPreUpload = async (imageFile, frameType = 'first') => {
     const formData = new FormData();
     formData.append('image', imageFile);

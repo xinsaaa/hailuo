@@ -914,7 +914,7 @@ def recharge(request: RechargeRequest, current_user: User = Depends(get_current_
 
 
 # ============ Z-Pay 支付接口 ============
-from backend.payment import create_payment_url, generate_order_no, verify_sign, ZPAY_KEY
+from backend.payment import create_payment_url, generate_order_no, verify_sign, query_order_status, ZPAY_KEY
 from backend.models import PaymentOrder
 from starlette.responses import PlainTextResponse
 from datetime import datetime
@@ -1210,6 +1210,91 @@ def get_payment_status(
         "created_at": payment_order.created_at,
         "paid_at": payment_order.paid_at
     }
+
+
+@app.get("/api/pay/pending")
+def get_pending_payments(
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session)
+):
+    """获取用户最近24小时内未到账的支付订单"""
+    from datetime import timedelta
+    cutoff = datetime.utcnow() - timedelta(hours=24)
+    orders = session.exec(
+        select(PaymentOrder).where(
+            PaymentOrder.user_id == current_user.id,
+            PaymentOrder.status == "pending",
+            PaymentOrder.created_at >= cutoff
+        ).order_by(PaymentOrder.created_at.desc())
+    ).all()
+
+    return {
+        "orders": [
+            {
+                "out_trade_no": o.out_trade_no,
+                "amount": o.amount,
+                "bonus": o.bonus,
+                "created_at": o.created_at.isoformat() if o.created_at else None,
+            }
+            for o in orders
+        ]
+    }
+
+
+@app.post("/api/pay/recover/{out_trade_no}")
+def recover_payment(
+    out_trade_no: str,
+    current_user: User = Depends(get_current_user),
+):
+    """
+    用户主动触发补单：
+    1. 校验订单属于当前用户且状态为 pending
+    2. 主动查询 Z-Pay 订单真实支付状态
+    3. 如果已支付则执行加款
+    """
+    with Session(engine) as session:
+        payment_order = session.exec(
+            select(PaymentOrder).where(
+                PaymentOrder.out_trade_no == out_trade_no,
+                PaymentOrder.user_id == current_user.id
+            )
+        ).first()
+
+        if not payment_order:
+            raise HTTPException(status_code=404, detail="订单不存在")
+
+        if payment_order.status == "paid":
+            return {"status": "already_paid", "message": "该订单已到账"}
+
+        if payment_order.status not in ("pending",):
+            raise HTTPException(status_code=400, detail="该订单状态无法补单")
+
+    # 主动查询 Z-Pay
+    app_logger.info(f"[Payment] 用户 {current_user.username} 发起补单: {out_trade_no}")
+    zpay_result = query_order_status(out_trade_no)
+
+    if not zpay_result.get("ok"):
+        app_logger.warning(f"[Payment] Z-Pay查询失败: {out_trade_no}, {zpay_result}")
+        raise HTTPException(status_code=502, detail=f"支付平台查询失败: {zpay_result.get('msg', '未知错误')}")
+
+    if not zpay_result.get("paid"):
+        app_logger.info(f"[Payment] Z-Pay确认未支付: {out_trade_no}")
+        return {"status": "unpaid", "message": "该订单在支付平台确认未支付，请确认是否已完成付款"}
+
+    # Z-Pay 确认已支付 → 执行补款
+    trade_no = zpay_result.get("trade_no", "recover")
+    app_logger.info(f"[Payment] Z-Pay确认已支付，执行补款: {out_trade_no}, trade_no={trade_no}")
+
+    result = _process_payment(out_trade_no, trade_no)
+    if result["ok"]:
+        return {
+            "status": "recovered",
+            "message": "补单成功！余额已更新",
+            "amount": result.get("amount", 0),
+            "bonus": result.get("bonus", 0),
+        }
+
+    raise HTTPException(status_code=500, detail="补单处理失败，请联系客服")
 
 
 @app.post("/api/kling/pre-upload")

@@ -1,7 +1,7 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { getCurrentUser, createPayment, getPublicConfig, confirmPayment, getTransactions } from '../api'
+import { getCurrentUser, createPayment, getPublicConfig, confirmPayment, getTransactions, getPendingPayments, recoverPayment } from '../api'
 
 const route = useRoute()
 const router = useRouter()
@@ -12,6 +12,12 @@ const loading = ref(false)
 const transactions = ref([])
 const summary = ref({ total_recharge: 0, total_expense: 0, balance: 0 })
 const showHistory = ref(false)
+
+// 补单相关
+const showRecoverModal = ref(false)
+const pendingOrders = ref([])
+const recoveringOrder = ref(null)
+const loadingPending = ref(false)
 
 // Toast
 const showToast = ref(false)
@@ -119,6 +125,47 @@ const loadTransactions = async () => {
     transactions.value = data.transactions || []
     summary.value = data.summary || summary.value
   } catch (e) {}
+}
+
+const openRecoverModal = async () => {
+  showRecoverModal.value = true
+  loadingPending.value = true
+  try {
+    const data = await getPendingPayments()
+    pendingOrders.value = data.orders || []
+  } catch (e) {
+    showNotification('获取订单列表失败', 'error')
+  } finally {
+    loadingPending.value = false
+  }
+}
+
+const handleRecover = async (order) => {
+  recoveringOrder.value = order.out_trade_no
+  try {
+    const result = await recoverPayment(order.out_trade_no)
+    if (result.status === 'recovered') {
+      showNotification(`补单成功！充值 ¥${result.amount}${result.bonus > 0 ? ` + 赠送 ¥${result.bonus}` : ''} 已到账`, 'success')
+      // 刷新数据
+      user.value = await getCurrentUser()
+      loadTransactions()
+      // 从列表移除
+      pendingOrders.value = pendingOrders.value.filter(o => o.out_trade_no !== order.out_trade_no)
+      if (pendingOrders.value.length === 0) {
+        setTimeout(() => { showRecoverModal.value = false }, 1500)
+      }
+    } else if (result.status === 'already_paid') {
+      showNotification('该订单已到账，请刷新页面查看', 'info')
+      user.value = await getCurrentUser()
+      pendingOrders.value = pendingOrders.value.filter(o => o.out_trade_no !== order.out_trade_no)
+    } else if (result.status === 'unpaid') {
+      showNotification(result.message || '该订单确认未支付', 'error')
+    }
+  } catch (e) {
+    showNotification(e.response?.data?.detail || '补单失败，请稍后再试', 'error')
+  } finally {
+    recoveringOrder.value = null
+  }
 }
 
 const relativeTime = (dateStr) => {
@@ -279,10 +326,19 @@ onMounted(async () => {
               {{ loading ? '正在创建订单...' : '微信支付' }}
             </button>
 
-            <p class="text-center text-xs text-gray-600 mt-3 flex items-center justify-center gap-1">
-              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
-              支付系统安全加密 · 仅支持微信支付
-            </p>
+            <div class="flex items-center justify-center gap-4 mt-3">
+              <p class="text-xs text-gray-600 flex items-center gap-1">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path></svg>
+                支付系统安全加密
+              </p>
+              <button
+                @click="openRecoverModal"
+                class="text-xs text-orange-400 hover:text-orange-300 transition-colors flex items-center gap-1 underline underline-offset-2 decoration-dashed"
+              >
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                充值未到账？
+              </button>
+            </div>
           </div>
         </div>
 
@@ -373,6 +429,74 @@ onMounted(async () => {
         </Transition>
       </div>
     </div>
+    <!-- 充值未到账弹窗 -->
+    <Transition name="fade">
+      <div v-if="showRecoverModal" class="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" @click="showRecoverModal = false"></div>
+        <div class="relative bg-[#1a1d24] border border-white/10 rounded-2xl w-full max-w-lg shadow-2xl">
+          <!-- Header -->
+          <div class="flex items-center justify-between px-6 py-4 border-b border-white/10">
+            <h3 class="text-base font-bold text-white flex items-center gap-2">
+              <svg class="w-5 h-5 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+              充值未到账
+            </h3>
+            <button @click="showRecoverModal = false" class="text-gray-500 hover:text-white transition-colors">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+            </button>
+          </div>
+
+          <!-- Body -->
+          <div class="px-6 py-4">
+            <p class="text-xs text-gray-400 mb-4">以下是最近24小时内未到账的订单，点击「补单」按钮系统会主动向支付平台查询并自动到账。</p>
+
+            <!-- Loading -->
+            <div v-if="loadingPending" class="flex items-center justify-center py-10">
+              <span class="animate-spin w-5 h-5 border-2 border-cyan-400 border-t-transparent rounded-full"></span>
+              <span class="ml-2 text-sm text-gray-400">查询中...</span>
+            </div>
+
+            <!-- 无待处理订单 -->
+            <div v-else-if="pendingOrders.length === 0" class="text-center py-10">
+              <svg class="w-10 h-10 text-green-400 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+              <p class="text-sm text-gray-400">没有未到账的订单</p>
+              <p class="text-xs text-gray-600 mt-1">所有充值已正常到账</p>
+            </div>
+
+            <!-- 订单列表 -->
+            <div v-else class="space-y-3 max-h-72 overflow-y-auto">
+              <div
+                v-for="order in pendingOrders" :key="order.out_trade_no"
+                class="flex items-center justify-between p-4 bg-white/5 rounded-xl border border-white/5"
+              >
+                <div>
+                  <p class="text-sm text-white font-medium">¥{{ order.amount.toFixed(2) }}
+                    <span v-if="order.bonus > 0" class="text-xs text-cyan-400 ml-1">+¥{{ order.bonus.toFixed(2) }} 赠送</span>
+                  </p>
+                  <p class="text-xs text-gray-500 mt-0.5">{{ relativeTime(order.created_at) }} · {{ order.out_trade_no }}</p>
+                </div>
+                <button
+                  @click="handleRecover(order)"
+                  :disabled="recoveringOrder === order.out_trade_no"
+                  class="px-4 py-2 bg-orange-500/20 hover:bg-orange-500/30 text-orange-400 text-xs font-bold rounded-lg border border-orange-500/30 hover:border-orange-500/50 transition-all disabled:opacity-50 flex items-center gap-1.5"
+                >
+                  <span v-if="recoveringOrder === order.out_trade_no" class="animate-spin w-3 h-3 border-2 border-orange-400 border-t-transparent rounded-full"></span>
+                  <svg v-else class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                  {{ recoveringOrder === order.out_trade_no ? '查询中...' : '补单' }}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Footer -->
+          <div class="px-6 py-3 border-t border-white/5 flex items-center justify-between">
+            <p class="text-[10px] text-gray-600">补单将主动查询支付平台确认支付状态</p>
+            <button @click="showRecoverModal = false" class="text-xs text-gray-400 hover:text-white transition-colors px-3 py-1.5 rounded-lg hover:bg-white/5">
+              关闭
+            </button>
+          </div>
+        </div>
+      </div>
+    </Transition>
   </div>
 </template>
 
