@@ -1114,16 +1114,6 @@ const handleLogout = () => {
                     </div>
                     <!-- Video actions -->
                     <template v-if="order.status === 'completed' && order.video_url">
-                      <button
-                        v-if="canLipSync(order)"
-                        @click="openLipSync(order)"
-                        class="px-3 py-1 bg-violet-500/10 hover:bg-violet-500/20 text-violet-400 text-xs rounded-full border border-violet-500/20 hover:border-violet-500/40 transition-all flex items-center gap-1.5"
-                      >
-                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 9l10.5-3-3 10.5-2.5-4-4 2.5L9 9z" />
-                        </svg>
-                        <span class="font-bold">对口型</span>
-                      </button>
                       <template v-for="(url, idx) in getVideoUrls(order)" :key="idx">
                         <button v-if="url.startsWith('/videos/')"
                           @click="playVideo(getVideoUrl(url))"
