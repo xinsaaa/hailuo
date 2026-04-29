@@ -1030,61 +1030,111 @@ def create_payment(
     }
 
 
+import threading as _pay_threading
+
+_payment_locks: dict = {}
+_payment_locks_guard = _pay_threading.Lock()
+
+
+def _get_payment_lock(out_trade_no: str) -> _pay_threading.Lock:
+    """为每个订单号获取独立的锁，防止并发重复加款"""
+    with _payment_locks_guard:
+        if out_trade_no not in _payment_locks:
+            _payment_locks[out_trade_no] = _pay_threading.Lock()
+        return _payment_locks[out_trade_no]
+
+
+def _process_payment(out_trade_no: str, trade_no: str) -> dict:
+    """
+    核心加款逻辑（幂等 + 线程安全）
+    返回 {"ok": True/False, "already": bool, "amount": ..., "bonus": ...}
+    """
+    lock = _get_payment_lock(out_trade_no)
+    if not lock.acquire(timeout=10):
+        app_logger.warning(f"[Payment] 获取锁超时: {out_trade_no}")
+        return {"ok": False, "already": False}
+
+    try:
+        with Session(engine) as session:
+            payment_order = session.exec(
+                select(PaymentOrder).where(PaymentOrder.out_trade_no == out_trade_no)
+            ).first()
+
+            if not payment_order:
+                app_logger.warning(f"[Payment] 订单不存在: {out_trade_no}")
+                return {"ok": False, "already": False}
+
+            if payment_order.status == "paid":
+                app_logger.info(f"[Payment] 订单已处理，跳过: {out_trade_no}")
+                return {"ok": True, "already": True,
+                        "amount": payment_order.amount, "bonus": payment_order.bonus}
+
+            # 更新订单状态
+            payment_order.status = "paid"
+            payment_order.trade_no = trade_no
+            payment_order.paid_at = datetime.utcnow()
+            session.add(payment_order)
+
+            # 加余额
+            user = session.get(User, payment_order.user_id)
+            if user:
+                total_add = payment_order.amount + payment_order.bonus
+                user.balance += total_add
+                session.add(user)
+
+                transaction = Transaction(
+                    user_id=user.id,
+                    amount=payment_order.amount,
+                    bonus=payment_order.bonus,
+                    type="recharge"
+                )
+                session.add(transaction)
+                app_logger.info(
+                    f"[Payment] 充值成功: {out_trade_no}, user={user.username}, "
+                    f"amount={payment_order.amount}, bonus={payment_order.bonus}, "
+                    f"new_balance={user.balance}"
+                )
+            else:
+                app_logger.error(f"[Payment] 用户不存在: user_id={payment_order.user_id}, order={out_trade_no}")
+
+            session.commit()
+            return {"ok": True, "already": False,
+                    "amount": payment_order.amount, "bonus": payment_order.bonus}
+    except Exception as e:
+        app_logger.error(f"[Payment] 处理异常: {out_trade_no}, error={e}", exc_info=True)
+        return {"ok": False, "already": False}
+    finally:
+        lock.release()
+        # 清理过期锁（避免内存泄漏）
+        with _payment_locks_guard:
+            if out_trade_no in _payment_locks and not _payment_locks[out_trade_no].locked():
+                _payment_locks.pop(out_trade_no, None)
+
+
 @app.post("/api/pay/notify")
-async def payment_notify(request: Request, session: Session = Depends(get_session)):
+async def payment_notify(request: Request):
     """Z-Pay 支付回调通知"""
-    # 获取回调参数
     form_data = await request.form()
     params = dict(form_data)
-    
-    # 验证签名
+
+    app_logger.info(f"[Payment] 收到回调: {params}")
+
     sign = params.get("sign", "")
     if not verify_sign(params, ZPAY_KEY, sign):
+        app_logger.warning(f"[Payment] 签名验证失败: {params}")
         return PlainTextResponse("fail")
-    
-    # 获取订单信息
+
     out_trade_no = params.get("out_trade_no")
     trade_no = params.get("trade_no")
     trade_status = params.get("trade_status")
-    
-    # 查询支付订单
-    payment_order = session.exec(
-        select(PaymentOrder).where(PaymentOrder.out_trade_no == out_trade_no)
-    ).first()
-    
-    if not payment_order:
+
+    if trade_status != "TRADE_SUCCESS":
+        app_logger.info(f"[Payment] 非成功状态: {trade_status}, order={out_trade_no}")
         return PlainTextResponse("fail")
-    
-    # 已处理过的订单直接返回成功
-    if payment_order.status == "paid":
+
+    result = _process_payment(out_trade_no, trade_no)
+    if result["ok"]:
         return PlainTextResponse("success")
-    
-    # 支付成功
-    if trade_status == "TRADE_SUCCESS":
-        payment_order.status = "paid"
-        payment_order.trade_no = trade_no
-        payment_order.paid_at = datetime.utcnow()
-        session.add(payment_order)
-        
-        # 给用户加余额
-        user = session.get(User, payment_order.user_id)
-        if user:
-            total_add = payment_order.amount + payment_order.bonus
-            user.balance += total_add
-            session.add(user)
-            
-            # 记录交易
-            transaction = Transaction(
-                user_id=user.id,
-                amount=payment_order.amount,
-                bonus=payment_order.bonus,
-                type="recharge"
-            )
-            session.add(transaction)
-        
-        session.commit()
-        return PlainTextResponse("success")
-    
     return PlainTextResponse("fail")
 
 
@@ -1099,10 +1149,8 @@ def confirm_payment_by_return(
     name: Optional[str] = None,
     money: Optional[str] = None,
     sign_type: Optional[str] = None,
-    session: Session = Depends(get_session)
 ):
     """通过 return_url 参数确认支付（GET 方式）"""
-    # 构建参数用于验签
     params = {
         "out_trade_no": out_trade_no,
         "trade_no": trade_no,
@@ -1118,50 +1166,23 @@ def confirm_payment_by_return(
         params["money"] = money
     if sign_type:
         params["sign_type"] = sign_type
-    
-    # 验证签名
+
     if not verify_sign(params, ZPAY_KEY, sign):
+        app_logger.warning(f"[Payment] confirm 签名验证失败: {params}")
         raise HTTPException(status_code=400, detail="签名验证失败")
-    
-    # 查询支付订单
-    payment_order = session.exec(
-        select(PaymentOrder).where(PaymentOrder.out_trade_no == out_trade_no)
-    ).first()
-    
-    if not payment_order:
-        raise HTTPException(status_code=404, detail="订单不存在")
-    
-    # 已处理过的订单直接返回成功
-    if payment_order.status == "paid":
-        return {"status": "already_paid", "message": "订单已处理"}
-    
-    # 支付成功
-    if trade_status == "TRADE_SUCCESS":
-        payment_order.status = "paid"
-        payment_order.trade_no = trade_no
-        payment_order.paid_at = datetime.utcnow()
-        session.add(payment_order)
-        
-        # 给用户加余额
-        user = session.get(User, payment_order.user_id)
-        if user:
-            total_add = payment_order.amount + payment_order.bonus
-            user.balance += total_add
-            session.add(user)
-            
-            # 记录交易
-            transaction = Transaction(
-                user_id=user.id,
-                amount=payment_order.amount,
-                bonus=payment_order.bonus,
-                type="recharge"
-            )
-            session.add(transaction)
-        
-        session.commit()
-        return {"status": "success", "message": "支付确认成功", "amount": payment_order.amount, "bonus": payment_order.bonus}
-    
-    raise HTTPException(status_code=400, detail="支付未成功")
+
+    if trade_status != "TRADE_SUCCESS":
+        raise HTTPException(status_code=400, detail="支付未成功")
+
+    result = _process_payment(out_trade_no, trade_no)
+    if result["ok"]:
+        return {
+            "status": "already_paid" if result.get("already") else "success",
+            "message": "支付确认成功",
+            "amount": result.get("amount", 0),
+            "bonus": result.get("bonus", 0),
+        }
+    raise HTTPException(status_code=500, detail="支付处理失败，请联系客服")
 
 
 @app.get("/api/pay/status/{out_trade_no}")
