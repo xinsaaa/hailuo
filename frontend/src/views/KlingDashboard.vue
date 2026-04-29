@@ -1110,7 +1110,7 @@ const handleLogout = () => {
                     <p class="text-xs text-gray-500 font-mono">{{ formatUTCTime(order.created_at) }}</p>
                     <div v-if="order.model_name" class="flex items-center gap-1.5 px-2 py-0.5 bg-orange-500/10 rounded border border-orange-500/20">
                       <div class="w-1.5 h-1.5 bg-orange-400 rounded-full shadow-[0_0_5px_rgba(251,146,60,0.8)]"></div>
-                      <span class="text-xs text-orange-300">{{ order.model_name }}</span>
+                      <span class="text-xs text-orange-300">{{ order.model_name?.replace(/可灵/g, 'Seedance').replace(/Kling/g, 'Seedance').replace(/3\.0/g, '2.0') }}</span>
                     </div>
                     <!-- Video actions -->
                     <template v-if="order.status === 'completed' && order.video_url">
