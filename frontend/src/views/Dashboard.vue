@@ -182,6 +182,14 @@ watch(() => route.query.series, () => {
   loadData()
 })
 
+// 监听 model 参数变化，自动切换到对应模型
+watch(() => route.query.model, (newModelId) => {
+  if (newModelId) {
+    const m = availableModels.value.find(x => x.id === newModelId)
+    if (m) selectedModel.value = m
+  }
+})
+
 watch(() => route.query.platform, (newPlatform) => {
   platform.value = newPlatform || 'hailuo'
 })
@@ -302,9 +310,16 @@ const loadData = async () => {
       availableModels.value = filteredModels
       
       if (filteredModels.length > 0) {
-        const currentModelInList = filteredModels.find(m => m.id === selectedModel.value?.id)
-        if (!currentModelInList) {
-          selectedModel.value = filteredModels.find(m => m.is_default) || filteredModels[0]
+        // 优先用 URL query 中指定的 model
+        const requestedModelId = route.query.model
+        const requestedModel = requestedModelId ? filteredModels.find(m => m.id === requestedModelId) : null
+        if (requestedModel) {
+          selectedModel.value = requestedModel
+        } else {
+          const currentModelInList = filteredModels.find(m => m.id === selectedModel.value?.id)
+          if (!currentModelInList) {
+            selectedModel.value = filteredModels.find(m => m.is_default) || filteredModels[0]
+          }
         }
       } else {
         selectedModel.value = null

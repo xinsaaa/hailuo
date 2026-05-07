@@ -9,12 +9,18 @@ const prompt = ref('')
 const router = useRouter()
 const userStore = useUserStore()
 const videoPrice23 = ref(0.99)
+const videoPrice20 = ref(1.19)
 const modelsList = ref([])
 const klingPrice = ref(0.99)
 const gptimagePrice = ref(0.50)
 const hasKling = computed(() => modelsList.value.some(m => m.id?.includes('kling') && m.type !== 'lip_sync'))
 
-const has23Series = computed(() => modelsList.value.some(m => m.id.includes('2_0') || m.id.includes('2_3') || m.id.includes('hailuo_1_0')))
+// 是否存在 2.3 系列已启用模型（不含 hailuo_2_0，因为它有独立卡片）
+const has23Series = computed(() => modelsList.value.some(m => m.id === 'hailuo_2_3' || m.id === 'hailuo_2_3_fast' || m.id?.includes('hailuo_1_0')))
+// 海螺 2.0 是否启用
+const hasHailuo20 = computed(() => modelsList.value.some(m => m.id === 'hailuo_2_0'))
+// GPT Image 2 是否启用
+const hasGptimage = computed(() => modelsList.value.some(m => m.platform === 'gptimage' || m.id?.includes('gptimage')))
 
 const siteName = ref(localStorage.getItem('site_name') || '大帝AI')
 const siteAnnouncement = ref('')
@@ -32,9 +38,15 @@ const loadConfig = async () => {
             const modelsData = await getAvailableModels()
             if (modelsData && modelsData.models && modelsData.models.length > 0) {
                 modelsList.value = modelsData.models
-                const models23 = modelsData.models.filter(m => m.id.includes('2_0') || m.id.includes('2_3') || m.id.includes('hailuo_1_0'))
+                // 海螺 2.3 系列价格（不含 hailuo_2_0，它单独卡片）
+                const models23 = modelsData.models.filter(m => m.id === 'hailuo_2_3' || m.id === 'hailuo_2_3_fast' || m.id?.includes('hailuo_1_0'))
                 if (models23.length > 0) {
                     videoPrice23.value = Math.min(...models23.map(m => m.price || 0.99))
+                }
+                // 海螺 2.0 价格
+                const model20 = modelsData.models.find(m => m.id === 'hailuo_2_0')
+                if (model20) {
+                    videoPrice20.value = model20.price || 1.19
                 }
                 const modelsKling = modelsData.models.filter(m => m.id === 'kling_3_0')
                 if (modelsKling.length > 0) {
@@ -97,24 +109,12 @@ const handleStart = () => {
   }
 }
 
-// 处理不同模型系列的生成
-const handleModelSeriesGenerate = (series) => {
-  if (prompt.value) {
-    router.push({ 
-      name: 'Dashboard', 
-      query: { 
-        prompt: prompt.value, 
-        series: series 
-      } 
-    })
-  } else {
-    router.push({ 
-      name: 'Dashboard', 
-      query: { 
-        series: series 
-      } 
-    })
-  }
+// 处理不同模型系列的生成（可选指定具体 modelId）
+const handleModelSeriesGenerate = (series, modelId) => {
+  const query = { series }
+  if (prompt.value) query.prompt = prompt.value
+  if (modelId) query.model = modelId
+  router.push({ name: 'Dashboard', query })
 }
 </script>
 
@@ -162,16 +162,14 @@ const handleModelSeriesGenerate = (series) => {
         </div>
       </div>
       
-      <!-- AI模型卡片网格 -->
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8 w-full max-w-5xl">
+      <!-- AI模型卡片网格（禁用模型自动隐藏） -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 w-full max-w-7xl">
         
-        <!-- 海螺AI卡片 -->
-        <div :class="['group relative', { 'opacity-60': !has23Series }]">
-          <!-- 发光边框 - 优化为单色简约光晕 -->
-          <div v-if="has23Series" class="absolute -inset-0.5 bg-gradient-to-b from-cyan-500/20 to-blue-500/5 rounded-3xl blur opacity-20 group-hover:opacity-60 transition-opacity duration-700"></div>
+        <!-- 海螺AI 2.3 系列卡片 -->
+        <div v-if="has23Series" class="group relative">
+          <div class="absolute -inset-0.5 bg-gradient-to-b from-cyan-500/20 to-blue-500/5 rounded-3xl blur opacity-20 group-hover:opacity-60 transition-opacity duration-700"></div>
           
           <div class="relative bg-white/5 border border-white/5 border-t-white/20 rounded-2xl p-6 shadow-2xl h-full cursor-pointer transition-all duration-500 hover:scale-[1.02] hover:-translate-y-1 backdrop-blur-3xl hover:bg-white/10 hover:shadow-cyan-500/10">
-            <!-- 顶部标签 -->
             <div class="flex justify-between items-center mb-4">
               <div class="px-2.5 py-1 rounded-full bg-gradient-to-r from-red-500 to-orange-500 text-white text-xs font-bold shadow-sm ring-1 ring-white/10">
                 HOT
@@ -181,13 +179,11 @@ const handleModelSeriesGenerate = (series) => {
               </div>
             </div>
             
-            <!-- 模型名称 -->
             <h3 class="text-xl font-bold text-white mb-4 flex items-center gap-2">
               海螺 AI 2.3 <span class="text-[10px] text-cyan-400 font-normal px-1.5 py-0.5 border border-cyan-400/30 rounded tracking-wider uppercase">2.3系列</span>
               <div class="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_8px_rgba(34,199,89,0.8)] animate-pulse"></div>
             </h3>
             
-            <!-- 特性标签 -->
             <div class="space-y-2 mb-6">
               <div class="px-3 py-2 rounded-lg bg-black/20 text-gray-300 text-xs font-medium flex items-center gap-2 border border-white/5 group-hover:border-white/10 transition-colors">
                 <svg class="w-3.5 h-3.5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
@@ -198,28 +194,66 @@ const handleModelSeriesGenerate = (series) => {
               </div>
             </div>
             
-            <!-- 价格说明 -->
             <div class="text-center mb-6">
               <div class="text-sm font-medium text-gray-400">
                 单次生成仅需 <span class="text-white font-bold mx-1">{{ videoPrice23 }}元</span>
               </div>
             </div>
             
-            <!-- 生成按钮 -->
             <div>
-              <button v-if="has23Series" @click.stop="handleModelSeriesGenerate('2.3')" class="w-full py-3.5 bg-white text-black hover:bg-gray-50 rounded-xl font-bold text-sm transition-all duration-300 shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-95">
-                使用2.3系列生成
+              <button @click.stop="handleModelSeriesGenerate('2.3')" class="w-full py-3.5 bg-white text-black hover:bg-gray-50 rounded-xl font-bold text-sm transition-all duration-300 shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-95">
+                使用 2.3 系列生成
               </button>
-              <button v-else class="w-full py-3.5 bg-gray-700 text-gray-500 rounded-xl font-bold text-sm cursor-not-allowed">
-                暂未开放
+            </div>
+          </div>
+        </div>
+
+        <!-- 海螺 AI 2.0 卡片 -->
+        <div v-if="hasHailuo20" class="group relative">
+          <div class="absolute -inset-0.5 bg-gradient-to-b from-emerald-500/20 to-teal-500/5 rounded-3xl blur opacity-20 group-hover:opacity-60 transition-opacity duration-700"></div>
+          
+          <div class="relative bg-white/5 border border-white/5 border-t-white/20 rounded-2xl p-6 shadow-2xl h-full cursor-pointer transition-all duration-500 hover:scale-[1.02] hover:-translate-y-1 backdrop-blur-3xl hover:bg-white/10 hover:shadow-emerald-500/10">
+            <div class="flex justify-between items-center mb-4">
+              <div class="px-2.5 py-1 rounded-full bg-gradient-to-r from-emerald-500 to-teal-500 text-white text-xs font-bold shadow-sm ring-1 ring-white/10">
+                NEW
+              </div>
+              <div class="text-xl font-bold text-white drop-shadow-sm tracking-wide">
+                ¥{{ videoPrice20 }}
+              </div>
+            </div>
+            
+            <h3 class="text-xl font-bold text-white mb-4 flex items-center gap-2">
+              海螺 AI 2.0 <span class="text-[10px] text-emerald-400 font-normal px-1.5 py-0.5 border border-emerald-400/30 rounded tracking-wider uppercase">2.0</span>
+              <div class="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)] animate-pulse"></div>
+            </h3>
+            
+            <div class="space-y-2 mb-6">
+              <div class="px-3 py-2 rounded-lg bg-black/20 text-gray-300 text-xs font-medium flex items-center gap-2 border border-white/5 group-hover:border-white/10 transition-colors">
+                <svg class="w-3.5 h-3.5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                超清画质，精准响应
+              </div>
+              <div class="px-3 py-2 rounded-lg bg-black/20 text-gray-300 text-xs font-medium border border-white/5 group-hover:border-white/10 transition-colors">
+                支持首尾帧 · 512P-1080P · 6s-10s
+              </div>
+            </div>
+            
+            <div class="text-center mb-6">
+              <div class="text-sm font-medium text-gray-400">
+                单次生成仅需 <span class="text-white font-bold mx-1">{{ videoPrice20 }}元</span>
+              </div>
+            </div>
+            
+            <div>
+              <button @click.stop="handleModelSeriesGenerate('2.3', 'hailuo_2_0')" class="w-full py-3.5 bg-white text-black hover:bg-gray-50 rounded-xl font-bold text-sm transition-all duration-300 shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-95">
+                使用海螺 2.0 生成
               </button>
             </div>
           </div>
         </div>
         
-        <!-- Seedance极速版 -->
-        <div :class="['group relative', { 'opacity-60': !hasKling }]" @click="hasKling && router.push('/seedance')">
-          <div v-if="hasKling" class="absolute -inset-0.5 bg-gradient-to-b from-violet-500/20 to-fuchsia-500/5 rounded-3xl blur opacity-20 group-hover:opacity-60 transition-opacity duration-700"></div>
+        <!-- Seedance 极速版 -->
+        <div v-if="hasKling" class="group relative" @click="router.push('/seedance')">
+          <div class="absolute -inset-0.5 bg-gradient-to-b from-violet-500/20 to-fuchsia-500/5 rounded-3xl blur opacity-20 group-hover:opacity-60 transition-opacity duration-700"></div>
 
           <div class="relative bg-white/5 border border-white/5 border-t-white/20 rounded-2xl p-6 shadow-2xl h-full cursor-pointer transition-all duration-500 hover:scale-[1.02] hover:-translate-y-1 backdrop-blur-3xl hover:bg-white/10 hover:shadow-violet-500/10">
             <div class="flex justify-between items-center mb-4">
@@ -233,7 +267,7 @@ const handleModelSeriesGenerate = (series) => {
 
             <h3 class="text-xl font-bold text-white mb-4 flex items-center gap-2">
               Seedance 极速版 <span class="text-[10px] text-violet-400 font-normal px-1.5 py-0.5 border border-violet-400/30 rounded tracking-wider uppercase">Seedance 2.0</span>
-              <div v-if="hasKling" class="w-1.5 h-1.5 rounded-full bg-violet-400 shadow-[0_0_8px_rgba(167,139,250,0.8)] animate-pulse"></div>
+              <div class="w-1.5 h-1.5 rounded-full bg-violet-400 shadow-[0_0_8px_rgba(167,139,250,0.8)] animate-pulse"></div>
             </h3>
 
             <div class="space-y-2 mb-6">
@@ -253,18 +287,15 @@ const handleModelSeriesGenerate = (series) => {
             </div>
 
             <div>
-              <button v-if="hasKling" class="w-full py-3.5 bg-white text-black hover:bg-gray-50 rounded-xl font-bold text-sm transition-all duration-300 shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-95">
+              <button class="w-full py-3.5 bg-white text-black hover:bg-gray-50 rounded-xl font-bold text-sm transition-all duration-300 shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-95">
                 使用 Seedance 生成
-              </button>
-              <button v-else class="w-full py-3.5 bg-gray-700 text-gray-500 rounded-xl font-bold text-sm cursor-not-allowed">
-                暂未开放
               </button>
             </div>
           </div>
         </div>
 
         <!-- GPT Image 2 文生图 -->
-        <div class="group relative" @click="router.push('/gptimage')">
+        <div v-if="hasGptimage" class="group relative" @click="router.push('/gptimage')">
           <div class="absolute -inset-0.5 bg-gradient-to-b from-sky-500/20 to-blue-500/5 rounded-3xl blur opacity-20 group-hover:opacity-60 transition-opacity duration-700"></div>
 
           <div class="relative bg-white/5 border border-white/5 border-t-white/20 rounded-2xl p-6 shadow-2xl h-full cursor-pointer transition-all duration-500 hover:scale-[1.02] hover:-translate-y-1 backdrop-blur-3xl hover:bg-white/10 hover:shadow-sky-500/10">
@@ -304,6 +335,11 @@ const handleModelSeriesGenerate = (series) => {
               </button>
             </div>
           </div>
+        </div>
+
+        <!-- 全部禁用时的占位提示 -->
+        <div v-if="!has23Series && !hasHailuo20 && !hasKling && !hasGptimage" class="col-span-full text-center py-16 text-gray-500 text-sm">
+          所有模型暂时维护中，请稍后再试
         </div>
       </div>
 
