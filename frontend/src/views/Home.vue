@@ -162,11 +162,11 @@ const handleModelSeriesGenerate = (series, modelId) => {
         </div>
       </div>
       
-      <!-- AI模型卡片网格（禁用模型自动隐藏） -->
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 w-full max-w-7xl">
+      <!-- AI模型卡片网格（禁用模型自动隐藏，剩余卡片自动居中） -->
+      <div class="flex flex-wrap justify-center gap-6 w-full max-w-7xl mx-auto">
         
         <!-- 海螺AI 2.3 系列卡片 -->
-        <div v-if="has23Series" class="group relative">
+        <div v-if="has23Series" class="group relative w-full sm:w-[300px]">
           <div class="absolute -inset-0.5 bg-gradient-to-b from-cyan-500/20 to-blue-500/5 rounded-3xl blur opacity-20 group-hover:opacity-60 transition-opacity duration-700"></div>
           
           <div class="relative bg-white/5 border border-white/5 border-t-white/20 rounded-2xl p-6 shadow-2xl h-full cursor-pointer transition-all duration-500 hover:scale-[1.02] hover:-translate-y-1 backdrop-blur-3xl hover:bg-white/10 hover:shadow-cyan-500/10">
@@ -209,7 +209,7 @@ const handleModelSeriesGenerate = (series, modelId) => {
         </div>
 
         <!-- 海螺 AI 2.0 卡片 -->
-        <div v-if="hasHailuo20" class="group relative">
+        <div v-if="hasHailuo20" class="group relative w-full sm:w-[300px]">
           <div class="absolute -inset-0.5 bg-gradient-to-b from-emerald-500/20 to-teal-500/5 rounded-3xl blur opacity-20 group-hover:opacity-60 transition-opacity duration-700"></div>
           
           <div class="relative bg-white/5 border border-white/5 border-t-white/20 rounded-2xl p-6 shadow-2xl h-full cursor-pointer transition-all duration-500 hover:scale-[1.02] hover:-translate-y-1 backdrop-blur-3xl hover:bg-white/10 hover:shadow-emerald-500/10">
@@ -252,7 +252,7 @@ const handleModelSeriesGenerate = (series, modelId) => {
         </div>
         
         <!-- Seedance 极速版 -->
-        <div v-if="hasKling" class="group relative" @click="router.push('/seedance')">
+        <div v-if="hasKling" class="group relative w-full sm:w-[300px]" @click="router.push('/seedance')">
           <div class="absolute -inset-0.5 bg-gradient-to-b from-violet-500/20 to-fuchsia-500/5 rounded-3xl blur opacity-20 group-hover:opacity-60 transition-opacity duration-700"></div>
 
           <div class="relative bg-white/5 border border-white/5 border-t-white/20 rounded-2xl p-6 shadow-2xl h-full cursor-pointer transition-all duration-500 hover:scale-[1.02] hover:-translate-y-1 backdrop-blur-3xl hover:bg-white/10 hover:shadow-violet-500/10">
@@ -295,7 +295,7 @@ const handleModelSeriesGenerate = (series, modelId) => {
         </div>
 
         <!-- GPT Image 2 文生图 -->
-        <div v-if="hasGptimage" class="group relative" @click="router.push('/gptimage')">
+        <div v-if="hasGptimage" class="group relative w-full sm:w-[300px]" @click="router.push('/gptimage')">
           <div class="absolute -inset-0.5 bg-gradient-to-b from-sky-500/20 to-blue-500/5 rounded-3xl blur opacity-20 group-hover:opacity-60 transition-opacity duration-700"></div>
 
           <div class="relative bg-white/5 border border-white/5 border-t-white/20 rounded-2xl p-6 shadow-2xl h-full cursor-pointer transition-all duration-500 hover:scale-[1.02] hover:-translate-y-1 backdrop-blur-3xl hover:bg-white/10 hover:shadow-sky-500/10">
@@ -338,7 +338,7 @@ const handleModelSeriesGenerate = (series, modelId) => {
         </div>
 
         <!-- 全部禁用时的占位提示 -->
-        <div v-if="!has23Series && !hasHailuo20 && !hasKling && !hasGptimage" class="col-span-full text-center py-16 text-gray-500 text-sm">
+        <div v-if="!has23Series && !hasHailuo20 && !hasKling && !hasGptimage" class="w-full text-center py-16 text-gray-500 text-sm">
           所有模型暂时维护中，请稍后再试
         </div>
       </div>
