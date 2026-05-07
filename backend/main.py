@@ -1139,33 +1139,17 @@ async def payment_notify(request: Request):
 
 
 @app.get("/api/pay/confirm")
-def confirm_payment_by_return(
-    out_trade_no: str,
-    trade_no: str,
-    trade_status: str,
-    sign: str,
-    pid: Optional[str] = None,
-    type: Optional[str] = None,
-    name: Optional[str] = None,
-    money: Optional[str] = None,
-    sign_type: Optional[str] = None,
-):
-    """通过 return_url 参数确认支付（GET 方式）"""
-    params = {
-        "out_trade_no": out_trade_no,
-        "trade_no": trade_no,
-        "trade_status": trade_status,
-    }
-    if pid:
-        params["pid"] = pid
-    if type:
-        params["type"] = type
-    if name:
-        params["name"] = name
-    if money:
-        params["money"] = money
-    if sign_type:
-        params["sign_type"] = sign_type
+def confirm_payment_by_return(request: Request):
+    """通过 return_url 参数确认支付（GET 方式）
+    使用 request.query_params 拿全部参数，避免漏字段导致签名失败"""
+    params = dict(request.query_params)
+    sign = params.get("sign", "")
+    out_trade_no = params.get("out_trade_no", "")
+    trade_no = params.get("trade_no", "")
+    trade_status = params.get("trade_status", "")
+
+    if not out_trade_no or not trade_no or not sign:
+        raise HTTPException(status_code=400, detail="参数不完整")
 
     if not verify_sign(params, ZPAY_KEY, sign):
         app_logger.warning(f"[Payment] confirm 签名验证失败: {params}")

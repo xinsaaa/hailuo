@@ -14,8 +14,10 @@ ZPAY_PID = os.getenv("ZPAY_PID", "2026010716484260")
 ZPAY_KEY = os.getenv("ZPAY_KEY", "lUpCQ3QrCmcAW8SNLCkXcHiILCybND5V")
 
 # 回调地址（从环境变量读取，支持域名配置）
-ZPAY_NOTIFY_URL = os.getenv("ZPAY_NOTIFY_URL", "http://dadiai.cn:8000/api/pay/notify")
-ZPAY_RETURN_URL = os.getenv("ZPAY_RETURN_URL", "http://dadiai.cn:8000/recharge")
+# ⚠️ 重要：return_url 必须与用户访问网站的 origin 完全一致（协议 + 域名 + 端口），
+# 否则跳回时浏览器 localStorage 拿不到登录 token，会直接跳到登录页，confirm 接口永远不会被调用，导致余额不到账
+ZPAY_NOTIFY_URL = os.getenv("ZPAY_NOTIFY_URL", "http://dadiai.cn/api/pay/notify")
+ZPAY_RETURN_URL = os.getenv("ZPAY_RETURN_URL", "http://dadiai.cn/recharge")
 
 
 def generate_sign(params: dict, key: str) -> str:
