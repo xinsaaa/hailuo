@@ -983,12 +983,13 @@ KLING_LIP_SYNC_SPEAKERS = {
 
 @app.post("/api/pay/create")
 def create_payment(
-    request: CreatePaymentRequest,
+    payload: CreatePaymentRequest,
+    request: Request,
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_session)
 ):
     """创建支付订单，返回支付跳转 URL"""
-    amount = request.amount
+    amount = payload.amount
     
     # 校验金额
     if amount < 0.01:
@@ -1015,11 +1016,32 @@ def create_payment(
     session.add(payment_order)
     session.commit()
     
+    # 动态生成 return_url：用用户当前访问的 origin，确保跳回时不会丢 token
+    # 优先级：Origin 头 > Referer 头 > 环境变量默认值
+    dynamic_return_url = None
+    origin = request.headers.get("origin")
+    if origin:
+        dynamic_return_url = f"{origin}/recharge"
+    else:
+        referer = request.headers.get("referer", "")
+        if referer:
+            from urllib.parse import urlparse
+            try:
+                p = urlparse(referer)
+                if p.scheme and p.netloc:
+                    dynamic_return_url = f"{p.scheme}://{p.netloc}/recharge"
+            except Exception:
+                pass
+    
+    if dynamic_return_url:
+        app_logger.info(f"[Payment] 创建订单 {out_trade_no}, return_url={dynamic_return_url}")
+    
     # 生成支付 URL
     pay_url = create_payment_url(
         out_trade_no=out_trade_no,
         money=amount,
-        name=f"余额充值 ¥{amount}"
+        name=f"余额充值 ¥{amount}",
+        return_url=dynamic_return_url,
     )
     
     return {

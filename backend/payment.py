@@ -53,7 +53,9 @@ def create_payment_url(
     out_trade_no: str,
     money: float,
     name: str = "余额充值",
-    pay_type: str = "wxpay"
+    pay_type: str = "wxpay",
+    return_url: Optional[str] = None,
+    notify_url: Optional[str] = None,
 ) -> str:
     """
     创建支付跳转 URL
@@ -63,6 +65,8 @@ def create_payment_url(
         money: 订单金额（保留两位小数）
         name: 商品名称
         pay_type: 支付方式 (wxpay/alipay)
+        return_url: 用户支付完成后的跳转地址（不传则用环境变量默认值）
+        notify_url: 支付平台异步回调地址（不传则用环境变量默认值）
     
     返回:
         支付跳转 URL
@@ -71,8 +75,8 @@ def create_payment_url(
         "pid": ZPAY_PID,
         "type": pay_type,
         "out_trade_no": out_trade_no,
-        "notify_url": ZPAY_NOTIFY_URL,
-        "return_url": ZPAY_RETURN_URL,
+        "notify_url": notify_url or ZPAY_NOTIFY_URL,
+        "return_url": return_url or ZPAY_RETURN_URL,
         "name": name,
         "money": f"{money:.2f}",
         "sign_type": "MD5",
