@@ -1133,13 +1133,16 @@ def _process_payment(out_trade_no: str, trade_no: str) -> dict:
                 _payment_locks.pop(out_trade_no, None)
 
 
-@app.post("/api/pay/notify")
+@app.api_route("/api/pay/notify", methods=["GET", "POST"])
 async def payment_notify(request: Request):
-    """Z-Pay 支付回调通知"""
-    form_data = await request.form()
-    params = dict(form_data)
+    """Z-Pay 支付回调通知（同时支持 GET 和 POST）"""
+    if request.method == "GET":
+        params = dict(request.query_params)
+    else:
+        form_data = await request.form()
+        params = dict(form_data)
 
-    app_logger.info(f"[Payment] 收到回调: {params}")
+    app_logger.info(f"[Payment] 收到回调({request.method}): {params}")
 
     sign = params.get("sign", "")
     if not verify_sign(params, ZPAY_KEY, sign):
