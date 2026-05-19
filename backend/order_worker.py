@@ -436,15 +436,17 @@ async def submit_order(order_id: int):
 async def poll_order_status(order_id: int, acc_id: Optional[str] = None):
     """轮询海螺任务状态直到完成或超时
     海螺API没有按taskID查询的接口，需要通过 processing列表 + batch历史 来匹配
+    支持 quantity>1 的批量订单：等所有视频都完成后再标记 completed
     """
     elapsed = 0
 
-    # 读取订单的 task_ids
+    # 读取订单的 task_ids 和 quantity
     with Session(engine) as session:
         order = session.get(VideoOrder, order_id)
         if not order:
             return
         task_ids_raw = order.task_id
+        expected_quantity = order.quantity or 1
 
     if not task_ids_raw:
         logger.warning(f"[worker] 订单#{order_id}没有task_id，停止轮询")
@@ -477,8 +479,12 @@ async def poll_order_status(order_id: int, acc_id: Optional[str] = None):
             for batch in batch_feeds:
                 feeds.extend((batch.get("feeds") or []))
 
-            # 检查是否还在生成中
+            # 收集 processing 中匹配的 feed 状态
             still_processing = False
+            processing_completed_urls = []
+            all_failed = True  # 假设全部失败，有任何非失败的就置 False
+            has_matched_feed = False
+            last_fail_msg = ""
             for feed in feeds:
                 ci = feed.get("commonInfo") or {}
                 candidate_ids = {
@@ -488,52 +494,69 @@ async def poll_order_status(order_id: int, acc_id: Optional[str] = None):
                 }
                 candidate_ids.discard("")
                 if target_match_ids.intersection(candidate_ids):
+                    has_matched_feed = True
                     status = ci.get("status", 0)
                     feed_message = (feed.get("feedMessage") or {}).get("message", "")
                     if status == 2:
+                        all_failed = False
                         parsed = client._parse_feed(feed)
                         if parsed.get("video_url"):
-                            with Session(engine) as session:
-                                order = session.get(VideoOrder, order_id)
-                                if not order or order.status in ("completed", "failed"):
-                                    return
-                                order.status = "completed"
-                                order.progress = 100
-                                order.status_message = "已生成完成"
-                                order.video_url = parsed["video_url"]
-                                order.video_urls = json.dumps([parsed["video_url"]])
+                            processing_completed_urls.append(parsed["video_url"])
+                    elif status >= 90:
+                        last_fail_msg = feed_message or "生成失败"
+                    else:
+                        all_failed = False
+                        still_processing = True
+                        hinted_progress, hinted_message = _hailuo_progress_hint(status, feed_message, 0)
+                        with Session(engine) as session:
+                            order = session.get(VideoOrder, order_id)
+                            if order and order.status == "generating":
+                                order.progress = max(order.progress or 0, hinted_progress)
+                                order.status_message = hinted_message
+                                if expected_quantity > 1 and processing_completed_urls:
+                                    order.status_message = f"已完成 {len(processing_completed_urls)}/{expected_quantity}，{hinted_message}"
                                 order.updated_at = datetime.utcnow()
                                 session.add(order)
                                 session.commit()
-                            logger.info(f"[worker] 订单#{order_id}在processing中完成")
-                            return
-                    if status >= 90:
-                        msg = feed_message or "生成失败"
-                        _fail_order(order_id, msg)
-                        return
-                    still_processing = True
-                    hinted_progress, hinted_message = _hailuo_progress_hint(status, feed_message, 0)
-                    with Session(engine) as session:
-                        order = session.get(VideoOrder, order_id)
-                        if order and order.status == "generating":
-                            order.progress = max(order.progress or 0, hinted_progress)
-                            order.status_message = hinted_message
-                            order.updated_at = datetime.utcnow()
-                            session.add(order)
-                            session.commit()
 
+            # 如果所有匹配的 feed 都失败了
+            if has_matched_feed and all_failed and not processing_completed_urls:
+                _fail_order(order_id, last_fail_msg or "生成失败")
+                return
+
+            # 如果 processing 中有已完成的视频，但还有未完成的，继续等待
             if still_processing:
-                # 更新进度
                 with Session(engine) as session:
                     order = session.get(VideoOrder, order_id)
                     if order and order.status == "generating":
                         order.progress = max(order.progress or 0, min(80, 10 + elapsed * 70 // MAX_POLL_SECONDS))
                         if not order.status_message:
-                            order.status_message = "海螺正在生成中..."
+                            if expected_quantity > 1 and processing_completed_urls:
+                                order.status_message = f"已完成 {len(processing_completed_urls)}/{expected_quantity}，正在生成中..."
+                            else:
+                                order.status_message = "海螺正在生成中..."
                         order.updated_at = datetime.utcnow()
                         session.add(order)
                         session.commit()
                 continue
+
+            # processing 中所有匹配的都完成了（无 still_processing），直接用收集到的 URL
+            if processing_completed_urls:
+                # 对于批量订单，检查是否收集够了数量（至少有一个即可标记完成）
+                with Session(engine) as session:
+                    order = session.get(VideoOrder, order_id)
+                    if not order or order.status in ("completed", "failed"):
+                        return
+                    order.status = "completed"
+                    order.progress = 100
+                    order.status_message = "已生成完成"
+                    order.video_url = processing_completed_urls[0]
+                    order.video_urls = json.dumps(processing_completed_urls)
+                    order.updated_at = datetime.utcnow()
+                    session.add(order)
+                    session.commit()
+                logger.info(f"[worker] 订单#{order_id}在processing中完成，视频数={len(processing_completed_urls)}/{expected_quantity}")
+                return
 
             # 2. processing 里没有了，去 batch 历史查完成的视频
             batch_resp = await client.get_batch_feeds(limit=10)
@@ -567,7 +590,7 @@ async def poll_order_status(order_id: int, acc_id: Optional[str] = None):
                     order.updated_at = datetime.utcnow()
                     session.add(order)
                     session.commit()
-                logger.info(f"[worker] 订单#{order_id}完成，视频数={len(video_urls)}")
+                logger.info(f"[worker] 订单#{order_id}完成，视频数={len(video_urls)}/{expected_quantity}")
                 return
 
         except Exception as e:
