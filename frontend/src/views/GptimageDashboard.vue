@@ -78,11 +78,11 @@ const toastMessage = ref('')
 const toastType = ref('info')
 
 const formattedBalance = computed(() => {
-  return user.value ? user.value.balance.toFixed(2) : '0.00'
+  return user.value ? (user.value.paid_balance || 0).toFixed(2) : '0.00'
 })
 
 const isLowBalance = computed(() => {
-  return user.value && user.value.balance < 5
+  return user.value && (user.value.paid_balance || 0) < 5
 })
 
 const showNotification = (message, type = 'info') => {
@@ -130,7 +130,7 @@ const handleCreateOrder = async () => {
 
   const modelPrice = selectedModel.value?.price || 0.99
   const totalPrice = (modelPrice * generateCount.value).toFixed(2)
-  if (!user.value || user.value.balance < totalPrice) {
+  if (!user.value || (user.value.paid_balance || 0) < totalPrice) {
     showInsufficientModal.value = true
     insufficientPrice.value = totalPrice
     return
@@ -533,8 +533,8 @@ const handleLogout = () => {
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
               </svg>
             </div>
-            <h3 class="text-lg font-bold text-white mb-2">余额不足</h3>
-            <p class="text-gray-400 text-sm mb-6">本次生成需要 <span class="text-white font-bold">¥{{ insufficientPrice }}</span>，当前余额 <span class="text-orange-400 font-bold">¥{{ formattedBalance }}</span></p>
+            <h3 class="text-lg font-bold text-white mb-2">充值余额不足</h3>
+            <p class="text-gray-400 text-sm mb-6">本次生成需要 <span class="text-white font-bold">¥{{ insufficientPrice }}</span>，当前充值余额 <span class="text-orange-400 font-bold">¥{{ formattedBalance }}</span><br/><span class="text-gray-500 text-xs mt-1">GPT Image 仅支持充值余额，赠送余额不可用</span></p>
             <div class="flex gap-3">
               <button @click="showInsufficientModal = false" class="flex-1 py-2.5 bg-white/5 border border-white/10 text-gray-300 rounded-xl hover:bg-white/10 transition-all">取消</button>
               <button @click="showInsufficientModal = false; router.push('/recharge')" class="flex-1 py-2.5 bg-gradient-to-r from-sky-500 to-blue-600 text-white font-bold rounded-xl hover:brightness-110 transition-all shadow-lg">去充值</button>

@@ -228,11 +228,12 @@ async def create_gptimage_order(
     unit_price = db_model.price if db_model else 0.50
     total_price = round(unit_price * count, 2)
 
-    # 余额检查
-    if current_user.balance < total_price:
+    # GPT Image 只能使用充值余额（paid_balance），赠送余额不可用
+    user_paid = current_user.paid_balance or 0
+    if user_paid < total_price:
         raise HTTPException(
             status_code=400,
-            detail=f"余额不足，{count}张需要 ¥{total_price}，当前余额 ¥{current_user.balance:.2f}"
+            detail=f"充值余额不足，{count}张需要 ¥{total_price}，当前充值余额 ¥{user_paid:.2f}（赠送余额不可用于 GPT Image）"
         )
 
     # 处理参考图 → 转为 data URL（所有订单共用同一张参考图）
@@ -252,7 +253,8 @@ async def create_gptimage_order(
         b64 = base64.b64encode(content).decode("utf-8")
         ref_data_url = f"data:{mime_type};base64,{b64}"
 
-    # 一次性扣费（总价）
+    # 一次性扣费（总价）：从充值余额和总余额同时扣减
+    current_user.paid_balance = (current_user.paid_balance or 0) - total_price
     current_user.balance -= total_price
     session.add(current_user)
 
@@ -523,7 +525,7 @@ def _update_order_progress(order_id: int, progress: int):
 
 
 def _refund_order(order_id: int):
-    """订单失败时退款"""
+    """订单失败时退款（退回充值余额和总余额）"""
     with Session(engine) as session:
         order = session.get(GptimageOrder, order_id)
         if not order or order.cost <= 0:
@@ -531,6 +533,7 @@ def _refund_order(order_id: int):
         user = session.get(User, order.user_id)
         if user:
             user.balance += order.cost
+            user.paid_balance = (user.paid_balance or 0) + order.cost  # 退回到充值余额
             session.add(user)
             transaction = Transaction(
                 user_id=user.id,

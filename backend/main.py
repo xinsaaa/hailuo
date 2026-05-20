@@ -898,6 +898,7 @@ def recharge(request: RechargeRequest, current_user: User = Depends(get_current_
     total_add = amount + bonus
     
     current_user.balance += total_add
+    current_user.paid_balance = (current_user.paid_balance or 0) + amount  # 充值金额计入 paid_balance（不含赠送）
     session.add(current_user)
     
     transaction = Transaction(
@@ -910,7 +911,7 @@ def recharge(request: RechargeRequest, current_user: User = Depends(get_current_
     session.commit()
     session.refresh(current_user)
     
-    return {"message": "Recharge successful", "new_balance": current_user.balance, "bonus_added": bonus}
+    return {"message": "Recharge successful", "new_balance": current_user.balance, "paid_balance": current_user.paid_balance, "bonus_added": bonus}
 
 
 # ============ Z-Pay 支付接口 ============
@@ -1102,6 +1103,7 @@ def _process_payment(out_trade_no: str, trade_no: str) -> dict:
             if user:
                 total_add = payment_order.amount + payment_order.bonus
                 user.balance += total_add
+                user.paid_balance = (user.paid_balance or 0) + payment_order.amount  # 充值金额计入 paid_balance（不含赠送）
                 session.add(user)
 
                 transaction = Transaction(
@@ -1114,7 +1116,7 @@ def _process_payment(out_trade_no: str, trade_no: str) -> dict:
                 app_logger.info(
                     f"[Payment] 充值成功: {out_trade_no}, user={user.username}, "
                     f"amount={payment_order.amount}, bonus={payment_order.bonus}, "
-                    f"new_balance={user.balance}"
+                    f"new_balance={user.balance}, paid_balance={user.paid_balance}"
                 )
             else:
                 app_logger.error(f"[Payment] 用户不存在: user_id={payment_order.user_id}, order={out_trade_no}")

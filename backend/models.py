@@ -8,6 +8,7 @@ class User(SQLModel, table=True):
     email: Optional[str] = Field(default=None, index=True, unique=True)  # 邮箱（唯一）
     hashed_password: str
     balance: float = Field(default=3.0)  # 新用户默认送 ¥3
+    paid_balance: float = Field(default=0.0)  # 充值余额（仅充值金额，不含赠送）
     created_at: datetime = Field(default_factory=datetime.utcnow)
     is_active: bool = Field(default=True)
     is_superuser: bool = Field(default=False)
@@ -239,6 +240,8 @@ def _auto_migrate():
         ("videoorder", "video_urls", "TEXT"),
         # 宽高比
         ("videoorder", "aspect_ratio", "TEXT DEFAULT '16:9'"),
+        # 充值余额（GPT Image 专用）
+        ("user", "paid_balance", "REAL DEFAULT 0"),
     ]
 
     # 缓存每张表的现有列

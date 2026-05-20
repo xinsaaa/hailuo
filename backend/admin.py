@@ -103,6 +103,7 @@ class AdminLogin(BaseModel):
 
 class UserUpdate(BaseModel):
     balance: Optional[float] = None
+    paid_balance: Optional[float] = None
     is_banned: Optional[bool] = None
 
 
@@ -250,6 +251,7 @@ def list_users(
                 "id": u.id,
                 "username": u.username,
                 "balance": u.balance,
+                "paid_balance": u.paid_balance or 0,
                 "invite_code": u.invite_code,
                 "invited_by": u.invited_by,
                 "created_at": utc_to_china_time(u.created_at)
@@ -284,6 +286,7 @@ def get_user(user_id: int, admin=Depends(get_admin_user), session: Session = Dep
             "id": user.id,
             "username": user.username,
             "balance": user.balance,
+            "paid_balance": user.paid_balance or 0,
             "created_at": utc_to_china_time(user.created_at)
         },
         "recent_orders": [
@@ -332,11 +335,14 @@ def update_user(
         )
         session.add(transaction)
     
+    if data.paid_balance is not None:
+        user.paid_balance = data.paid_balance
+    
     session.add(user)
     session.commit()
     session.refresh(user)
     
-    return {"message": "更新成功", "user": {"id": user.id, "balance": user.balance}}
+    return {"message": "更新成功", "user": {"id": user.id, "balance": user.balance, "paid_balance": user.paid_balance or 0}}
 
 
 # ============ 订单管理 ============
