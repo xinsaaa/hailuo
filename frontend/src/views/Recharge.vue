@@ -243,8 +243,13 @@ onMounted(async () => {
         <div class="relative bg-[#1a1d24] border border-white/10 rounded-2xl p-6 md:p-8">
           <div class="flex flex-col md:flex-row md:items-center justify-between gap-6">
             <div>
-              <p class="text-sm text-gray-400 mb-1">当前余额</p>
+              <p class="text-sm text-gray-400 mb-1">当前总余额</p>
               <p class="text-4xl font-black text-white">¥{{ user?.balance?.toFixed(2) || '0.00' }}</p>
+              <div class="flex items-center gap-3 mt-2 text-xs">
+                <span class="text-gray-500">充值余额 <span class="text-emerald-400 font-bold">¥{{ (user?.paid_balance || 0).toFixed(2) }}</span></span>
+                <span class="text-gray-600">|</span>
+                <span class="text-gray-500">赠送余额 <span class="text-amber-400 font-bold">¥{{ (user?.balance - (user?.paid_balance || 0) || 0).toFixed(2) }}</span></span>
+              </div>
             </div>
             <div class="flex gap-6">
               <div class="text-center">

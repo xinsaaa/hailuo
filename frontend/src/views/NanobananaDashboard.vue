@@ -79,6 +79,13 @@ const toastType = ref('info')
 const formattedBalance = computed(() => {
   return user.value ? user.value.balance.toFixed(2) : '0.00'
 })
+const formattedPaidBalance = computed(() => {
+  return user.value ? (user.value.paid_balance || 0).toFixed(2) : '0.00'
+})
+const formattedGiftBalance = computed(() => {
+  if (!user.value) return '0.00'
+  return (user.value.balance - (user.value.paid_balance || 0)).toFixed(2)
+})
 
 const isLowBalance = computed(() => {
   return user.value && user.value.balance < 5
@@ -536,7 +543,9 @@ const handleLogout = () => {
               </svg>
             </div>
             <h3 class="text-lg font-bold text-white mb-2">余额不足</h3>
-            <p class="text-gray-400 text-sm mb-6">本次生成需要 <span class="text-white font-bold">¥{{ insufficientPrice }}</span>，当前余额 <span class="text-orange-400 font-bold">¥{{ formattedBalance }}</span></p>
+            <p class="text-gray-400 text-sm mb-1">本次生成需要 <span class="text-white font-bold">¥{{ insufficientPrice }}</span></p>
+            <p class="text-gray-500 text-sm mb-1">当前总余额 <span class="text-orange-400 font-bold">¥{{ formattedBalance }}</span></p>
+            <p class="text-gray-600 text-xs mb-6">充值余额 <span class="text-emerald-400 font-bold">¥{{ formattedPaidBalance }}</span> | 赠送余额 <span class="text-amber-400 font-bold">¥{{ formattedGiftBalance }}</span></p>
             <div class="flex gap-3">
               <button @click="showInsufficientModal = false" class="flex-1 py-2.5 bg-white/5 border border-white/10 text-gray-300 rounded-xl hover:bg-white/10 transition-all">取消</button>
               <button @click="showInsufficientModal = false; router.push('/recharge')" class="flex-1 py-2.5 bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-bold rounded-xl hover:brightness-110 transition-all shadow-lg">去充值</button>

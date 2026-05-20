@@ -14,6 +14,11 @@ const inviteStats = ref(null)
 const loading = ref(true)
 
 const formattedBalance = computed(() => user.value ? user.value.balance.toFixed(2) : '0.00')
+const formattedPaidBalance = computed(() => user.value ? (user.value.paid_balance || 0).toFixed(2) : '0.00')
+const formattedGiftBalance = computed(() => {
+  if (!user.value) return '0.00'
+  return (user.value.balance - (user.value.paid_balance || 0)).toFixed(2)
+})
 const isLowBalance = computed(() => user.value && user.value.balance < 5)
 
 const activeTab = ref('transactions')
@@ -153,10 +158,15 @@ onMounted(() => {
               </div>
               <!-- 右侧余额 -->
               <div class="text-right">
-                <p class="text-xs text-gray-500 mb-1">账户余额</p>
-                <p class="text-4xl font-extrabold mb-3" :class="isLowBalance ? 'text-red-400' : 'text-white'">
+                <p class="text-xs text-gray-500 mb-1">账户总余额</p>
+                <p class="text-4xl font-extrabold mb-2" :class="isLowBalance ? 'text-red-400' : 'text-white'">
                   <span class="text-lg text-gray-400 mr-1">¥</span>{{ formattedBalance }}
                 </p>
+                <div class="flex items-center justify-end gap-3 mb-3 text-xs">
+                  <span class="text-gray-500">充值余额 <span class="text-emerald-400 font-bold">¥{{ formattedPaidBalance }}</span></span>
+                  <span class="text-gray-600">|</span>
+                  <span class="text-gray-500">赠送余额 <span class="text-amber-400 font-bold">¥{{ formattedGiftBalance }}</span></span>
+                </div>
                 <button
                   @click="router.push('/recharge')"
                   :class="isLowBalance ? 'from-red-500 to-orange-500' : 'from-cyan-500 to-blue-600'"

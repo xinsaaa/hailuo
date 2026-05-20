@@ -9,6 +9,7 @@ const loading = ref(false)
 const showModal = ref(false)
 const editingUser = ref(null)
 const newBalance = ref(0)
+const newPaidBalance = ref(0)
 
 const showToast = ref(false)
 const toastMessage = ref('')
@@ -37,12 +38,13 @@ const loadUsers = async (p = 1) => {
 const openEditModal = (user) => {
     editingUser.value = user
     newBalance.value = user.balance
+    newPaidBalance.value = user.paid_balance || 0
     showModal.value = true
 }
 
 const handleUpdateBalance = async () => {
     try {
-        await updateUserBalance(editingUser.value.id, newBalance.value)
+        await updateUserBalance(editingUser.value.id, newBalance.value, newPaidBalance.value)
         showModal.value = false
         toast('余额已更新', 'success')
         loadUsers(page.value)
@@ -75,7 +77,8 @@ onMounted(() => loadUsers())
                 <tr>
                     <th class="px-6 py-5">ID</th>
                     <th class="px-6 py-5">用户名</th>
-                    <th class="px-6 py-5">余额 (¥)</th>
+                    <th class="px-6 py-5">总余额 (¥)</th>
+                    <th class="px-6 py-5">充值余额 (¥)</th>
                     <th class="px-6 py-5">邀请码</th>
                     <th class="px-6 py-5">邀请人ID</th>
                     <th class="px-6 py-5">注册时间</th>
@@ -92,6 +95,7 @@ onMounted(() => loadUsers())
                         {{ user.username }}
                     </td>
                     <td class="px-6 py-4 font-mono text-green-400 font-medium">{{ user.balance.toFixed(2) }}</td>
+                    <td class="px-6 py-4 font-mono text-emerald-400 font-medium">{{ (user.paid_balance || 0).toFixed(2) }}</td>
                     <td class="px-6 py-4 font-mono text-gray-400">{{ user.invite_code || '-' }}</td>
                     <td class="px-6 py-4 text-gray-400">{{ user.invited_by ? '#' + user.invited_by : '-' }}</td>
                     <td class="px-6 py-4 text-gray-500">{{ new Date(user.created_at).toLocaleString() }}</td>
@@ -138,16 +142,37 @@ onMounted(() => loadUsers())
                 <div class="p-4 bg-gray-900/50 rounded-xl border border-gray-700/50">
                     <div class="text-sm text-gray-400 mb-1">用户</div>
                     <div class="text-white font-medium">{{ editingUser.username }}</div>
-                    <div class="text-sm text-gray-400 mt-3 mb-1">当前余额</div>
-                    <div class="text-2xl font-bold text-green-400 font-mono">¥ {{ editingUser.balance.toFixed(2) }}</div>
+                    <div class="flex gap-4 mt-3">
+                        <div>
+                            <div class="text-sm text-gray-400 mb-1">总余额</div>
+                            <div class="text-xl font-bold text-green-400 font-mono">¥ {{ editingUser.balance.toFixed(2) }}</div>
+                        </div>
+                        <div>
+                            <div class="text-sm text-gray-400 mb-1">充值余额</div>
+                            <div class="text-xl font-bold text-emerald-400 font-mono">¥ {{ (editingUser.paid_balance || 0).toFixed(2) }}</div>
+                        </div>
+                    </div>
                 </div>
 
                 <div>
-                    <label class="block text-sm text-gray-400 mb-2 font-medium">设置新余额</label>
+                    <label class="block text-sm text-gray-400 mb-2 font-medium">设置新总余额</label>
                     <div class="relative">
                         <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">¥</span>
                         <input 
                             v-model.number="newBalance"
+                            type="number" 
+                            step="0.01"
+                            class="w-full pl-8 pr-4 py-3 bg-gray-700/50 border border-gray-600 rounded-xl text-white outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
+                            placeholder="0.00"
+                        />
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm text-gray-400 mb-2 font-medium">设置新充值余额</label>
+                    <div class="relative">
+                        <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">¥</span>
+                        <input 
+                            v-model.number="newPaidBalance"
                             type="number" 
                             step="0.01"
                             class="w-full pl-8 pr-4 py-3 bg-gray-700/50 border border-gray-600 rounded-xl text-white outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"

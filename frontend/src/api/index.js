@@ -294,8 +294,10 @@ export const getAdminUsers = async (page = 1, limit = 20) => {
     return response.data
 }
 
-export const updateUserBalance = async (userId, balance) => {
-    const response = await api.patch(`/admin/users/${userId}`, { balance })
+export const updateUserBalance = async (userId, balance, paidBalance) => {
+    const data = { balance }
+    if (paidBalance !== undefined) data.paid_balance = paidBalance
+    const response = await api.patch(`/admin/users/${userId}`, data)
     return response.data
 }
 
